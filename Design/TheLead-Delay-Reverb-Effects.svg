@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980">
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#171b23"/><stop offset="1" stop-color="#0d1016"/></linearGradient>
+    <style>
+      text{font-family:"Space Grotesk",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#eef1f5}
+      .muted{fill:#99a2b1}.dim{fill:#6f7886}.accent{fill:#ef8047}.green{fill:#66d6b2}
+      .eyebrow{font-size:13px;font-weight:700;letter-spacing:1.8px}.title{font-size:30px;font-weight:700}.body{font-size:17px}.small{font-size:13px}.label{font-size:12px;font-weight:650;letter-spacing:.8px}
+      .panel{fill:#1d222c;stroke:#343b48;stroke-width:1}.inner{fill:#131820;stroke:#343b48;stroke-width:1}.line{stroke:#353d4a;stroke-width:1}
+    </style>
+  </defs>
+  <rect width="1600" height="980" fill="url(#bg)"/><rect width="1600" height="4" fill="#66d6b2"/>
+  <text x="48" y="48" class="eyebrow green">NAMINATOR · POST AMP EFFECTS</text>
+  <text x="48" y="88" class="title">Delay &amp; Reverb</text>
+  <text x="48" y="115" class="small muted">Routing modes alter the audio path. Reverb modes use distinct decay, damping, width and pre-delay settings.</text>
+  <rect x="48" y="150" width="1504" height="92" rx="14" class="panel"/>
+  <g text-anchor="middle">
+    <text x="130" y="185" class="eyebrow muted">NAM / AMP</text><text x="130" y="213" class="body">Capture outputs</text>
+    <path d="M240 196H405" stroke="#4c5666" stroke-width="3"/>
+    <rect x="420" y="169" width="255" height="54" rx="10" class="inner"/>
+    <text x="548" y="190" class="eyebrow accent">DELAY</text><text x="548" y="211" class="small">Mono · Stereo · Ping Pong</text>
+    <path d="M685 196H870" stroke="#4c5666" stroke-width="3"/>
+    <rect x="885" y="169" width="255" height="54" rx="10" class="inner"/>
+    <text x="1012" y="190" class="eyebrow accent">REVERB</text><text x="1012" y="211" class="small">Room · Plate · Cloud</text>
+    <path d="M1150 196H1370" stroke="#4c5666" stroke-width="3"/><text x="1450" y="185" class="eyebrow muted">OUTPUT</text><text x="1450" y="213" class="body">Stereo / Mono</text>
+  </g>
+
+  <rect x="48" y="278" width="730" height="650" rx="16" class="panel"/>
+  <text x="80" y="322" class="eyebrow accent">01 · DELAY</text>
+  <text x="80" y="356" class="title">Stereo routing and ducking</text>
+  <text x="80" y="382" class="small muted">Duck control lowers repeats while the dry guitar is active.</text>
+  <text x="80" y="433" class="label muted">ROUTING</text>
+  <rect x="80" y="448" width="664" height="58" rx="10" class="inner"/>
+  <rect x="92" y="458" width="130" height="38" rx="8" fill="#18332e" stroke="#326455"/><text x="157" y="482" class="body green" text-anchor="middle">MONO</text>
+  <rect x="230" y="458" width="130" height="38" rx="8" fill="#242a35" stroke="#414a58"/><text x="295" y="482" class="body muted" text-anchor="middle">STEREO</text>
+  <rect x="368" y="458" width="164" height="38" rx="8" fill="#242a35" stroke="#414a58"/><text x="450" y="482" class="body muted" text-anchor="middle">PING PONG</text>
+  <text x="80" y="550" class="label muted">TIME</text><text x="744" y="550" class="small" text-anchor="end">360 ms</text>
+  <rect x="80" y="565" width="664" height="5" rx="3" fill="#343c49"/><rect x="80" y="565" width="250" height="5" rx="3" class="green"/><circle cx="330" cy="568" r="8" class="green"/>
+  <text x="80" y="613" class="label muted">FEEDBACK</text><text x="744" y="613" class="small" text-anchor="end">32%</text>
+  <rect x="80" y="628" width="664" height="5" rx="3" fill="#343c49"/><rect x="80" y="628" width="212" height="5" rx="3" class="green"/><circle cx="292" cy="631" r="8" class="green"/>
+  <text x="80" y="676" class="label muted">MIX</text><text x="744" y="676" class="small" text-anchor="end">25%</text>
+  <rect x="80" y="691" width="664" height="5" rx="3" fill="#343c49"/><rect x="80" y="691" width="166" height="5" rx="3" class="green"/><circle cx="246" cy="694" r="8" class="green"/>
+  <line x1="80" y1="731" x2="744" y2="731" class="line"/>
+  <text x="80" y="770" class="label green">DUCKING</text><text x="744" y="770" class="small" text-anchor="end">OFF / 0–100%</text>
+  <text x="80" y="808" class="small muted">Attack follows the playing signal; release brings repeats back after a note.</text>
+  <text x="80" y="846" class="label muted">DUCK THRESHOLD</text><text x="744" y="846" class="small" text-anchor="end">−30 dB</text>
+  <text x="80" y="888" class="label muted">DUCK RELEASE</text><text x="744" y="888" class="small" text-anchor="end">250 ms</text>
+
+  <rect x="822" y="278" width="730" height="650" rx="16" class="panel"/>
+  <text x="854" y="322" class="eyebrow accent">02 · REVERB</text>
+  <text x="854" y="356" class="title">Three voiced reverb modes</text>
+  <text x="854" y="382" class="small muted">Room, Plate and Cloud have different decay, damping, stereo width and pre-delay voicings.</text>
+  <g>
+    <rect x="854" y="420" width="200" height="92" rx="12" fill="#18332e" stroke="#66d6b2" stroke-width="2"/>
+    <text x="954" y="457" class="eyebrow green" text-anchor="middle">ROOM</text><text x="954" y="484" class="small muted" text-anchor="middle">Natural · compact</text>
+    <rect x="1066" y="420" width="200" height="92" rx="12" class="inner"/>
+    <text x="1166" y="457" class="eyebrow muted" text-anchor="middle">PLATE</text><text x="1166" y="484" class="small muted" text-anchor="middle">Bright · dense · 12 ms</text>
+    <rect x="1278" y="420" width="240" height="92" rx="12" class="inner"/>
+    <text x="1398" y="457" class="eyebrow muted" text-anchor="middle">CLOUD</text><text x="1398" y="484" class="small muted" text-anchor="middle">Long · wide · 35 ms</text>
+  </g>
+  <text x="854" y="566" class="label muted">SIZE / DECAY</text><text x="1518" y="566" class="small" text-anchor="end">45%</text>
+  <rect x="854" y="581" width="664" height="5" rx="3" fill="#343c49"/><rect x="854" y="581" width="300" height="5" rx="3" class="green"/><circle cx="1154" cy="584" r="8" class="green"/>
+  <text x="854" y="628" class="label muted">DAMPING</text><text x="1518" y="628" class="small" text-anchor="end">45%</text>
+  <rect x="854" y="643" width="664" height="5" rx="3" fill="#343c49"/><rect x="854" y="643" width="300" height="5" rx="3" class="green"/><circle cx="1154" cy="646" r="8" class="green"/>
+  <text x="854" y="690" class="label muted">PRE-DELAY</text><text x="1518" y="690" class="small" text-anchor="end">0–100 ms + mode offset</text>
+  <rect x="854" y="705" width="664" height="5" rx="3" fill="#343c49"/><rect x="854" y="705" width="166" height="5" rx="3" class="green"/><circle cx="1020" cy="708" r="8" class="green"/>
+  <text x="854" y="752" class="label muted">WIDTH</text><text x="1518" y="752" class="small" text-anchor="end">80%</text>
+  <rect x="854" y="767" width="664" height="5" rx="3" fill="#343c49"/><rect x="854" y="767" width="530" height="5" rx="3" class="green"/><circle cx="1384" cy="770" r="8" class="green"/>
+  <line x1="854" y1="808" x2="1518" y2="808" class="line"/>
+  <text x="854" y="850" class="label muted">MIX</text><text x="1518" y="850" class="small" text-anchor="end">20%</text>
+  <text x="854" y="891" class="small dim">All controls affect audio processing in the selected reverb mode.</text>
+</svg>

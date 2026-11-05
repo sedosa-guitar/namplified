@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="760" viewBox="0 0 1200 760">
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#171b23"/><stop offset="1" stop-color="#0d1016"/></linearGradient>
+    <style>
+      text{font-family:"Space Grotesk",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#eef1f5}
+      .muted{fill:#99a2b1}.dim{fill:#6f7886}.accent{fill:#ef8047}.green{fill:#66d6b2}
+      .eyebrow{font-size:13px;font-weight:700;letter-spacing:1.8px}.title{font-size:31px;font-weight:700}.small{font-size:14px}.body{font-size:18px}.label{font-size:13px;font-weight:650;letter-spacing:1px}
+      .panel{fill:#1d222c;stroke:#343b48;stroke-width:1}.inner{fill:#131820;stroke:#343b48;stroke-width:1}
+    </style>
+  </defs>
+  <rect width="1200" height="760" fill="url(#bg)"/><rect width="1200" height="4" fill="#ef8047"/>
+  <text x="48" y="52" class="eyebrow green">NAMINATOR  /  PRE AMP EFFECT</text>
+  <text x="48" y="96" class="title">Boost</text>
+  <text x="48" y="124" class="small muted">Add level into the next block, then shape the tone before the NAM captures.</text>
+  <rect x="966" y="42" width="186" height="42" rx="21" fill="#18332e" stroke="#326455"/>
+  <circle cx="989" cy="63" r="5" class="green"/><text x="1005" y="68" class="eyebrow green">ENABLED</text>
+  <rect x="48" y="158" width="1104" height="552" rx="18" class="panel"/>
+  <text x="84" y="204" class="eyebrow accent">CLEAN BOOST / TONE CONTROL</text>
+  <line x1="84" y1="224" x2="1116" y2="224" stroke="#343b48"/>
+  <rect x="88" y="270" width="280" height="360" rx="28" fill="#151a22" stroke="#414a58" stroke-width="2"/>
+  <rect x="106" y="288" width="244" height="324" rx="22" fill="#1d242e" stroke="#303846"/>
+  <text x="228" y="328" text-anchor="middle" class="eyebrow green">NAMINATOR</text>
+  <text x="228" y="350" text-anchor="middle" class="small muted">CLEAN BOOST · WDF</text>
+  <g fill="#121720" stroke="#4b5665" stroke-width="2">
+    <circle cx="157" cy="420" r="38"/><circle cx="228" cy="420" r="38"/><circle cx="299" cy="420" r="38"/>
+    <circle cx="157" cy="530" r="38"/>
+  </g>
+  <g fill="#252d39"><circle cx="157" cy="420" r="28"/><circle cx="228" cy="420" r="28"/><circle cx="299" cy="420" r="28"/><circle cx="157" cy="530" r="28"/></g>
+  <g stroke="#ef8047" stroke-width="4" stroke-linecap="round"><path d="M157 386V405"/><path d="M228 386V405"/><path d="M299 386V405"/><path d="M157 496V515"/></g>
+  <g text-anchor="middle" class="label muted"><text x="157" y="478">BASS</text><text x="228" y="478">MID</text><text x="299" y="478">TREBLE</text><text x="157" y="588">GAIN</text></g>
+  <circle cx="228" cy="565" r="14" fill="#121720" stroke="#66d6b2" stroke-width="2"/><circle cx="228" cy="565" r="4" class="green"/>
+  <text x="228" y="650" text-anchor="middle" class="small muted">Footswitch · bypass</text>
+  <text x="426" y="278" class="eyebrow muted">TONE CURVE  ·  CLICK THE GRAPH TO EDIT</text>
+  <rect x="426" y="298" width="680" height="190" rx="12" class="inner"/>
+  <g stroke="#303846" stroke-width="1"><path d="M448 336H1084M448 373H1084M448 410H1084M448 447H1084"/><path d="M554 316V470M660 316V470M766 316V470M872 316V470M978 316V470"/></g>
+  <path d="M448 400 C520 398 544 350 605 359 C671 370 695 423 758 405 C830 385 850 343 920 350 C988 357 1005 387 1084 375" fill="none" stroke="#ef8047" stroke-width="4"/>
+  <circle cx="605" cy="359" r="6" fill="#ef8047" stroke="#fff" stroke-width="2"/><circle cx="758" cy="405" r="6" fill="#ef8047" stroke="#fff" stroke-width="2"/><circle cx="920" cy="350" r="6" fill="#ef8047" stroke="#fff" stroke-width="2"/>
+  <text x="448" y="512" class="small muted">Bass</text><text x="766" y="512" text-anchor="middle" class="small muted">Mid</text><text x="1084" y="512" text-anchor="end" class="small muted">Treble</text>
+  <text x="426" y="558" class="label muted">GAIN</text><text x="1106" y="558" text-anchor="end" class="small">+6.0 dB</text>
+  <rect x="426" y="574" width="680" height="6" rx="3" fill="#343c49"/><rect x="426" y="574" width="400" height="6" rx="3" class="green"/><circle cx="826" cy="577" r="9" class="green"/>
+  <text x="426" y="620" class="small muted">Gain drives the WDF diode stage; Bass, Mid and Treble shape its output.</text>
+  <text x="426" y="654" class="small dim">The Clean Boost remains one movable block before the NAM section.</text>
+</svg>

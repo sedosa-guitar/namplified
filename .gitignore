@@ -1,0 +1,20 @@
+# CMake / JUCE build output
+/build/
+/cmake-build-*/
+/Builds/*/build/
+
+# macOS and editor metadata
+.DS_Store
+*.user
+*.userprefs
+*.xcuserstate
+xcuserdata/
+
+# Generated plugin bundles and binaries
+*.app/
+*.component/
+*.vst3/
+*.aaxplugin/
+*.o
+*.a
+*.dylib

@@ -1,0 +1,81 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1040" viewBox="0 0 1600 1040">
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#161a22"/><stop offset="1" stop-color="#0d1016"/></linearGradient>
+    <linearGradient id="selected" x2="1" y2="1"><stop stop-color="#252c38"/><stop offset="1" stop-color="#1b202a"/></linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%"><feDropShadow dx="0" dy="9" stdDeviation="12" flood-color="#000" flood-opacity=".24"/></filter>
+    <style>
+      text{font-family:"Space Grotesk",Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#eef1f5}
+      .muted{fill:#99a2b1}.dim{fill:#6f7886}.accent{fill:#ef8047}.green{fill:#66d6b2}
+      .eyebrow{font-size:12px;font-weight:700;letter-spacing:1.7px}.title{font-size:28px;font-weight:700}.small{font-size:13px}.body{font-size:16px}.label{font-size:12px;font-weight:650;letter-spacing:.8px}
+      .panel{fill:#1d222c;stroke:#343b48;stroke-width:1}.inner{fill:#131820;stroke:#343b48;stroke-width:1}.line{stroke:#353d4a;stroke-width:1}
+    </style>
+  </defs>
+  <rect width="1600" height="1040" fill="url(#bg)"/>
+  <rect width="1600" height="4" fill="#66d6b2"/>
+  <text x="48" y="47" class="eyebrow green">NAMINATOR</text>
+  <text x="48" y="83" class="title">Signal Chain</text>
+  <text x="48" y="108" class="small muted">Build the route on the left. Select any block to edit it in the detail panel.</text>
+  <rect x="1248" y="35" width="304" height="48" rx="10" class="inner"/>
+  <text x="1266" y="55" class="eyebrow muted">NAM ROUTING</text>
+  <text x="1266" y="73" class="body">Series  ▾</text>
+  <text x="48" y="157" class="eyebrow dim">01  /  ROUTE</text>
+  <text x="1480" y="157" class="small muted" text-anchor="end">Drag blocks to reorder within a section</text>
+  <path d="M90 230H1500" stroke="#4c5666" stroke-width="3" fill="none"/>
+  <g filter="url(#shadow)">
+    <rect x="48" y="187" width="112" height="86" rx="12" class="panel"/><rect x="175" y="187" width="112" height="86" rx="12" class="panel"/>
+    <rect x="302" y="178" width="135" height="104" rx="12" fill="url(#selected)" stroke="#ef8047" stroke-width="2"/>
+    <rect x="452" y="187" width="112" height="86" rx="12" class="panel"/><rect x="579" y="187" width="112" height="86" rx="12" class="panel"/>
+    <rect x="706" y="187" width="112" height="86" rx="12" class="panel"/><rect x="833" y="187" width="112" height="86" rx="12" class="panel"/>
+    <rect x="960" y="187" width="112" height="86" rx="12" class="panel"/><rect x="1087" y="187" width="112" height="86" rx="12" class="panel"/>
+    <rect x="1214" y="187" width="112" height="86" rx="12" class="panel"/><rect x="1341" y="187" width="112" height="86" rx="12" class="panel"/>
+  </g>
+  <g text-anchor="middle">
+    <circle cx="64" cy="203" r="4" class="green"/><text x="104" y="220" class="eyebrow muted">INPUT</text><text x="104" y="246" class="body">Input</text>
+    <circle cx="191" cy="203" r="4" class="green"/><text x="231" y="220" class="eyebrow muted">GATE</text><text x="231" y="246" class="body">Noise Gate</text>
+    <circle cx="319" cy="194" r="4" class="accent"/><text x="369" y="214" class="eyebrow accent">SELECTED</text><text x="369" y="243" class="body">Compressor</text><text x="369" y="263" class="small muted">1176 FET style</text>
+    <circle cx="468" cy="203" r="4" class="dim"/><text x="508" y="220" class="eyebrow muted">BOOST</text><text x="508" y="246" class="body">Boost</text>
+    <circle cx="595" cy="203" r="4" class="dim"/><text x="635" y="220" class="eyebrow muted">PRE EQ</text><text x="635" y="246" class="body">3-band</text>
+    <circle cx="722" cy="203" r="4" class="green"/><text x="762" y="220" class="eyebrow muted">NAM × 3</text><text x="762" y="246" class="body">Serial / Parallel</text>
+    <circle cx="849" cy="203" r="4" class="green"/><text x="889" y="220" class="eyebrow muted">IR BUS</text><text x="889" y="246" class="body">Parallel × 3</text>
+    <circle cx="976" cy="203" r="4" class="dim"/><text x="1016" y="220" class="eyebrow muted">DELAY</text><text x="1016" y="246" class="body">Delay</text>
+    <circle cx="1103" cy="203" r="4" class="dim"/><text x="1143" y="220" class="eyebrow muted">REVERB</text><text x="1143" y="246" class="body">Reverb</text>
+    <circle cx="1230" cy="203" r="4" class="dim"/><text x="1270" y="220" class="eyebrow muted">CHORUS</text><text x="1270" y="246" class="body">Chorus</text>
+    <circle cx="1357" cy="203" r="4" class="green"/><text x="1397" y="220" class="eyebrow muted">OUTPUT</text><text x="1397" y="246" class="body">Output</text>
+  </g>
+  <text x="48" y="329" class="eyebrow dim">02  /  SELECTED BLOCK</text>
+  <rect x="48" y="352" width="1504" height="425" rx="16" class="panel" filter="url(#shadow)"/>
+  <text x="80" y="396" class="eyebrow accent">PRE AMP · 1176-STYLE FET COMPRESSOR</text>
+  <text x="80" y="432" class="title">Fast FET compression controls</text>
+  <text x="80" y="457" class="small muted">Input and Output · 20–800 µs Attack · 50–1100 ms Release · selectable ratios.</text>
+  <rect x="1364" y="379" width="150" height="36" rx="18" fill="#18332e" stroke="#326455"/>
+  <circle cx="1384" cy="397" r="5" class="green"/><text x="1400" y="401" class="eyebrow green">ENABLED</text>
+  <line x1="80" y1="481" x2="1520" y2="481" class="line"/>
+  <g>
+    <g transform="translate(190 585)"><circle r="51" fill="#121720" stroke="#394250" stroke-width="2"/><circle r="39" fill="#1f2631"/><path d="M0 -42L0 -28" stroke="#ef8047" stroke-width="4" stroke-linecap="round"/><circle r="3" class="green"/><text y="76" class="label muted" text-anchor="middle">OUTPUT</text><text y="96" class="small" text-anchor="middle">0.0 dB</text></g>
+    <g transform="translate(440 585)"><circle r="51" fill="#121720" stroke="#394250" stroke-width="2"/><circle r="39" fill="#1f2631"/><path d="M0 -42L0 -28" stroke="#ef8047" stroke-width="4" stroke-linecap="round"/><circle r="3" class="green"/><text y="76" class="label muted" text-anchor="middle">INPUT</text><text y="96" class="small" text-anchor="middle">+7.5 dB</text></g>
+    <g transform="translate(690 585)"><circle r="51" fill="#121720" stroke="#394250" stroke-width="2"/><circle r="39" fill="#1f2631"/><path d="M0 -42L0 -28" stroke="#ef8047" stroke-width="4" stroke-linecap="round"/><circle r="3" class="green"/><text y="76" class="label muted" text-anchor="middle">ATTACK</text><text y="96" class="small" text-anchor="middle">0.20 ms</text></g>
+    <g transform="translate(940 585)"><circle r="51" fill="#121720" stroke="#394250" stroke-width="2"/><circle r="39" fill="#1f2631"/><path d="M0 -42L0 -28" stroke="#ef8047" stroke-width="4" stroke-linecap="round"/><circle r="3" class="green"/><text y="76" class="label muted" text-anchor="middle">RELEASE</text><text y="96" class="small" text-anchor="middle">250 ms</text></g>
+    <g transform="translate(1190 585)"><circle r="51" fill="#121720" stroke="#394250" stroke-width="2"/><circle r="39" fill="#1f2631"/><path d="M0 -42L0 -28" stroke="#ef8047" stroke-width="4" stroke-linecap="round"/><circle r="3" class="green"/><text y="76" class="label muted" text-anchor="middle">RATIO</text><text y="96" class="small" text-anchor="middle">4:1 – 20:1</text></g>
+  </g>
+  <rect x="1320" y="515" width="184" height="190" rx="12" class="inner"/>
+  <text x="1342" y="545" class="eyebrow muted">RATIO</text><text x="1342" y="585" class="body">4:1 · 8:1 · 12:1 · 20:1</text>
+  <rect x="1342" y="600" width="140" height="4" rx="2" fill="#343c49"/><rect x="1342" y="600" width="74" height="4" rx="2" class="green"/>
+  <text x="1342" y="640" class="body">All Buttons</text><text x="1482" y="640" class="small muted" text-anchor="end">off / on</text>
+  <rect x="1342" y="655" width="140" height="4" rx="2" fill="#343c49"/><rect x="1342" y="655" width="52" height="4" rx="2" class="green"/>
+  <text x="1342" y="696" class="small green">Bright switch · parallel blend</text>
+  <text x="80" y="742" class="small dim">Tap a block in the route above to open its matching controls here.</text>
+  <rect x="48" y="810" width="732" height="190" rx="16" class="panel"/>
+  <text x="80" y="847" class="eyebrow green">CLEAN BOOST · WDF CIRCUIT</text>
+  <text x="80" y="877" class="body">Gain plus Bass / Mid / Treble shaping</text>
+  <rect x="80" y="897" width="310" height="72" rx="10" class="inner"/>
+  <path d="M96 937 C145 936 158 916 190 920 C230 925 245 950 272 938 C304 923 330 910 374 911" fill="none" stroke="#ef8047" stroke-width="3"/>
+  <text x="421" y="918" class="label muted">BASS</text><text x="421" y="945" class="label muted">MID</text><text x="421" y="972" class="label muted">TREBLE</text>
+  <text x="728" y="918" class="small" text-anchor="end">0 dB</text><text x="728" y="945" class="small" text-anchor="end">0 dB</text><text x="728" y="972" class="small" text-anchor="end">0 dB</text>
+  <rect x="800" y="810" width="752" height="190" rx="16" class="panel"/>
+  <text x="832" y="847" class="eyebrow green">PRE / POST EQ · FREQUENCY RESPONSE IS CLICKABLE</text>
+  <text x="832" y="877" class="body">Three bands · Gain and center frequency per band</text>
+  <rect x="832" y="897" width="474" height="72" rx="10" class="inner"/>
+  <path d="M848 936H1290" stroke="#343c49"/><path d="M848 934 C920 934 938 912 982 916 C1033 922 1053 949 1100 932 C1155 912 1204 915 1290 914" fill="none" stroke="#66d6b2" stroke-width="3"/>
+  <text x="848" y="988" class="small muted">50 Hz</text><text x="1290" y="988" class="small muted" text-anchor="end">16 kHz</text>
+  <text x="1330" y="919" class="label muted">PRE EQ</text><text x="1330" y="945" class="small">80 Hz – 12 kHz</text><text x="1330" y="974" class="label muted">POST EQ</text><text x="1330" y="995" class="small">50 Hz – 16 kHz</text>
+</svg>
