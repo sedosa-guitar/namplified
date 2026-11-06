@@ -223,6 +223,10 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "delayMode", 1 }, "Delay Mode",
         juce::StringArray { "Mono", "Stereo", "Ping Pong" }, 1));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "delayType", 1 }, "Delay Character",
+        juce::StringArray { "Digital", "Analog" }, 0));
+    addFrequency ("delayTone", "Delay Tone", 500.0f, 12000.0f, 4500.0f);
     addKnob ("delayDuck", "Delay Ducking", 0.0f, 1.0f, 0.0f);
     addKnob ("delayDuckThreshold", "Delay Duck Threshold", -48.0f, 0.0f, -30.0f);
     addKnob ("delayDuckRelease", "Delay Duck Release", 20.0f, 1000.0f, 250.0f);
@@ -556,6 +560,7 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
         delayLine.prepare (spec);
         delayLine.reset();
     }
+    analogDelayToneState.fill (0.0f);
     for (auto& predelayLine : reverbPreDelayLines)
     {
         predelayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 0.15) + 2);
@@ -609,6 +614,14 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     for (auto channel = getTotalNumInputChannels(); channel < getTotalNumOutputChannels(); ++channel)
         buffer.clear (channel, 0, numSamples);
+
+    float inputBlockPeak = 0.0f;
+    const auto inputMeterChannels = juce::jmin (getTotalNumInputChannels(), buffer.getNumChannels());
+    for (int channel = 0; channel < inputMeterChannels; ++channel)
+        inputBlockPeak = juce::jmax (inputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
+    inputPeak.store (juce::jmax (inputBlockPeak, inputPeak.load (std::memory_order_relaxed) * meterFall),
+                     std::memory_order_relaxed);
 
     const auto inputGain = juce::Decibels::decibelsToGain (get ("inputGain"));
     buffer.applyGain (inputGain);
@@ -826,6 +839,18 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             const auto feedback = juce::jlimit (0.0f, 0.9f, get ("delayFeedback", 0.32f));
             const auto mix = juce::jlimit (0.0f, 1.0f, get ("delayMix", 0.25f));
             const auto mode = juce::jlimit (0, 2, juce::roundToInt (get ("delayMode", 1.0f)));
+            const auto analog = get ("delayType", 0.0f) >= 0.5f;
+            const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
+            const auto toneCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * tone
+                                                           / static_cast<float> (sampleRate));
+            const auto shapeRepeat = [&] (int channel, float sample)
+            {
+                if (! analog)
+                    return sample;
+                auto& state = analogDelayToneState[static_cast<size_t> (channel)];
+                state += toneCoefficient * (sample - state);
+                return std::tanh (state * 1.12f) / std::tanh (1.12f);
+            };
             const auto duckAmount = juce::jlimit (0.0f, 1.0f, get ("delayDuck", 0.0f));
             const auto duckThreshold = get ("delayDuckThreshold", -30.0f);
             const auto duckAttackCoefficient = std::exp (-1.0f / static_cast<float> (sampleRate * 0.01));
@@ -851,7 +876,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 if (mode == 0) // Mono repeats sit in the centre of a stereo output.
                 {
                     auto& line = delayLines[0];
-                    const auto wet = line.popSample (0, delaySamples);
+                    const auto wet = shapeRepeat (0, line.popSample (0, delaySamples));
                     line.pushSample (0, monoInput + wet * feedback);
                     const auto outputWet = wet * duckGain * mix;
                     left[i] = dryLeft * (1.0f - mix) + outputWet;
@@ -862,8 +887,8 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 {
                     auto& leftLine = delayLines[0];
                     auto& rightLine = delayLines[1];
-                    const auto wetLeft = leftLine.popSample (0, delaySamples);
-                    const auto wetRight = rightLine.popSample (0, delaySamples);
+                    const auto wetLeft = shapeRepeat (0, leftLine.popSample (0, delaySamples));
+                    const auto wetRight = shapeRepeat (1, rightLine.popSample (0, delaySamples));
                     leftLine.pushSample (0, monoInput + wetRight * feedback);
                     rightLine.pushSample (0, wetLeft * feedback);
                     if (numChannels > 1)
@@ -876,12 +901,12 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 }
                 else // Stereo keeps independent repeats on each channel.
                 {
-                    const auto wetLeft = delayLines[0].popSample (0, delaySamples);
+                    const auto wetLeft = shapeRepeat (0, delayLines[0].popSample (0, delaySamples));
                     delayLines[0].pushSample (0, dryLeft + wetLeft * feedback);
                     left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
                     if (numChannels > 1)
                     {
-                        const auto wetRight = delayLines[1].popSample (0, delaySamples);
+                        const auto wetRight = shapeRepeat (1, delayLines[1].popSample (0, delaySamples));
                         delayLines[1].pushSample (0, dryRight + wetRight * feedback);
                         right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
                     }
@@ -962,6 +987,11 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     for (const auto stage : getPostFxOrder())
         processPostFx (stage);
     buffer.applyGain (juce::Decibels::decibelsToGain (get ("outputGain")));
+    float outputBlockPeak = 0.0f;
+    for (int channel = 0; channel < numChannels; ++channel)
+        outputBlockPeak = juce::jmax (outputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    outputPeak.store (juce::jmax (outputBlockPeak, outputPeak.load (std::memory_order_relaxed) * meterFall),
+                      std::memory_order_relaxed);
 }
 
 bool TheLeadAudioProcessor::hasEditor() const { return true; }

@@ -40,7 +40,7 @@ public:
 
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
     {
-        return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, buttonHeight * 0.44f)));
+        return juce::Font (leadFontOptions (juce::jlimit (16.0f, 20.0f, buttonHeight * 0.50f)));
     }
 
     juce::Font getComboBoxFont (juce::ComboBox& box) override
@@ -212,6 +212,8 @@ public:
                 slider->setColour (juce::Slider::textBoxOutlineColourId, panel);
                 const juce::String parameterId (control.id);
                 if (parameterId.containsIgnoreCase ("Freq"))
+                    slider->setTextValueSuffix (" Hz");
+                else if (parameterId == "delayTone")
                     slider->setTextValueSuffix (" Hz");
                 else if (parameterId.containsIgnoreCase ("Time") || parameterId.containsIgnoreCase ("Attack")
                          || parameterId.containsIgnoreCase ("Release") || parameterId.containsIgnoreCase ("PreDelay"))
@@ -587,6 +589,7 @@ public:
                 startTimerHz (3);
         }
 
+
         for (const auto& control : controls)
         {
             auto label = std::make_unique<juce::Label>();
@@ -662,7 +665,6 @@ public:
         g.fillRoundedRectangle (card, 16.0f);
         g.setColour (juce::Colour::fromRGB (62, 73, 86));
         g.drawRoundedRectangle (card.reduced (1.0f), 16.0f, 2.5f);
-        g.setColour (accent);
         drawBlockIcon (g, juce::Rectangle<float> (12.0f, 9.0f, 30.0f, 30.0f));
     }
 
@@ -773,60 +775,8 @@ public:
     }
 
 private:
-    void drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds)
-    {
-        auto ink = juce::Colour::fromRGB (106, 216, 180);
-        if (loadKind == FileKind::none && stageName.containsIgnoreCase ("Boost"))
-            drawBoostPedalIcon (g, bounds, ink);
-        else if (loadKind == FileKind::none && (stageName.containsIgnoreCase ("Compressor")
-            || stageName.containsIgnoreCase ("Gate") || stageName.containsIgnoreCase ("Overdrive")))
-            drawPedalIcon (g, bounds, ink);
-        else if (loadKind == FileKind::nam)
-        {
-            g.setColour (ink);
-            g.drawRoundedRectangle (bounds.reduced (1.5f), 4.0f, 1.7f);
-            juce::Path profile;
-            profile.startNewSubPath (bounds.getX() + 4.0f, bounds.getCentreY());
-            profile.lineTo (bounds.getX() + 7.0f, bounds.getCentreY());
-            profile.lineTo (bounds.getX() + 9.0f, bounds.getY() + 6.0f);
-            profile.lineTo (bounds.getX() + 12.0f, bounds.getBottom() - 6.0f);
-            profile.lineTo (bounds.getX() + 15.0f, bounds.getCentreY());
-            profile.lineTo (bounds.getRight() - 4.0f, bounds.getCentreY());
-            g.strokePath (profile, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved,
-                                                          juce::PathStrokeType::rounded));
-        }
-        else if (loadKind == FileKind::impulseResponse)
-        {
-            const auto id = "ir" + juce::String (slot + 1) + "Type";
-            const auto* value = audioProcessor.parameters.getRawParameterValue (id);
-            const auto type = value != nullptr ? static_cast<int> (value->load()) : 0;
-            if (type == 2) drawReverbIRIcon (g, bounds, ink);
-            else if (type == 1) drawRoomIRIcon (g, bounds, ink);
-            else drawCabinetIcon (g, bounds, ink);
-        }
-        else if (stageName.containsIgnoreCase ("EQ"))
-        {
-            juce::Path graph;
-            graph.startNewSubPath (bounds.getX() + 2.0f, bounds.getCentreY());
-            graph.cubicTo (bounds.getX() + 8.0f, bounds.getCentreY(), bounds.getX() + 7.0f, bounds.getY() + 2.0f,
-                           bounds.getCentreX(), bounds.getCentreY());
-            graph.cubicTo (bounds.getRight() - 6.0f, bounds.getBottom() - 2.0f,
-                           bounds.getRight() - 8.0f, bounds.getCentreY(), bounds.getRight() - 2.0f, bounds.getCentreY());
-            g.setColour (ink);
-            g.strokePath (graph, juce::PathStrokeType (2.0f));
-        }
-        else
-        {
-            juce::Path path;
-            path.startNewSubPath (bounds.getX() + 2.0f, bounds.getCentreY());
-            path.lineTo (bounds.getX() + 8.0f, bounds.getCentreY() - 5.0f);
-            path.lineTo (bounds.getX() + 12.0f, bounds.getCentreY() + 4.0f);
-            path.lineTo (bounds.getX() + 17.0f, bounds.getCentreY() - 6.0f);
-            path.lineTo (bounds.getRight() - 2.0f, bounds.getCentreY());
-            g.setColour (ink);
-            g.strokePath (path, juce::PathStrokeType (2.0f));
-        }
-    }
+    friend class StageTile;
+    void drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds);
 
     static void drawPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour)
     {
@@ -937,19 +887,6 @@ public:
           selectHandler (std::move (select))
     {
         setName (stageName);
-        title.setText (getDisplayTitle().toUpperCase(), juce::dontSendNotification);
-        title.setFont (leadFontOptions (18.0f, juce::Font::bold));
-        title.setColour (juce::Label::textColourId, text);
-        title.setInterceptsMouseClicks (false, false);
-        title.setTooltip (canReorder ? "Select this block. Drag to reorder; double-click to enable or bypass."
-                                     : (enableParameterId.isNotEmpty() ? "Select this block. Double-click to enable or bypass."
-                                                                       : "Select this block."));
-        addAndMakeVisible (title);
-
-        if (canReorder)
-        {
-            title.setTooltip ("Select this block. Drag to reorder; double-click to enable or bypass.");
-        }
         startTimerHz (4);
     }
 
@@ -974,7 +911,8 @@ public:
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
         g.setColour (isSelected ? juce::Colour::fromRGB (34, 41, 51) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
-        const auto ioBlock = getModuleKind() == ModuleKind::io;
+        const auto kind = getModuleKind();
+        const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
         const auto borderColour = ioBlock ? juce::Colour::fromRGB (72, 79, 92)
                                : isSelected ? accent : juce::Colour (0xff70d9b6);
         g.setColour (borderColour);
@@ -999,21 +937,16 @@ public:
                 g.fillRoundedRectangle (x, r.getY() + 12.0f, 3.0f, r.getHeight() - 24.0f, 1.5f);
             }
         }
-        const auto iconBounds = juce::Rectangle<float> (getWidth() * 0.5f - 15.0f,
-                                                        getHeight() * 0.23f - 15.0f, 30.0f, 30.0f);
-        drawModuleIcon (g, iconBounds, getModuleKind());
+        const auto iconSize = juce::jmin (30.0f, juce::jmin (r.getWidth(), r.getHeight()) * 0.48f);
+        const auto iconBounds = juce::Rectangle<float> (0.0f, 0.0f, iconSize, iconSize)
+                                    .withCentre (r.getCentre());
+        {
+            const juce::Graphics::ScopedSaveState iconState (g);
+            g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
+                                                           iconBounds.getCentreX(), iconBounds.getCentreY()));
+            drawModuleIcon (g, iconBounds, getModuleKind());
+        }
         g.endTransparencyLayer();
-    }
-
-    void resized() override
-    {
-        const auto compactTile = getWidth() < 130;
-        title.setText (getDisplayTitle().toUpperCase(), juce::dontSendNotification);
-        title.setFont (leadFontOptions (compactTile ? 16.0f : 18.0f, juce::Font::bold));
-        title.setColour (juce::Label::textColourId, isBlockEnabled() ? text : secondaryText);
-        auto r = getLocalBounds().reduced (10, 8);
-        title.setJustificationType (juce::Justification::centred);
-        title.setBounds (r.withY (juce::roundToInt (getHeight() * 0.54f)).withHeight (38));
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -1066,8 +999,33 @@ public:
         }
     }
 
+public:
+    enum class ModuleKind { pedal, noiseGate, compressor, boost, equalizer, nam, ir, input, output, delay, reverb, chorus };
+
+    static ModuleKind getKindForStageName (const juce::String& name)
+    {
+        if (name == "Input") return ModuleKind::input;
+        if (name == "Output") return ModuleKind::output;
+        if (name.startsWith ("NAM Profile")) return ModuleKind::nam;
+        if (name.startsWith ("Cab IR")) return ModuleKind::ir;
+        if (name == "Noise Gate") return ModuleKind::noiseGate;
+        if (name.containsIgnoreCase ("Compressor")) return ModuleKind::compressor;
+        if (name.containsIgnoreCase ("EQ")) return ModuleKind::equalizer;
+        if (name.containsIgnoreCase ("Boost")) return ModuleKind::boost;
+        if (name == "Delay") return ModuleKind::delay;
+        if (name == "Reverb") return ModuleKind::reverb;
+        if (name == "Chorus") return ModuleKind::chorus;
+        return ModuleKind::pedal;
+    }
+
+    static void drawStageIcon (juce::Graphics& g, juce::Rectangle<float> bounds, const juce::String& name)
+    {
+        const juce::Graphics::ScopedSaveState state (g);
+        g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f, bounds.getCentreX(), bounds.getCentreY()));
+        drawModuleIcon (g, bounds, getKindForStageName (name));
+    }
+
 private:
-    enum class ModuleKind { pedal, boost, equalizer, nam, ir, io, delay, reverb, chorus };
 
     bool isBlockEnabled() const
     {
@@ -1077,16 +1035,14 @@ private:
         return true;
     }
 
-    juce::String getDisplayTitle() const
-    {
-        return getVisibleStageName (stageName);
-    }
-
     ModuleKind getModuleKind() const
     {
-        if (stageName == "Input" || stageName == "Output") return ModuleKind::io;
+        if (stageName == "Input") return ModuleKind::input;
+        if (stageName == "Output") return ModuleKind::output;
         if (stageName.startsWith ("NAM Profile")) return ModuleKind::nam;
         if (stageName.startsWith ("Cab IR")) return ModuleKind::ir;
+        if (stageName == "Noise Gate") return ModuleKind::noiseGate;
+        if (stageName.containsIgnoreCase ("Compressor")) return ModuleKind::compressor;
         if (stageName.containsIgnoreCase ("EQ")) return ModuleKind::equalizer;
         if (stageName == "Boost Pedal") return ModuleKind::boost;
         if (stageName == "Delay") return ModuleKind::delay;
@@ -1097,9 +1053,43 @@ private:
 
     static void drawModuleIcon (juce::Graphics& g, juce::Rectangle<float> r, ModuleKind kind)
     {
-        const auto ink = juce::Colour (0xff70d9b6);
+        const auto ink = getIconColour (kind);
         g.setColour (ink);
-        if (kind == ModuleKind::boost)
+        if (kind == ModuleKind::noiseGate)
+        {
+            const auto box = r.reduced (2.0f, 5.0f);
+            g.drawRoundedRectangle (box, 4.0f, 1.8f);
+            const auto mid = r.getCentreY();
+            juce::Path waveform;
+            waveform.startNewSubPath (r.getX() + 5.0f, mid);
+            waveform.lineTo (r.getX() + 9.0f, mid);
+            waveform.lineTo (r.getX() + 12.0f, mid - 8.0f);
+            waveform.lineTo (r.getX() + 16.0f, mid + 8.0f);
+            waveform.lineTo (r.getX() + 19.0f, mid);
+            waveform.lineTo (r.getX() + 22.0f, mid);
+            waveform.lineTo (r.getX() + 24.0f, mid - 3.0f);
+            waveform.lineTo (r.getX() + 26.0f, mid);
+            waveform.lineTo (r.getRight() - 5.0f, mid);
+            g.strokePath (waveform, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
+                                                          juce::PathStrokeType::rounded));
+            g.drawLine (r.getX() + 21.0f, r.getY() + 5.0f, r.getX() + 21.0f, r.getBottom() - 5.0f, 1.5f);
+        }
+        else if (kind == ModuleKind::compressor)
+        {
+            const auto plot = r.reduced (5.0f, 5.0f);
+            g.drawLine (plot.getX(), plot.getBottom(), plot.getRight(), plot.getBottom(), 1.6f);
+            g.drawLine (plot.getX(), plot.getBottom(), plot.getX(), plot.getY(), 1.6f);
+            juce::Path curve;
+            curve.startNewSubPath (plot.getX() + 2.0f, plot.getBottom() - 2.0f);
+            curve.lineTo (plot.getX() + 13.0f, plot.getY() + 5.0f);
+            curve.cubicTo (plot.getX() + 17.0f, plot.getY() + 9.0f,
+                           plot.getX() + 18.0f, plot.getY() + 13.0f,
+                           plot.getX() + 22.0f, plot.getY() + 14.0f);
+            curve.lineTo (plot.getRight() - 2.0f, plot.getY() + 17.0f);
+            g.strokePath (curve, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved,
+                                                        juce::PathStrokeType::rounded));
+        }
+        else if (kind == ModuleKind::boost)
             drawBoostPedalIcon (g, r, ink);
         else if (kind == ModuleKind::equalizer)
         {
@@ -1190,18 +1180,43 @@ private:
                                                            juce::PathStrokeType::rounded));
             }
         }
-        else
+        else if (kind == ModuleKind::input || kind == ModuleKind::output)
         {
             g.drawRoundedRectangle (r.reduced (2.0f, 5.0f), 3.0f, 1.5f);
-            g.drawLine (r.getX() + 5.0f, r.getCentreY(), r.getRight() - 5.0f, r.getCentreY(), 1.5f);
-            g.drawLine (r.getRight() - 8.0f, r.getCentreY() - 3.0f, r.getRight() - 4.0f, r.getCentreY(), 1.5f);
-            g.drawLine (r.getRight() - 8.0f, r.getCentreY() + 3.0f, r.getRight() - 4.0f, r.getCentreY(), 1.5f);
+            const auto mid = r.getCentreY();
+            const auto left = kind == ModuleKind::input;
+            const auto startX = left ? r.getX() + 5.0f : r.getRight() - 5.0f;
+            const auto endX = left ? r.getRight() - 5.0f : r.getX() + 5.0f;
+            const auto tipX = left ? r.getRight() - 4.0f : r.getX() + 4.0f;
+            const auto wingX = left ? tipX - 4.0f : tipX + 4.0f;
+            g.drawLine (startX, mid, endX, mid, 1.5f);
+            g.drawLine (wingX, mid - 3.0f, tipX, mid, 1.5f);
+            g.drawLine (wingX, mid + 3.0f, tipX, mid, 1.5f);
         }
+    }
+
+    static juce::Colour getIconColour (ModuleKind kind)
+    {
+        switch (kind)
+        {
+            case ModuleKind::input:
+            case ModuleKind::output: return juce::Colour (0xffaab6c9);
+            case ModuleKind::noiseGate: return juce::Colour (0xff69d9cf);
+            case ModuleKind::compressor: return juce::Colour (0xffff9b5b);
+            case ModuleKind::boost: return juce::Colour (0xffffd06f);
+            case ModuleKind::equalizer: return juce::Colour (0xffb69cff);
+            case ModuleKind::nam: return juce::Colour (0xff79baff);
+            case ModuleKind::ir: return juce::Colour (0xffec8ed2);
+            case ModuleKind::delay: return juce::Colour (0xff5bc5ef);
+            case ModuleKind::reverb: return juce::Colour (0xffa792f5);
+            case ModuleKind::chorus: return juce::Colour (0xffef8fb4);
+            case ModuleKind::pedal: return juce::Colour (0xff80d790);
+        }
+        return juce::Colour (0xff70d9b6);
     }
 
     void timerCallback() override
     {
-        title.setColour (juce::Label::textColourId, isBlockEnabled() ? text : secondaryText);
         repaint();
     }
 
@@ -1215,9 +1230,13 @@ private:
     bool parallelRouting = false;
     std::function<void (int)> reorderHandler;
     std::function<void()> selectHandler;
-    juce::Label title;
     juce::TextButton moveUp, moveDown;
 };
+
+void StageCard::drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds)
+{
+    StageTile::drawStageIcon (g, bounds, stageName);
+}
 
 class StageTileList final : public juce::Component
 {
@@ -1246,10 +1265,9 @@ public:
         g.setColour (secondaryText);
         if (parallelRouting)
         {
-            g.drawText ("INPUT  /  PRE FX", 10, 2, getWidth() * 0.48f, 18, juce::Justification::centredLeft);
-            g.drawText (parallelSharedIR ? "BOTH NAMS -> IR 1" : "NAM 1 -> IR 1     /     NAM 2 -> IR 2",
-                        getWidth() * 0.55f, 2, getWidth() * 0.44f, 18,
-                        juce::Justification::centred);
+            g.drawText (parallelSharedIR ? "NAM PARALLEL  |  BOTH NAMS -> IR 1"
+                                         : "NAM PARALLEL  |  NAM 1 -> IR 1  /  NAM 2 -> IR 2",
+                        0, 2, getWidth(), 18, juce::Justification::centred);
             const auto tileWidth = juce::jmax (90, juce::jmin (92, juce::roundToInt ((getWidth() - 20) / 8.0f) - 12));
             const auto postY = 50 + 2 * (tileWidth + 12) + 10 + tileWidth + 8;
             g.drawText ("POST FX  /  OUTPUT", 10, postY, getWidth() - 20, 18, juce::Justification::centredLeft);
@@ -1257,8 +1275,8 @@ public:
             return;
         }
 
-        g.drawText ("NAM SERIES  |  CAB 1 / CAB 2 BLEND", 24, 2, getWidth() - 48, 18,
-                    juce::Justification::centredLeft);
+        g.drawText ("NAM SERIES  |  CAB 1 / CAB 2 BLEND", 0, 2, getWidth(), 18,
+                    juce::Justification::centred);
         drawSerialWiring (g, wire);
     }
 
@@ -1339,7 +1357,7 @@ public:
         const auto lowerY = 24 + width + 24;
         int irIndex = 0;
         for (auto* tile : irs) tile->setBounds (sideInset + juce::roundToInt (7 * pitch), irIndex++ == 0 ? 24 : lowerY, width, width);
-        int postColumn = 4;
+        int postColumn = static_cast<int> (post.size());
         for (auto* tile : post) tile->setBounds (sideInset + juce::roundToInt (postColumn-- * pitch), lowerY, width, width);
         if (output != nullptr) output->setBounds (sideInset, lowerY, width, width);
     }
@@ -1561,22 +1579,18 @@ private:
     bool parallelSharedIR = false;
 };
 
-class ChainControls final : public juce::Component
+class ChainControls final : public juce::Component, private juce::Timer
 {
 public:
     explicit ChainControls (TheLeadAudioProcessor& processor) : audioProcessor (processor)
     {
+        startTimerHz (30);
         addAndMakeVisible (chainViewport);
         chainViewport.setViewedComponent (tileList.get(), false);
         chainViewport.setScrollBarsShown (false, false);
         chainViewport.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::all);
         addAndMakeVisible (detailsViewport);
         detailsViewport.setScrollBarsShown (true, false);
-
-        chainHeading.setText ("SIGNAL CHAIN", juce::dontSendNotification);
-        chainHeading.setFont (leadFontOptions (17.0f, juce::Font::bold));
-        chainHeading.setColour (juce::Label::textColourId, secondaryText);
-        addAndMakeVisible (chainHeading);
 
         addStage ("Input", {}, {{ "inputGain", "Trim (dB)" }});
         addStage ("Noise Gate", "gateOn", {{ "gateThreshold", "Threshold" }}, FileKind::none, 0, mover (true, 0));
@@ -1622,7 +1636,9 @@ public:
         addStage ("Delay", "delayOn",
                   {{ "delayTime", "Time (ms)" }, { "delayFeedback", "Feedback", true }, { "delayMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 0),
-                  {{ "delayMode", "Routing", false, juce::StringArray { "Mono", "Stereo", "Ping Pong" } },
+                  {{ "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
+                   { "delayMode", "Routing", false, juce::StringArray { "Mono", "Stereo", "Ping Pong" } },
+                   { "delayTone", "Tone (Hz)" },
                    { "delayDuck", "Ducking", true }, { "delayDuckThreshold", "Duck Threshold (dB)" },
                    { "delayDuckRelease", "Duck Release (ms)" }});
         addStage ("Reverb", "reverbOn", {{ "reverbSize", "Size", true }, { "reverbMix", "Mix", true }},
@@ -1661,13 +1677,15 @@ public:
         g.fillRoundedRectangle (area, 18.0f);
         g.setColour (juce::Colour::fromRGB (52, 59, 72));
         g.drawRoundedRectangle (area, 18.0f, 1.0f);
+        drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT");
+        drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT");
     }
 
     void resized() override
     {
         auto area = getLocalBounds().reduced (22, 18);
-        chainHeading.setBounds (area.removeFromTop (25));
-        chainViewport.setBounds (area.removeFromTop (tileList->getRequiredHeight()));
+        auto chainArea = area.removeFromTop (tileList->getRequiredHeight());
+        chainViewport.setBounds (chainArea.withTrimmedLeft (58).withTrimmedRight (58));
         tileList->setSize (juce::jmax (chainViewport.getWidth(), tileList->getRequiredWidth()),
                            tileList->getRequiredHeight());
         area.removeFromTop (12);
@@ -1694,6 +1712,40 @@ public:
     }
 
 private:
+    void timerCallback() override { repaint(); }
+
+    void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label)
+    {
+        const auto chainBounds = chainViewport.getBounds().toFloat();
+        const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 28.0f);
+        const juce::Rectangle<float> track (x, chainBounds.getY() + 12.0f, 16.0f, height);
+        g.setColour (juce::Colour::fromRGB (35, 43, 53));
+        g.fillRoundedRectangle (track, 5.0f);
+        const auto teal = knobAccent;
+        const auto orange = juce::Colour (0xffffa24f);
+        const auto red = juce::Colour (0xffff514e);
+        g.setColour (teal.withAlpha (0.15f));
+        g.fillRoundedRectangle (track.withY (track.getBottom() - track.getHeight() * 0.73f)
+                                    .withHeight (track.getHeight() * 0.73f), 4.0f);
+        g.setColour (orange.withAlpha (0.18f));
+        g.fillRect (track.withY (track.getY() + track.getHeight() * 0.18f)
+                         .withHeight (track.getHeight() * 0.20f));
+        g.setColour (red.withAlpha (0.22f));
+        g.fillRoundedRectangle (track.withHeight (track.getHeight() * 0.18f), 4.0f);
+        const auto db = peak > 0.000001f ? juce::Decibels::gainToDecibels (peak) : -60.0f;
+        const auto amount = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 66.0f);
+        auto lit = track.withY (track.getBottom() - track.getHeight() * amount)
+                        .withHeight (track.getHeight() * amount);
+        const auto levelColour = db >= -3.0f ? red : db >= -12.0f ? orange : teal;
+        g.setColour (levelColour);
+        if (lit.getHeight() > 0.5f)
+            g.fillRoundedRectangle (lit, 5.0f);
+        g.setColour (secondaryText);
+        g.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 2.0f),
+                                                  60, 18), juce::Justification::centred);
+    }
+
     std::function<void (int)> mover (bool pre, int stageId)
     {
         return [this, pre, stageId] (int delta) { moveStage (pre, stageId, delta); };
@@ -1838,7 +1890,6 @@ private:
     juce::Viewport chainViewport;
     juce::Viewport detailsViewport;
     std::unique_ptr<StageTileList> tileList = std::make_unique<StageTileList>();
-    juce::Label chainHeading;
     StageCard* selectedStage = nullptr;
     std::vector<std::unique_ptr<StageCard>> cards;
     std::vector<std::unique_ptr<StageTile>> tiles;
@@ -1977,7 +2028,7 @@ void TheLeadAudioProcessorEditor::resized()
     controlRow.removeFromRight (16);
     blendLabel.setBounds (controlRow.removeFromLeft (104));
     auto blendControls = controlRow.reduced (4, 5);
-    blendValueLabel.setBounds (blendControls.removeFromRight (60));
+    blendValueLabel.setBounds (blendControls.removeFromRight (104));
     blendControls.removeFromRight (6);
     blendSlider.setBounds (blendControls);
     chainControls->setBounds (area);
@@ -2023,9 +2074,19 @@ void TheLeadAudioProcessorEditor::updateBlendValue()
     const auto* parameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
     const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
     const auto value = blendSlider.getValue();
-    const auto displayValue = parallel ? juce::roundToInt (value * 100.0)
-                                       : juce::roundToInt ((value - 0.5) * 200.0);
-    blendValueLabel.setText (juce::String (displayValue) + "%", juce::dontSendNotification);
+    if (parallel)
+    {
+        const auto nam1 = juce::jlimit (0, 100, juce::roundToInt (value * 100.0));
+        blendValueLabel.setText (juce::String (nam1) + "/" + juce::String (100 - nam1),
+                                 juce::dontSendNotification);
+        return;
+    }
+
+    const auto cab1 = juce::jlimit (0, 100, juce::roundToInt (value * 100.0));
+    const auto offset = juce::roundToInt ((value - 0.5) * 200.0);
+    const auto offsetText = offset > 0 ? "+" + juce::String (offset) : juce::String (offset);
+    blendValueLabel.setText (offsetText + " · " + juce::String (cab1) + "/" + juce::String (100 - cab1),
+                             juce::dontSendNotification);
 }
 
 void TheLeadAudioProcessorEditor::showSavePresetPrompt()

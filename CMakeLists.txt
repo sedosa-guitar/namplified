@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.22)
 
-project(TheLead VERSION 1.0.0 LANGUAGES C CXX)
+project(NAMinator VERSION 1.0.0 LANGUAGES C CXX)
 
 include(FetchContent)
 
@@ -77,9 +77,9 @@ juce_add_plugin(TheLead
 # this key, so add it to the built bundle after linking.
 if (APPLE)
     add_custom_command(TARGET TheLead_Standalone POST_BUILD
-        COMMAND /usr/libexec/PlistBuddy
-            -c "Add :NSMicrophoneUsageDescription string NAMinator uses audio input to process your instrument signal."
-            "$<TARGET_BUNDLE_DIR:TheLead_Standalone>/Contents/Info.plist"
+        COMMAND ${CMAKE_COMMAND}
+            "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:TheLead_Standalone>/Contents/Info.plist"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
         VERBATIM
     )
 endif()

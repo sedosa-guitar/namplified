@@ -37,6 +37,8 @@ public:
    #endif
 
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    float getInputPeak() const noexcept { return inputPeak.load (std::memory_order_relaxed); }
+    float getOutputPeak() const noexcept { return outputPeak.load (std::memory_order_relaxed); }
     IRParameters parameters;
     void loadImpulseResponse (int slot, const juce::File& file);
     void loadNAMCapture (int slot, const juce::File& file);
@@ -116,6 +118,8 @@ private:
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
+    std::array<float, 2> analogDelayToneState {};
+    std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
     std::array<std::array<BiquadState, 5>, 2> postEqFilters {};
     std::array<std::array<std::array<BiquadState, 3>, 2>, numIRSlots> irShapeEqFilters {};
