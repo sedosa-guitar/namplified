@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "AmpSimBridge.h"
 #include <get_dsp.h>
 
 #include <array>
@@ -13,6 +14,9 @@ struct TheLeadAudioProcessor::AmpModel
     std::array<std::vector<NAM_SAMPLE>, 2> output;
     juce::String path;
     juce::String status;
+    NAMinatorAmpSim* internalAmp = naminAmpSimCreate (0);
+
+    ~AmpModel() { naminAmpSimDestroy (internalAmp); }
 
     void prepare (double sampleRate, int maxBlockSize)
     {
@@ -101,6 +105,19 @@ struct TheLeadAudioProcessor::AmpModel
             for (auto sample = 0; sample < numSamples; ++sample)
                 channelData[sample] = static_cast<float> (out[static_cast<size_t> (sample)]);
         }
+    }
+
+    void processInternal (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples,
+                          int model, const std::array<float, 12>& controls, float sampleRate)
+    {
+        const juce::SpinLock::ScopedTryLockType guard (lock);
+        if (! guard.isLocked() || internalAmp == nullptr)
+            return;
+        naminAmpSimSetModel (internalAmp, model);
+        for (int parameter = 0; parameter < static_cast<int> (controls.size()); ++parameter)
+            naminAmpSimSetParameter (internalAmp, parameter, controls[static_cast<size_t> (parameter)]);
+        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            naminAmpSimProcess (internalAmp, channel, buffer.getWritePointer (channel), numSamples, sampleRate);
     }
 
     juce::String getPath() const
@@ -203,8 +220,27 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
         juce::StringArray { "Paired IRs", "Shared IR 1" }, 0));
     for (int slot = 0; slot < numAmpSlots; ++slot)
     {
+        const auto number = juce::String (slot + 1);
         addToggle (("amp" + juce::String (slot + 1) + "On").toRawUTF8(),
                    ("Amp " + juce::String (slot + 1)).toRawUTF8(), slot == 0);
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "Source").toRawUTF8(), 1 },
+            ("Amp " + number + " Source").toRawUTF8(),
+            juce::StringArray { "NAM Capture", "Amp Sim" }, 0));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "Model").toRawUTF8(), 1 },
+            ("Amp " + number + " Model").toRawUTF8(),
+            juce::StringArray { "Fullerton Clean", "British Crunch", "Southwest Lead", "Essex Chime",
+                                "Tweed Blues", "Meridian High Gain", "Citrus Roar", "Citrus Terror",
+                                "Regent 800", "Solar Monolith", "Eclipse Drone", "Emerald Ratrod Deluxe" }, 0));
+        const char* ampControlNames[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
+                                        "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
+        for (int index = 0; index < 12; ++index)
+        {
+            const auto* controlName = ampControlNames[index];
+            const auto defaultValue = index == 6 ? 0.3f : index == 11 ? 0.0f : index == 8 ? 0.0f : 0.5f;
+            addKnob (("amp" + number + controlName).toRawUTF8(), ("Amp " + juce::String (controlName)).toRawUTF8(), 0.0f, 1.0f, defaultValue);
+        }
         addKnob (("amp" + juce::String (slot + 1) + "In").toRawUTF8(), "Amp Input", -24.0f, 24.0f, 0.0f);
         addKnob (("amp" + juce::String (slot + 1) + "Out").toRawUTF8(), "Amp Output", -24.0f, 24.0f, 0.0f);
     }
@@ -799,6 +835,23 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     constexpr const char* irEnableIds[] { "ir1On", "ir2On" };
     const auto parallelNAMs = get ("ampRouting") >= 0.5f;
     const auto sharedParallelIR = get ("parallelIRMode") >= 0.5f;
+    const auto processAmpSlot = [&] (juce::AudioBuffer<float>& target, int slot)
+    {
+        const auto number = juce::String (slot + 1);
+        if (get (("amp" + number + "Source").toRawUTF8()) >= 0.5f)
+        {
+            std::array<float, 12> controls {};
+            const char* suffixes[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
+                                     "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
+            for (size_t index = 0; index < controls.size(); ++index)
+                controls[index] = get (("amp" + number + suffixes[index]).toRawUTF8(), 0.5f);
+            const auto model = juce::jlimit (0, 11, juce::roundToInt (get (("amp" + number + "Model").toRawUTF8())));
+            ampModels[slot]->processInternal (target, numChannels, numSamples, model, controls,
+                                              static_cast<float> (sampleRate));
+        }
+        else
+            ampModels[slot]->process (target, numChannels, numSamples);
+    };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
         if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
@@ -814,7 +867,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             if (enabled (ampEnableIds[slot]))
             {
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
-                ampModels[slot]->process (buffer, numChannels, numSamples);
+                processAmpSlot (buffer, slot);
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
             }
         }
@@ -845,7 +898,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
-                ampModels[slot]->process (branch, numChannels, numSamples);
+                processAmpSlot (branch, slot);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);

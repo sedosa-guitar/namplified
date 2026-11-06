@@ -18,19 +18,18 @@ are written under `build`.
 The standalone app can be opened from the generated `TheLead_artefacts` folder.
 The AU and VST3 bundles are generated alongside it.
 
-The chain includes independent Noise Gate, Compressor, Boost, Overdrive, Pre EQ,
-three NAM capture slots, three parallel IR slots, Delay, Reverb, Chorus,
-Post EQ, and input/output gain controls. NAM files load in the background; each
-amp slot uses a pair of mono model instances to preserve stereo routing. IR
-slots accept WAV, AIFF, FLAC, or OGG files. Their blend weights are normalized
-and summed from the same input signal, so IRs are never cascaded. Reverb IRs can
-also be loaded in those parallel slots.
+The signal chain includes Noise Gate, Compressor, Boost, Pre EQ, two amp slots,
+two parallel IR slots, Delay, Reverb, Chorus, Post EQ, and input/output gain
+controls. Each amp slot can use either a NAM capture or one of twelve
+algorithmic amp models from the MIT-licensed 0xFX DSP. The built-in models are
+inspired by known amplifier circuits; they are not official manufacturer
+models. NAM files load in the background, with paired mono instances for stereo
+routing. IR slots accept WAV, AIFF, FLAC, or OGG files. Their blend weights are
+normalized and summed from the same input signal, so IRs are never cascaded.
 
 Each block has an enable control where applicable, and parameters and selected
-file paths are saved with the plugin state. The pre-amp pedals and post-IR
-effects can each be moved up or down within their section. NAM slots can run in
-series (for example, Boost → OD → Amp captures) or in parallel with per-slot
-blend controls (for example, a NAM pedal and NAM amp into the same IR section).
-Each NAM slot can hold a pedal or amp capture. NAM Core 0.5.4 supports
-model file versions 0.5 through 0.7; this build's amp slots require
-mono-in/mono-out captures.
+file paths are saved with the plugin state. Pre-amp pedals and post-IR effects
+can be reordered within their section. Amp slots can run in series or in
+parallel with the existing routing and IR-blend controls. NAM Core 0.5.4
+supports model file versions 0.5 through 0.7; NAM captures in this build must
+be mono-in/mono-out.
