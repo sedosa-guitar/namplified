@@ -14,22 +14,29 @@ const auto knobAccent = juce::Colour (0xff70d9b6);
 const auto text = juce::Colour::fromRGB (235, 236, 239);
 const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
 
+static juce::Typeface::Ptr getLeadTypeface()
+{
+    static const auto typeface = juce::Typeface::createSystemTypefaceFor (
+        BinaryData::InterVariable_ttf, static_cast<size_t> (BinaryData::InterVariable_ttfSize));
+    return typeface;
+}
+
 static juce::FontOptions leadFontOptions (float height, int style = juce::Font::plain)
 {
-    return juce::FontOptions ("Space Grotesk", height, style);
+    const auto weight = (style & juce::Font::bold) != 0 ? 650.0f : 450.0f;
+    return juce::FontOptions().withTypeface (getLeadTypeface())
+        .withHeight (height)
+        .withVariableSetting ({ juce::FontFeatureTag ("wght"), weight });
 }
 
 class LeadLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
     LeadLookAndFeel()
-        : spaceGroteskTypeface (juce::Typeface::createSystemTypefaceFor (
-              BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize)))
+        : interTypeface (getLeadTypeface())
     {
-        // Keep the embedded face as the default fallback. Explicit UI fonts also request
-        // Space Grotesk by family so their regular and bold styles resolve correctly.
-        if (spaceGroteskTypeface != nullptr)
-            setDefaultSansSerifTypeface (spaceGroteskTypeface);
+        if (interTypeface != nullptr)
+            setDefaultSansSerifTypeface (interTypeface);
         setColour (juce::Slider::textBoxTextColourId, text);
         setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB (19, 24, 32));
         setColour (juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB (52, 59, 72));
@@ -88,7 +95,7 @@ public:
     }
 
 private:
-    juce::Typeface::Ptr spaceGroteskTypeface;
+    juce::Typeface::Ptr interTypeface;
 };
 
 struct ParameterControl
@@ -1758,8 +1765,8 @@ private:
     void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label)
     {
         const auto chainBounds = chainViewport.getBounds().toFloat();
-        const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 28.0f);
-        const juce::Rectangle<float> track (x, chainBounds.getY() + 12.0f, 16.0f, height);
+        const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 32.0f);
+        const juce::Rectangle<float> track (x, chainBounds.getY() + 16.0f, 16.0f, height);
         g.setColour (juce::Colour::fromRGB (35, 43, 53));
         g.fillRoundedRectangle (track, 5.0f);
         const auto teal = knobAccent;
@@ -1783,7 +1790,7 @@ private:
             g.fillRoundedRectangle (lit, 5.0f);
         g.setColour (secondaryText);
         g.setFont (leadFontOptions (14.0f, juce::Font::bold));
-        g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 2.0f),
+        g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 8.0f),
                                                   60, 18), juce::Justification::centred);
     }
 

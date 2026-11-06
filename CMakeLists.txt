@@ -87,7 +87,7 @@ endif()
 juce_generate_juce_header(TheLead)
 
 juce_add_binary_data(LeadFonts
-    SOURCES Assets/Fonts/SpaceGrotesk.ttf
+    SOURCES Assets/Fonts/InterVariable.ttf
 )
 
 target_sources(TheLead PRIVATE
