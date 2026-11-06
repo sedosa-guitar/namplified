@@ -125,6 +125,7 @@ private:
     std::array<std::array<std::array<BiquadState, 3>, 2>, numIRSlots> irShapeEqFilters {};
     std::array<std::array<BiquadState, 3>, 2> boostEqFilters {};
     std::array<WdfBoostCircuit, 2> boostCircuits {};
+    std::array<TubeScreamerCircuit, 2> tubeScreamerCircuits {};
     std::array<BiquadState, 2> compressorToneFilters {};
     std::array<BiquadState, 2> compressorLowEqFilters {};
     std::array<BiquadState, 2> compressorBrightFilters {};

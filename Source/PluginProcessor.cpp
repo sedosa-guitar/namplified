@@ -174,10 +174,16 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     // Keep the old parameter in saved sessions, but the editor now uses EQ.
     addToggle ("compBright", "Compressor Bright");
     addToggle ("boostOn", "Boost");
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "boostModel", 1 }, "Boost Model",
+        juce::StringArray { "Clean Boost", "808 Drive" }, 0));
     addKnob ("boostGain", "Boost Gain", -6.0f, 24.0f, 6.0f);
     addKnob ("boostBass", "Boost Bass", -12.0f, 12.0f, 0.0f);
     addKnob ("boostMid", "Boost Mid", -12.0f, 12.0f, 0.0f);
     addKnob ("boostTreble", "Boost Treble", -12.0f, 12.0f, 0.0f);
+    addKnob ("boost808Drive", "808 Drive", 0.0f, 30.0f, 12.0f);
+    addFrequency ("boost808Tone", "808 Tone", 500.0f, 7500.0f, 4200.0f);
+    addKnob ("boost808Level", "808 Level", -24.0f, 12.0f, 0.0f);
     addToggle ("preEqOn", "Pre EQ");
     addKnob ("preLow", "Pre EQ Low", -12.0f, 12.0f, 0.0f);
     addFrequency ("preLowFreq", "Pre EQ Low Frequency", 80.0f, 12000.0f, 120.0f);
@@ -544,6 +550,8 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     modelMaxBlockSize.store (samplesPerBlock);
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot]->prepare (sampleRate, samplesPerBlock);
+    for (auto& circuit : tubeScreamerCircuits)
+        circuit.prepare (sampleRate);
     for (int slot = 0; slot < numIRSlots; ++slot)
     {
         irConvolvers[slot].prepare (spec);
@@ -703,22 +711,40 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         }
         else if (stage == 2 && enabled ("boostOn"))
         {
-            const auto boostGain = juce::Decibels::decibelsToGain (get ("boostGain", 6.0f));
-            const float frequencies[] { 120.0f, 800.0f, 5000.0f };
-            const char* ids[] { "boostBass", "boostMid", "boostTreble" };
-            for (int band = 0; band < 3; ++band)
-                for (int channel = 0; channel < numChannels; ++channel)
-                    setEqCoefficients (boostEqFilters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
-                                       band, frequencies[band], get (ids[band]), sampleRate);
-            for (int channel = 0; channel < numChannels; ++channel)
+            const auto use808 = get ("boostModel") >= 0.5f;
+            if (use808)
             {
-                auto* samples = buffer.getWritePointer (channel);
-                auto& filters = boostEqFilters[static_cast<size_t> (channel)];
-                for (int i = 0; i < numSamples; ++i)
+                const auto drive = juce::Decibels::decibelsToGain (get ("boost808Drive", 12.0f));
+                const auto level = juce::Decibels::decibelsToGain (get ("boost808Level"));
+                for (auto& circuit : tubeScreamerCircuits)
+                    circuit.setToneFrequency (get ("boost808Tone", 4200.0f));
+                for (int channel = 0; channel < numChannels; ++channel)
                 {
-                    samples[i] = boostCircuits[static_cast<size_t> (channel)].processSample (samples[i], boostGain);
-                    for (auto& filter : filters)
-                        samples[i] = filter.process (samples[i]);
+                    auto* samples = buffer.getWritePointer (channel);
+                    auto& circuit = tubeScreamerCircuits[static_cast<size_t> (channel)];
+                    for (int i = 0; i < numSamples; ++i)
+                        samples[i] = circuit.processSample (samples[i], drive, level);
+                }
+            }
+            else
+            {
+                const auto boostGain = juce::Decibels::decibelsToGain (get ("boostGain", 6.0f));
+                const float frequencies[] { 120.0f, 800.0f, 5000.0f };
+                const char* ids[] { "boostBass", "boostMid", "boostTreble" };
+                for (int band = 0; band < 3; ++band)
+                    for (int channel = 0; channel < numChannels; ++channel)
+                        setEqCoefficients (boostEqFilters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
+                                           band, frequencies[band], get (ids[band]), sampleRate);
+                for (int channel = 0; channel < numChannels; ++channel)
+                {
+                    auto* samples = buffer.getWritePointer (channel);
+                    auto& filters = boostEqFilters[static_cast<size_t> (channel)];
+                    for (int i = 0; i < numSamples; ++i)
+                    {
+                        samples[i] = boostCircuits[static_cast<size_t> (channel)].processSample (samples[i], boostGain);
+                        for (auto& filter : filters)
+                            samples[i] = filter.process (samples[i]);
+                    }
                 }
             }
         }
