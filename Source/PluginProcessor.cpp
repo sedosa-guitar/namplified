@@ -144,8 +144,9 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     };
     const auto addKnob = [&layout] (const char* id, const char* name, float min, float max, float initial)
     {
+        const auto step = juce::String (id) == "gateThreshold" ? 1.0f : 0.01f;
         layout.add (std::make_unique<juce::AudioParameterFloat> (
-            juce::ParameterID { id, 1 }, name, juce::NormalisableRange<float> (min, max, 0.01f), initial));
+            juce::ParameterID { id, 1 }, name, juce::NormalisableRange<float> (min, max, step), initial));
     };
     const auto addFrequency = [&layout] (const char* id, const char* name, float min, float max, float initial)
     {
@@ -157,8 +158,7 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
 
     addKnob ("inputGain", "Input Gain", -24.0f, 24.0f, 0.0f);
     addToggle ("gateOn", "Noise Gate", true);
-    // The UI expresses this dB threshold as a normalized percentage. 10% is
-    // -74 dB, a low threshold that leaves more of the guitar's quiet tail open.
+    // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
     addToggle ("compOn", "Compressor");
     addKnob ("compSustain", "Comp Input", 0.0f, 1.0f, 0.45f);
@@ -169,7 +169,7 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addKnob ("compVolume", "Comp Volume", -12.0f, 12.0f, 0.0f);
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "compRatioMode", 1 }, "1176 Ratio",
-        juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons" }, 0));
+        juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons In" }, 0));
     addKnob ("compEQ", "Compressor EQ", 0.0f, 1.0f, 0.0f);
     // Keep the old parameter in saved sessions, but the editor now uses EQ.
     addToggle ("compBright", "Compressor Bright");
