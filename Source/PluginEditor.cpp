@@ -10,6 +10,7 @@ const auto chainSurface = juce::Colour::fromRGB (15, 18, 24);
 const auto tileSurface = juce::Colour::fromRGB (26, 30, 38);
 const auto detailSurface = juce::Colour::fromRGB (13, 16, 22);
 const auto accent = juce::Colour::fromRGB (238, 119, 57);
+const auto selectionAccent = juce::Colour (0xff5ca9ff);
 const auto knobAccent = juce::Colour (0xff70d9b6);
 const auto text = juce::Colour::fromRGB (235, 236, 239);
 const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
@@ -18,6 +19,13 @@ static juce::Typeface::Ptr getLeadTypeface()
 {
     static const auto typeface = juce::Typeface::createSystemTypefaceFor (
         BinaryData::InterVariable_ttf, static_cast<size_t> (BinaryData::InterVariable_ttfSize));
+    return typeface;
+}
+
+static juce::Typeface::Ptr getBrandTypeface()
+{
+    static const auto typeface = juce::Typeface::createSystemTypefaceFor (
+        BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
     return typeface;
 }
 
@@ -53,6 +61,48 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
         return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
+    }
+
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
+                                           juce::Point<int> screenPos,
+                                           juce::Rectangle<int> parentArea) override
+    {
+        constexpr int horizontalPadding = 14;
+        constexpr int verticalPadding = 10;
+        const auto maxTextWidth = juce::jmax (120, juce::jmin (380, parentArea.getWidth() - horizontalPadding * 2));
+        juce::AttributedString attributedText (tipText);
+        attributedText.setFont (juce::Font (leadFontOptions (14.5f)));
+        juce::TextLayout layout;
+        layout.createLayout (attributedText, static_cast<float> (maxTextWidth),
+                             static_cast<float> (parentArea.getHeight()));
+        const auto width = juce::jmin (parentArea.getWidth() - 12,
+                                       juce::roundToInt (layout.getWidth()) + horizontalPadding * 2);
+        const auto height = juce::jmin (parentArea.getHeight() - 12,
+                                        juce::roundToInt (layout.getHeight()) + verticalPadding * 2);
+        return juce::Rectangle<int> (screenPos.x + 14, screenPos.y + 18, width, height)
+            .constrainedWithin (parentArea.reduced (6));
+    }
+
+    void drawTooltip (juce::Graphics& g, const juce::String& tipText, int width, int height) override
+    {
+        const auto bounds = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width),
+                                                     static_cast<float> (height));
+        g.setColour (detailSurface);
+        g.fillRoundedRectangle (bounds, 9.0f);
+        g.setColour (juce::Colour (0xff465362));
+        g.drawRoundedRectangle (bounds.reduced (0.75f), 8.5f, 1.5f);
+        g.setColour (knobAccent);
+        g.fillRoundedRectangle (juce::Rectangle<float> (12.0f, 9.0f, 3.0f,
+                                                        juce::jmax (8.0f, static_cast<float> (height) - 18.0f)), 1.5f);
+        juce::AttributedString attributedText (tipText);
+        attributedText.setFont (juce::Font (leadFontOptions (14.5f)));
+        attributedText.setColour (text);
+        juce::TextLayout layout;
+        layout.createLayout (attributedText, juce::jmax (100.0f, static_cast<float> (width) - 30.0f),
+                             juce::jmax (30.0f, static_cast<float> (height) - 16.0f));
+        layout.draw (g, juce::Rectangle<float> (22.0f, 8.0f,
+                                                juce::jmax (50.0f, static_cast<float> (width) - 30.0f),
+                                                juce::jmax (18.0f, static_cast<float> (height) - 16.0f)));
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -125,7 +175,7 @@ struct ParameterControl
 static juce::String formatControlValue (const ParameterControl& control, double value)
 {
     if (juce::String (control.id) == "gateThreshold")
-        return juce::String (juce::jlimit (0.0, 100.0, (value + 80.0) / 60.0 * 100.0), 0) + "%";
+        return juce::String (value, 0) + " dB";
     if (control.inputDb)
         return juce::String (-6.0 + value * 30.0, 1) + " dB";
     if (control.percent)
@@ -241,7 +291,13 @@ public:
                 slider->setColour (juce::Slider::textBoxBackgroundColourId, panel);
                 slider->setColour (juce::Slider::textBoxOutlineColourId, panel);
                 const juce::String parameterId (control.id);
-                if (parameterId.containsIgnoreCase ("Freq"))
+                if (parameterId == "gateThreshold")
+                {
+                    slider->textFromValueFunction = [] (double value) { return juce::String (value, 0); };
+                    slider->valueFromTextFunction = [] (const juce::String& value) { return value.getDoubleValue(); };
+                    slider->setTextValueSuffix (" dB");
+                }
+                else if (parameterId.containsIgnoreCase ("Freq"))
                     slider->setTextValueSuffix (" Hz");
                 else if (juce::String (control.label).containsIgnoreCase ("Hz"))
                     slider->setTextValueSuffix (" Hz");
@@ -741,7 +797,7 @@ public:
         g.fillRoundedRectangle (card, 16.0f);
         g.setColour (juce::Colour::fromRGB (62, 73, 86));
         g.drawRoundedRectangle (card.reduced (1.0f), 16.0f, 2.5f);
-        drawBlockIcon (g, juce::Rectangle<float> (12.0f, 9.0f, 30.0f, 30.0f));
+        drawBlockIcon (g, juce::Rectangle<float> (26.0f, 18.0f, 32.0f, 32.0f));
     }
 
     const juce::String& getStageName() const { return stageName; }
@@ -775,7 +831,7 @@ public:
         const auto rowPitch = compactMode ? 112 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::none ? 0 : 46;
-        return 58 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
+        return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -799,8 +855,8 @@ public:
 
     void resized() override
     {
-        auto area = getLocalBounds().reduced (18, 14);
-        auto header = area.removeFromTop (36);
+        auto area = getLocalBounds().reduced (26, 20);
+        auto header = area.removeFromTop (40);
         const auto rightWidth = (hasEnableControl ? 92 : 0) + (hasMoveControls ? 68 : 0)
                               + (toneCurveButton != nullptr ? 94 : 0);
         auto right = header.removeFromRight (rightWidth);
@@ -809,7 +865,7 @@ public:
             dragHandle.setBounds (header.removeFromLeft (24).withHeight (32));
             header.removeFromLeft (8);
         }
-        heading.setBounds (header.withTrimmedLeft (30));
+        heading.setBounds (header.withTrimmedLeft (38));
         if (hasEnableControl)
             enableButton.setBounds (right.removeFromLeft (92));
         if (hasMoveControls)
@@ -838,6 +894,9 @@ public:
 
         if (controlWidgets.empty())
             return;
+        constexpr int maxControlWidth = 1320;
+        if (area.getWidth() > maxControlWidth)
+            area = area.withSizeKeepingCentre (maxControlWidth, area.getHeight());
         const auto rowPitch = compactMode ? 112 : 148;
         std::vector<int> selectors;
         std::vector<int> knobs;
@@ -853,8 +912,8 @@ public:
 
         if (! selectors.empty())
         {
-            const auto selectorWidth = juce::jmin (300, juce::jmax (240, area.getWidth() / 6));
-            auto selectorArea = area.removeFromLeft (selectorWidth).reduced (8, 2);
+            const auto selectorWidth = juce::jmin (260, juce::jmax (220, area.getWidth() / 6));
+            auto selectorArea = area.removeFromLeft (selectorWidth).reduced (6, 2);
             for (const auto index : selectors)
             {
                 auto cell = selectorArea.removeFromTop (70);
@@ -1020,7 +1079,7 @@ private:
     std::unique_ptr<juce::FileChooser> fileChooser;
 };
 
-class StageTile final : public juce::Component, private juce::Timer
+class StageTile final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
     StageTile (juce::AudioProcessorValueTreeState& state, juce::String name, juce::String enableId,
@@ -1030,6 +1089,8 @@ public:
           selectHandler (std::move (select))
     {
         setName (stageName);
+        if (stageName.startsWith ("NAM Profile"))
+            setTooltip ("NAM captures can represent amps, preamps, pedals (including boosts and overdrives), or combo amps. Some combo captures already include a speaker cabinet. Disable the Cab IRs in that case to avoid running two cabinets in the signal path.");
         startTimerHz (4);
     }
 
@@ -1052,19 +1113,20 @@ public:
         g.beginTransparencyLayer (isBlockEnabled() ? 1.0f : 0.32f);
         auto r = getLocalBounds().toFloat();
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
-        g.setColour (isSelected ? juce::Colour::fromRGB (34, 41, 51) : tileSurface);
+        g.setColour (isSelected ? juce::Colour::fromRGB (28, 39, 54) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
         const auto kind = getModuleKind();
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
-        const auto borderColour = ioBlock ? juce::Colour::fromRGB (72, 79, 92)
-                               : isSelected ? accent : juce::Colour (0xff70d9b6);
+        const auto borderColour = isSelected ? selectionAccent
+                               : ioBlock ? juce::Colour::fromRGB (72, 79, 92)
+                                         : juce::Colour (0xff70d9b6);
         g.setColour (borderColour);
         g.drawRoundedRectangle (r.reduced (2.0f), cornerRadius - 2.0f, isSelected ? 4.5f : 4.0f);
         if (isDragging)
         {
-            g.setColour (accent.withAlpha (0.18f));
+            g.setColour (selectionAccent.withAlpha (0.18f));
             g.fillRoundedRectangle (r.reduced (2.0f), cornerRadius - 2.0f);
-            g.setColour (accent);
+            g.setColour (selectionAccent);
             g.drawRoundedRectangle (r.reduced (1.0f), cornerRadius - 1.0f, 2.5f);
             const auto verticalBranch = parallelRouting
                                      && (stageName.startsWith ("NAM Profile") || stageName.startsWith ("Cab IR"));
@@ -1088,6 +1150,18 @@ public:
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
             drawModuleIcon (g, iconBounds, getModuleKind());
+        }
+        if (kind == ModuleKind::nam)
+        {
+            const auto markerSize = juce::jlimit (15.0f, 19.0f, r.getWidth() * 0.18f);
+            auto marker = juce::Rectangle<float> (markerSize, markerSize)
+                              .withPosition (r.getRight() - markerSize - 8.0f, r.getY() + 8.0f);
+            g.setColour (juce::Colour (0xff12171e).withAlpha (0.96f));
+            g.fillEllipse (marker);
+            g.setColour (juce::Colour (0xff70d9b6));
+            g.drawEllipse (marker, 1.5f);
+            g.setFont (leadFontOptions (markerSize * 0.72f, juce::Font::bold));
+            g.drawText ("?", marker.translated (0.0f, -0.5f), juce::Justification::centred, false);
         }
         g.endTransparencyLayer();
     }
@@ -1219,18 +1293,28 @@ private:
         }
         else if (kind == ModuleKind::compressor)
         {
-            const auto plot = r.reduced (5.0f, 5.0f);
-            g.drawLine (plot.getX(), plot.getBottom(), plot.getRight(), plot.getBottom(), 1.6f);
-            g.drawLine (plot.getX(), plot.getBottom(), plot.getX(), plot.getY(), 1.6f);
-            juce::Path curve;
-            curve.startNewSubPath (plot.getX() + 2.0f, plot.getBottom() - 2.0f);
-            curve.lineTo (plot.getX() + 13.0f, plot.getY() + 5.0f);
-            curve.cubicTo (plot.getX() + 17.0f, plot.getY() + 9.0f,
-                           plot.getX() + 18.0f, plot.getY() + 13.0f,
-                           plot.getX() + 22.0f, plot.getY() + 14.0f);
-            curve.lineTo (plot.getRight() - 2.0f, plot.getY() + 17.0f);
-            g.strokePath (curve, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved,
-                                                        juce::PathStrokeType::rounded));
+            const auto centreY = r.getCentreY();
+            juce::Path inputWave;
+            inputWave.startNewSubPath (r.getX() + 2.0f, centreY);
+            inputWave.lineTo (r.getX() + 4.0f, centreY - 3.0f);
+            inputWave.lineTo (r.getX() + 6.0f, centreY + 5.0f);
+            inputWave.lineTo (r.getX() + 8.0f, centreY - 7.0f);
+            inputWave.lineTo (r.getX() + 10.0f, centreY + 7.0f);
+            inputWave.lineTo (r.getX() + 12.0f, centreY - 5.0f);
+            inputWave.lineTo (r.getX() + 14.0f, centreY);
+            g.strokePath (inputWave, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
+                                                           juce::PathStrokeType::rounded));
+            g.drawLine (r.getX() + 14.5f, centreY, r.getX() + 19.0f, centreY, 1.8f);
+            g.drawLine (r.getX() + 16.5f, centreY - 2.0f, r.getX() + 19.0f, centreY, 1.8f);
+            g.drawLine (r.getX() + 16.5f, centreY + 2.0f, r.getX() + 19.0f, centreY, 1.8f);
+            juce::Path outputWave;
+            outputWave.startNewSubPath (r.getX() + 20.0f, centreY);
+            outputWave.lineTo (r.getX() + 22.0f, centreY - 2.0f);
+            outputWave.lineTo (r.getX() + 24.0f, centreY + 3.0f);
+            outputWave.lineTo (r.getX() + 26.0f, centreY - 3.0f);
+            outputWave.lineTo (r.getRight() - 2.0f, centreY);
+            g.strokePath (outputWave, juce::PathStrokeType (2.2f, juce::PathStrokeType::curved,
+                                                            juce::PathStrokeType::rounded));
         }
         else if (kind == ModuleKind::boost)
             drawBoostPedalIcon (g, r, ink);
@@ -1255,16 +1339,22 @@ private:
         }
         else if (kind == ModuleKind::nam)
         {
-            const auto cabinet = r.reduced (1.5f, 1.0f);
-            g.drawRoundedRectangle (cabinet, 3.0f, 1.6f);
-            g.drawLine (cabinet.getX() + 1.0f, cabinet.getY() + 7.0f,
-                        cabinet.getRight() - 1.0f, cabinet.getY() + 7.0f, 1.3f);
-            for (int i = 0; i < 3; ++i)
-                g.fillEllipse (cabinet.getX() + 6.0f + 6.0f * i, cabinet.getY() + 2.5f, 2.0f, 2.0f);
-            const auto speakerRadius = juce::jmin (7.0f, cabinet.getWidth() * 0.29f);
-            g.drawEllipse (cabinet.getCentreX() - speakerRadius, cabinet.getY() + 10.0f,
-                           speakerRadius * 2.0f, speakerRadius * 2.0f, 1.4f);
-            g.drawEllipse (cabinet.getCentreX() - 2.0f, cabinet.getY() + 15.0f, 4.0f, 4.0f, 1.2f);
+            const auto signet = r.reduced (1.0f);
+            g.setColour (juce::Colour (0xff68d9b4));
+            g.fillRoundedRectangle (signet, signet.getWidth() * 0.27f);
+            juce::Path monogram;
+            monogram.startNewSubPath (signet.getX() + signet.getWidth() * 0.27f,
+                                      signet.getY() + signet.getHeight() * 0.73f);
+            monogram.lineTo (signet.getX() + signet.getWidth() * 0.27f,
+                             signet.getY() + signet.getHeight() * 0.27f);
+            monogram.lineTo (signet.getX() + signet.getWidth() * 0.73f,
+                             signet.getY() + signet.getHeight() * 0.73f);
+            monogram.lineTo (signet.getX() + signet.getWidth() * 0.73f,
+                             signet.getY() + signet.getHeight() * 0.27f);
+            g.setColour (juce::Colour (0xff141920));
+            g.strokePath (monogram, juce::PathStrokeType (juce::jmax (2.0f, signet.getWidth() * 0.09f),
+                                                           juce::PathStrokeType::curved,
+                                                           juce::PathStrokeType::rounded));
         }
         else if (kind == ModuleKind::ir)
         {
@@ -1743,7 +1833,7 @@ public:
                   FileKind::none, 0, mover (true, 1),
                   {{ "compSustain", "Input (dB)", false, {}, false, true },
                    { "compAttack", "Attack (ms)" }, { "compRelease", "Release (ms)" },
-                   { "compRatioMode", "Ratio", false, juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons" } },
+                   { "compRatioMode", "Ratio", false, juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons In" } },
                    { "compTone", "Tone (dB)" }, { "compBlend", "Blend", true },
                    { "compVolume", "Output (dB)" }, { "compEQ", "EQ", true }});
         addStage ("Boost Pedal", "boostOn", {{ "boostGain", "Post Volume (dB)" }}, FileKind::none, 0, mover (true, 2),
@@ -2044,6 +2134,7 @@ private:
 
 TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor& processor)
     : AudioProcessorEditor (&processor), audioProcessor (processor),
+      tooltipWindow (this, 650),
       editorLookAndFeel (std::make_unique<LeadLookAndFeel> (processor)),
       chainControls (std::make_unique<ChainControls> (processor))
 {
@@ -2053,10 +2144,14 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     setSize (1600, 900);
     setResizable (true, true);
     setResizeLimits (1200, 760, 1920, 1200);
-    title.setText ("NAMINATOR", juce::dontSendNotification);
-    title.setFont (leadFontOptions (31.0f, juce::Font::bold));
+    title.setText ("NAMinator", juce::dontSendNotification);
+    title.setFont (juce::Font (juce::FontOptions().withTypeface (getBrandTypeface()).withHeight (29.0f).withStyle ("Bold")));
     title.setColour (juce::Label::textColourId, text);
     addAndMakeVisible (title);
+    subtitle.setText ("CAPTURE SIGNAL WORKSTATION", juce::dontSendNotification);
+    subtitle.setFont (leadFontOptions (9.0f, juce::Font::bold));
+    subtitle.setColour (juce::Label::textColourId, secondaryText);
+    addAndMakeVisible (subtitle);
 
     presetLabel.setText ("PRESET", juce::dontSendNotification);
     presetLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
@@ -2160,7 +2255,9 @@ void TheLeadAudioProcessorEditor::resized()
 {
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
-    title.setBounds (top.removeFromLeft (260));
+    auto titleArea = top.removeFromLeft (260);
+    title.setBounds (titleArea.removeFromTop (28));
+    subtitle.setBounds (titleArea);
     auto presetArea = top;
     presetLabel.setBounds (presetArea.removeFromLeft (58));
     presetArea.removeFromLeft (8);
