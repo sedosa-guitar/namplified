@@ -11,6 +11,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <unordered_map>
+#include <vector>
 #include "CleanBoost.h"
 
 //==============================================================================
@@ -125,6 +126,9 @@ private:
     std::array<float, 2> compressorEnvelope {};
     std::array<float, 2> analogDelayToneState {};
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
+    std::array<std::vector<float>, 2> pitchBuffers;
+    int pitchBufferSize = 0, pitchWritePosition = 0;
+    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f;
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
     std::array<std::array<BiquadState, 5>, 2> postEqFilters {};
     std::array<std::array<std::array<BiquadState, 3>, 2>, numIRSlots> irShapeEqFilters {};

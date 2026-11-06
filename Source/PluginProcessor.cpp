@@ -174,6 +174,10 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     };
 
     addKnob ("inputGain", "Input Gain", -24.0f, 24.0f, 0.0f);
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
+        juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("st")));
     addToggle ("gateOn", "Noise Gate", true);
     // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
@@ -616,6 +620,12 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     const juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), channels };
     modelSampleRate.store (sampleRate);
     modelMaxBlockSize.store (samplesPerBlock);
+    pitchBufferSize = juce::jmax (2, juce::roundToInt (sampleRate * 0.16));
+    for (auto& channel : pitchBuffers)
+        channel.assign (static_cast<size_t> (pitchBufferSize), 0.0f);
+    pitchWritePosition = 0;
+    pitchPhase = 0.0f;
+    pitchCurrentSemitones = 0.0f;
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot]->prepare (sampleRate, samplesPerBlock);
     for (auto& circuit : tubeScreamerCircuits)
@@ -702,6 +712,63 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
     inputPeak.store (juce::jmax (inputBlockPeak, inputPeak.load (std::memory_order_relaxed) * meterFall),
                      std::memory_order_relaxed);
+
+    // Two crossfaded delay taps provide a low-latency, monophonic-style pitch
+    // shift before the rest of the chain. The 20 ms minimum delay prevents the
+    // read heads from catching the write head; all memory is allocated in prepareToPlay.
+    const auto pitchTarget = juce::jlimit (-24.0f, 24.0f, get ("pitchSemitones"));
+    const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
+    const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
+    const auto pitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto wrapReadIndex = [this] (float position)
+    {
+        while (position < 0.0f) position += static_cast<float> (pitchBufferSize);
+        while (position >= static_cast<float> (pitchBufferSize)) position -= static_cast<float> (pitchBufferSize);
+        return position;
+    };
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
+        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
+                = buffer.getReadPointer (channel)[sample];
+
+        if (std::abs (pitchCurrentSemitones) > 0.01f)
+        {
+            const auto ratio = std::exp2 (pitchCurrentSemitones / 12.0f);
+            const auto phaseIncrement = std::abs (1.0f - ratio) / pitchRange;
+            auto phaseA = pitchPhase;
+            auto phaseB = phaseA + 0.5f;
+            if (phaseB >= 1.0f) phaseB -= 1.0f;
+            const auto delayForPhase = [pitchCurrent = pitchCurrentSemitones, pitchMinDelay, pitchRange] (float phase)
+            {
+                return pitchCurrent > 0.0f ? pitchMinDelay + (1.0f - phase) * pitchRange
+                                           : pitchMinDelay + phase * pitchRange;
+            };
+            const auto delayA = delayForPhase (phaseA);
+            const auto delayB = delayForPhase (phaseB);
+            const auto weightA = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * phaseA);
+            const auto weightB = 1.0f - weightA;
+            for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            {
+                const auto readTap = [this, channel, &wrapReadIndex] (float delay)
+                {
+                    const auto position = wrapReadIndex (static_cast<float> (pitchWritePosition) - delay);
+                    const auto index0 = static_cast<int> (position);
+                    const auto index1 = (index0 + 1) % pitchBufferSize;
+                    const auto fraction = position - static_cast<float> (index0);
+                    const auto& data = pitchBuffers[static_cast<size_t> (channel)];
+                    return data[static_cast<size_t> (index0)] * (1.0f - fraction)
+                         + data[static_cast<size_t> (index1)] * fraction;
+                };
+                buffer.getWritePointer (channel)[sample] = readTap (delayA) * weightA + readTap (delayB) * weightB;
+            }
+            pitchPhase += phaseIncrement;
+            if (pitchPhase >= 1.0f)
+                pitchPhase -= std::floor (pitchPhase);
+        }
+        pitchWritePosition = (pitchWritePosition + 1) % pitchBufferSize;
+    }
 
     const auto inputGain = juce::Decibels::decibelsToGain (get ("inputGain"));
     buffer.applyGain (inputGain);

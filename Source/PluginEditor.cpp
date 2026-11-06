@@ -2348,6 +2348,33 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     resetChainButton.setButtonText ("RESET CHAIN");
     resetChainButton.setTooltip ("Restore the default signal chain and default parameter values");
     presetBox.setTooltip ("Load a saved NAMinator preset");
+    pitchLabel.setText ("PITCH", juce::dontSendNotification);
+    pitchLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchLabel.setColour (juce::Label::textColourId, secondaryText);
+    pitchLabel.setJustificationType (juce::Justification::centredRight);
+    pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -24 to +24 semitones.");
+    addAndMakeVisible (pitchLabel);
+    pitchSlider.setName ("pitchSemitones");
+    pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
+    pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
+    addAndMakeVisible (pitchSlider);
+    pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.parameters, "pitchSemitones", pitchSlider);
+    pitchValueLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchValueLabel.setColour (juce::Label::textColourId, text);
+    pitchValueLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (pitchValueLabel);
+    const auto updatePitchValue = [this]
+    {
+        const auto semitones = juce::roundToInt (pitchSlider.getValue());
+        const auto prefix = semitones > 0 ? "+" : "";
+        pitchValueLabel.setText (prefix + juce::String (semitones) + " ST", juce::dontSendNotification);
+    };
+    pitchSlider.onValueChange = updatePitchValue;
+    updatePitchValue();
     addAndMakeVisible (presetBox);
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
     deletePresetButton.setTooltip ("Delete the selected user preset");
@@ -2452,6 +2479,12 @@ void TheLeadAudioProcessorEditor::resized()
     deletePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
     presetArea.removeFromLeft (6);
     resetChainButton.setBounds (presetArea.removeFromLeft (104).reduced (0, 4));
+    presetArea.removeFromLeft (18);
+    pitchLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
+    presetArea.removeFromLeft (8);
+    pitchSlider.setBounds (presetArea.removeFromLeft (160).reduced (0, 10));
+    presetArea.removeFromLeft (4);
+    pitchValueLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     ampRoutingBox.setBounds (controlRow.removeFromRight (180).reduced (0, 2));
