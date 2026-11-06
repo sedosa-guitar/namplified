@@ -663,6 +663,8 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const auto inputMeterChannels = juce::jmin (getTotalNumInputChannels(), buffer.getNumChannels());
     for (int channel = 0; channel < inputMeterChannels; ++channel)
         inputBlockPeak = juce::jmax (inputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    if (inputBlockPeak >= 1.0f)
+        inputClipped.store (true, std::memory_order_relaxed);
     const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
     inputPeak.store (juce::jmax (inputBlockPeak, inputPeak.load (std::memory_order_relaxed) * meterFall),
                      std::memory_order_relaxed);
@@ -1059,6 +1061,8 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     float outputBlockPeak = 0.0f;
     for (int channel = 0; channel < numChannels; ++channel)
         outputBlockPeak = juce::jmax (outputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    if (outputBlockPeak >= 1.0f)
+        outputClipped.store (true, std::memory_order_relaxed);
     outputPeak.store (juce::jmax (outputBlockPeak, outputPeak.load (std::memory_order_relaxed) * meterFall),
                       std::memory_order_relaxed);
 }

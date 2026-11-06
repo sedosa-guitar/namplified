@@ -1914,8 +1914,10 @@ public:
         g.fillRoundedRectangle (area, 18.0f);
         g.setColour (juce::Colour::fromRGB (52, 59, 72));
         g.drawRoundedRectangle (area, 18.0f, 2.4f);
-        drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT");
-        drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT");
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
+        drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT",
+                        now < outputClipUntilMs);
     }
 
     void resized() override
@@ -1949,9 +1951,15 @@ public:
     }
 
 private:
-    void timerCallback() override { repaint(); }
+    void timerCallback() override
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        if (audioProcessor.consumeInputClip()) inputClipUntilMs = now + 1500.0;
+        if (audioProcessor.consumeOutputClip()) outputClipUntilMs = now + 1500.0;
+        repaint();
+    }
 
-    void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label)
+    void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label, bool clipped)
     {
         const auto chainBounds = chainViewport.getBounds().toFloat();
         const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 32.0f);
@@ -1961,26 +1969,39 @@ private:
         const auto teal = knobAccent;
         const auto orange = juce::Colour (0xffffa24f);
         const auto red = juce::Colour (0xffff514e);
-        g.setColour (teal.withAlpha (0.15f));
-        g.fillRoundedRectangle (track.withY (track.getBottom() - track.getHeight() * 0.73f)
-                                    .withHeight (track.getHeight() * 0.73f), 4.0f);
-        g.setColour (orange.withAlpha (0.18f));
-        g.fillRect (track.withY (track.getY() + track.getHeight() * 0.18f)
-                         .withHeight (track.getHeight() * 0.20f));
-        g.setColour (red.withAlpha (0.22f));
-        g.fillRoundedRectangle (track.withHeight (track.getHeight() * 0.18f), 4.0f);
         const auto db = peak > 0.000001f ? juce::Decibels::gainToDecibels (peak) : -60.0f;
         const auto amount = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 66.0f);
-        auto lit = track.withY (track.getBottom() - track.getHeight() * amount)
-                        .withHeight (track.getHeight() * amount);
-        const auto levelColour = db >= -3.0f ? red : db >= -12.0f ? orange : teal;
-        g.setColour (levelColour);
-        if (lit.getHeight() > 0.5f)
-            g.fillRoundedRectangle (lit, 5.0f);
+        const auto drawZone = [&] (float low, float high, juce::Colour colour)
+        {
+            const auto zoneBottom = juce::jmin (1.0f, (juce::jmax (low, high) + 60.0f) / 66.0f);
+            const auto zoneTop = juce::jmax (0.0f, (juce::jmin (low, high) + 60.0f) / 66.0f);
+            const auto zone = juce::Rectangle<float> (track.getX(), track.getBottom() - zoneBottom * track.getHeight(),
+                                                       track.getWidth(), (zoneBottom - zoneTop) * track.getHeight());
+            g.setColour (colour.withAlpha (0.16f));
+            g.fillRect (zone);
+            const auto filledTop = juce::jmax (zoneTop, juce::jmin (zoneBottom, amount));
+            if (filledTop > zoneTop)
+            {
+                auto lit = juce::Rectangle<float> (zone.getX(), track.getBottom() - filledTop * track.getHeight(),
+                                                    zone.getWidth(), (filledTop - zoneTop) * track.getHeight());
+                g.setColour (colour);
+                g.fillRect (lit);
+            }
+        };
+        drawZone (-60.0f, -18.0f, teal);
+        drawZone (-18.0f, -3.0f, orange);
+        drawZone (-3.0f, 6.0f, red);
         g.setColour (secondaryText);
         g.setFont (leadFontOptions (14.0f, juce::Font::bold));
         g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 8.0f),
                                                   60, 18), juce::Justification::centred);
+        if (clipped)
+        {
+            g.setColour (red);
+            g.drawText ("CLIP", juce::Rectangle<int> (juce::roundToInt (x - 22.0f),
+                                                       juce::roundToInt (chainBounds.getY() - 25.0f),
+                                                       60, 16), juce::Justification::centred);
+        }
     }
 
     std::function<void (int)> mover (bool pre, int stageId)
@@ -2128,6 +2149,7 @@ private:
     juce::Viewport detailsViewport;
     std::unique_ptr<StageTileList> tileList = std::make_unique<StageTileList>();
     StageCard* selectedStage = nullptr;
+    double inputClipUntilMs = 0.0, outputClipUntilMs = 0.0;
     std::vector<std::unique_ptr<StageCard>> cards;
     std::vector<std::unique_ptr<StageTile>> tiles;
 };
