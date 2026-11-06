@@ -32,8 +32,8 @@ static juce::FontOptions leadFontOptions (float height, int style = juce::Font::
 class LeadLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
-    LeadLookAndFeel()
-        : interTypeface (getLeadTypeface())
+    explicit LeadLookAndFeel (TheLeadAudioProcessor& processorToUse)
+        : processor (processorToUse), interTypeface (getLeadTypeface())
     {
         if (interTypeface != nullptr)
             setDefaultSansSerifTypeface (interTypeface);
@@ -53,6 +53,22 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
         return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
+    }
+
+    void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPos, float minSliderPos, float maxSliderPos,
+                           juce::Slider::SliderStyle style, juce::Slider& slider) override
+    {
+        const auto isModified = processor.isParameterModified (slider.getName());
+        const auto colour = isModified ? accent : knobAccent;
+        const auto oldTrack = slider.findColour (juce::Slider::trackColourId);
+        const auto oldThumb = slider.findColour (juce::Slider::thumbColourId);
+        slider.setColour (juce::Slider::trackColourId, colour);
+        slider.setColour (juce::Slider::thumbColourId, colour);
+        juce::LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos,
+                                                minSliderPos, maxSliderPos, style, slider);
+        slider.setColour (juce::Slider::trackColourId, oldTrack);
+        slider.setColour (juce::Slider::thumbColourId, oldThumb);
     }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -80,10 +96,7 @@ public:
         juce::Path active;
         active.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
                               startAngle, startAngle + proportion * (endAngle - startAngle), true);
-        const auto isActiveMid = slider.getName().containsIgnoreCase ("Mid")
-                              && ! slider.getName().containsIgnoreCase ("Freq")
-                              && std::abs (static_cast<float> (slider.getValue())) > 0.01f;
-        const auto valueColour = isActiveMid ? accent : knobAccent;
+        const auto valueColour = processor.isParameterModified (slider.getName()) ? accent : knobAccent;
         g.setColour (valueColour);
         g.strokePath (active, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                      juce::PathStrokeType::rounded));
@@ -95,6 +108,7 @@ public:
     }
 
 private:
+    TheLeadAudioProcessor& processor;
     juce::Typeface::Ptr interTypeface;
 };
 
@@ -168,12 +182,13 @@ static void drawBoostPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juc
     g.fillPath (arrow);
 }
 
-class ParameterDetailPanel final : public juce::Component
+class ParameterDetailPanel final : public juce::Component, private juce::Timer
 {
 public:
-    ParameterDetailPanel (TheLeadAudioProcessor& processor, juce::String title,
-                          const std::vector<ParameterControl>& controls)
-        : audioProcessor (processor), isPostEq (title == "Post EQ"),
+    ParameterDetailPanel (TheLeadAudioProcessor& processor, LeadLookAndFeel& lookAndFeelToUse,
+                          juce::String title, const std::vector<ParameterControl>& controls)
+        : audioProcessor (processor), lookAndFeel (lookAndFeelToUse),
+          isPostEq (title == "Post EQ"),
           isIRShapeEq (title.startsWith ("Cab IR ")),
           isBoost (title == "Boost Pedal"),
           titleNumber (isIRShapeEq ? title.fromLastOccurrenceOf (" ", false, false) : juce::String())
@@ -217,6 +232,8 @@ public:
             {
                 auto slider = std::make_unique<juce::Slider>();
                 slider->setSliderStyle (juce::Slider::LinearHorizontal);
+                slider->setName (control.id);
+                slider->setLookAndFeel (&lookAndFeel);
                 slider->setTextBoxStyle (juce::Slider::TextBoxRight, false, 66, 22);
                 slider->setTooltip (control.label);
                 slider->setColour (juce::Slider::trackColourId, knobAccent);
@@ -274,6 +291,7 @@ public:
             updateBoostControls();
         else
             setSize (430, 48 + static_cast<int> (controlWidgets.size()) * 46);
+        startTimerHz (20);
     }
 
     void paint (juce::Graphics& g) override { g.fillAll (background); }
@@ -294,6 +312,13 @@ public:
         }
     }
 private:
+    void timerCallback() override
+    {
+        for (auto* widget : controlWidgets)
+            if (auto* slider = dynamic_cast<juce::Slider*> (widget))
+                slider->repaint();
+    }
+
     void updateBoostControls()
     {
         if (! isBoost)
@@ -327,6 +352,7 @@ private:
     }
 
     TheLeadAudioProcessor& audioProcessor;
+    LeadLookAndFeel& lookAndFeel;
     bool isPostEq = false;
     bool isIRShapeEq = false;
     bool isBoost = false;
@@ -532,7 +558,7 @@ public:
                std::vector<ParameterControl> controls, FileKind fileKind = FileKind::none,
                int fileSlot = 0, std::function<void (int)> moveHandler = {},
                std::vector<ParameterControl> detailControls = {})
-        : audioProcessor (processor), stageName (std::move (name)), enableParameterId (std::move (enableId)), loadKind (fileKind),
+        : audioProcessor (processor), lookAndFeel (processor), stageName (std::move (name)), enableParameterId (std::move (enableId)), loadKind (fileKind),
           slot (fileSlot), hasMoveControls (false), moveHandler (std::move (moveHandler))
     {
         setName (stageName);
@@ -586,7 +612,7 @@ public:
             addAndMakeVisible (*toneCurveButton);
             toneCurveButton->onClick = [this, details = std::move (detailControls)]
             {
-                auto content = std::make_unique<ParameterDetailPanel> (audioProcessor, stageName, details);
+                auto content = std::make_unique<ParameterDetailPanel> (audioProcessor, lookAndFeel, stageName, details);
                 juce::CallOutBox::launchAsynchronously (std::move (content), *toneCurveButton, nullptr);
             };
         }
@@ -652,6 +678,7 @@ public:
                 buttonAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
                     audioProcessor.parameters, control.id, *toggle));
                 controlWidgets.push_back (toggle.get());
+                controlIds.emplace_back (control.id);
                 toggles.push_back (std::move (toggle));
                 widgetValueLabels.push_back (nullptr);
             }
@@ -662,7 +689,10 @@ public:
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                     audioProcessor.parameters, control.id, *choice));
+                if (stageName == "Boost Pedal" && juce::String (control.id) == "boostModel")
+                    choice->onChange = [this] { updateConditionalControlVisibility(); resized(); };
                 controlWidgets.push_back (choice.get());
+                controlIds.emplace_back (control.id);
                 comboBoxes.push_back (std::move (choice));
                 widgetValueLabels.push_back (nullptr);
             }
@@ -681,6 +711,7 @@ public:
                 sliderAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
                     audioProcessor.parameters, control.id, *slider));
                 controlWidgets.push_back (slider.get());
+                controlIds.emplace_back (control.id);
                 auto valueLabel = std::make_unique<juce::Label>();
                 valueLabel->setFont (leadFontOptions (16.0f));
                 valueLabel->setColour (juce::Label::textColourId, text);
@@ -700,6 +731,7 @@ public:
                 sliders.push_back (std::move (slider));
             }
         }
+        updateConditionalControlVisibility();
     }
 
     void paint (juce::Graphics& g) override
@@ -727,9 +759,23 @@ public:
     {
         if (graphicEq != nullptr)
             return 310;
-        const auto rows = (static_cast<int> (controlWidgets.size()) + 4) / 5;
+        int selectorCount = 0;
+        int knobCount = 0;
+        for (size_t i = 0; i < controlWidgets.size(); ++i)
+        {
+            if (! isControlVisible (i))
+                continue;
+            if (dynamic_cast<juce::ComboBox*> (controlWidgets[i]) != nullptr)
+                ++selectorCount;
+            else
+                ++knobCount;
+        }
+        const auto columns = selectorCount > 0 ? 4 : 5;
+        const auto rows = (knobCount + columns - 1) / columns;
+        const auto rowPitch = compactMode ? 112 : 148;
+        const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::none ? 0 : 46;
-        return 58 + fileControlsHeight + juce::jmax (1, rows) * (compactMode ? 112 : 148);
+        return 58 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -793,32 +839,84 @@ public:
         if (controlWidgets.empty())
             return;
         const auto rowPitch = compactMode ? 112 : 148;
-        const auto columns = juce::jmin (5, juce::jmax (1, static_cast<int> (controlWidgets.size())));
-        const auto cellWidth = area.getWidth() / static_cast<int> (columns);
+        std::vector<int> selectors;
+        std::vector<int> knobs;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
         {
-            const auto row = static_cast<int> (i / columns);
-            const auto column = static_cast<int> (i % columns);
+            if (! isControlVisible (i))
+                continue;
+            if (dynamic_cast<juce::ComboBox*> (controlWidgets[i]) != nullptr)
+                selectors.push_back (static_cast<int> (i));
+            else
+                knobs.push_back (static_cast<int> (i));
+        }
+
+        if (! selectors.empty())
+        {
+            const auto selectorWidth = juce::jmin (300, juce::jmax (240, area.getWidth() / 6));
+            auto selectorArea = area.removeFromLeft (selectorWidth).reduced (8, 2);
+            for (const auto index : selectors)
+            {
+                auto cell = selectorArea.removeFromTop (70);
+                controlLabels[static_cast<size_t> (index)]->setBounds (cell.removeFromTop (22));
+                controlWidgets[static_cast<size_t> (index)]->setBounds (cell.removeFromTop (42));
+            }
+            area.removeFromLeft (14);
+        }
+
+        if (knobs.empty())
+            return;
+        const auto columns = juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
+        const auto cellWidth = area.getWidth() / columns;
+        for (size_t position = 0; position < knobs.size(); ++position)
+        {
+            const auto index = static_cast<size_t> (knobs[position]);
+            const auto row = static_cast<int> (position) / columns;
+            const auto column = static_cast<int> (position) % columns;
             auto cell = juce::Rectangle<int> (area.getX() + column * cellWidth,
                                                area.getY() + row * rowPitch,
-                                               column + 1 == static_cast<int> (columns) ? area.getWidth() - column * cellWidth : cellWidth,
+                                               column + 1 == columns ? area.getWidth() - column * cellWidth : cellWidth,
                                                rowPitch - 6).reduced (8, 3);
-            controlLabels[i]->setBounds (cell.removeFromTop (compactMode ? 19 : 22));
-            if (dynamic_cast<juce::Slider*> (controlWidgets[i]) != nullptr)
+            controlLabels[index]->setBounds (cell.removeFromTop (compactMode ? 19 : 22));
+            if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
             {
                 auto valueArea = cell.removeFromBottom (compactMode ? 18 : 20);
-                if (widgetValueLabels[i] != nullptr)
-                    widgetValueLabels[i]->setBounds (valueArea);
+                if (widgetValueLabels[index] != nullptr)
+                    widgetValueLabels[index]->setBounds (valueArea);
                 const auto knobWidth = juce::jmin (compactMode ? 86 : 102, cell.getWidth());
                 auto knob = cell.withSizeKeepingCentre (knobWidth, compactMode ? 72 : 94);
-                controlWidgets[i]->setBounds (knob);
+                controlWidgets[index]->setBounds (knob);
             }
             else
-                controlWidgets[i]->setBounds (cell.removeFromTop (42));
+                controlWidgets[index]->setBounds (cell.removeFromTop (42));
         }
     }
 
 private:
+    bool isControlVisible (size_t index) const
+    {
+        if (stageName != "Boost Pedal" || index >= controlIds.size())
+            return true;
+        const auto* model = audioProcessor.parameters.getRawParameterValue ("boostModel");
+        const auto use808 = model != nullptr && model->load() >= 0.5f;
+        const auto& id = controlIds[index];
+        return id == "boostModel"
+            || (use808 ? (id == "boost808Drive" || id == "boost808Tone" || id == "boost808Level")
+                       : (id == "boostGain" || id == "boostBass" || id == "boostMid" || id == "boostTreble"));
+    }
+
+    void updateConditionalControlVisibility()
+    {
+        for (size_t i = 0; i < controlWidgets.size(); ++i)
+        {
+            const auto visible = isControlVisible (i);
+            controlWidgets[i]->setVisible (visible);
+            controlLabels[i]->setVisible (visible);
+            if (widgetValueLabels[i] != nullptr)
+                widgetValueLabels[i]->setVisible (visible);
+        }
+    }
+
     friend class StageTile;
     void drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds);
 
@@ -909,6 +1007,7 @@ private:
     std::unique_ptr<FiveBandEqEditor> graphicEq;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     std::vector<std::unique_ptr<juce::Label>> controlLabels;
+    std::vector<juce::String> controlIds;
     std::vector<std::unique_ptr<juce::Label>> valueLabels;
     std::vector<juce::Component*> controlWidgets;
     std::vector<juce::Label*> widgetValueLabels;
@@ -1647,9 +1746,9 @@ public:
                    { "compRatioMode", "Ratio", false, juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons" } },
                    { "compTone", "Tone (dB)" }, { "compBlend", "Blend", true },
                    { "compVolume", "Output (dB)" }, { "compEQ", "EQ", true }});
-        addStage ("Boost Pedal", "boostOn", {{ "boostGain", "Gain (dB)" }}, FileKind::none, 0, mover (true, 2),
+        addStage ("Boost Pedal", "boostOn", {{ "boostGain", "Post Volume (dB)" }}, FileKind::none, 0, mover (true, 2),
                   {{ "boostModel", "Model", false, juce::StringArray { "Clean Boost", "808 Drive" } },
-                   { "boostGain", "Gain (dB)" }, { "boostBass", "Bass (dB)" },
+                   { "boostGain", "Post Volume (dB)" }, { "boostBass", "Bass (dB)" },
                    { "boostMid", "Mid (dB)" }, { "boostTreble", "Treble (dB)" },
                    { "boost808Drive", "Drive (dB)" }, { "boost808Tone", "Tone (Hz)" },
                    { "boost808Level", "Level (dB)" }});
@@ -1724,7 +1823,7 @@ public:
         g.setColour (chainSurface);
         g.fillRoundedRectangle (area, 18.0f);
         g.setColour (juce::Colour::fromRGB (52, 59, 72));
-        g.drawRoundedRectangle (area, 18.0f, 1.0f);
+        g.drawRoundedRectangle (area, 18.0f, 2.4f);
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT");
         drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT");
     }
@@ -1945,9 +2044,11 @@ private:
 
 TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor& processor)
     : AudioProcessorEditor (&processor), audioProcessor (processor),
-      editorLookAndFeel (std::make_unique<LeadLookAndFeel>()),
+      editorLookAndFeel (std::make_unique<LeadLookAndFeel> (processor)),
       chainControls (std::make_unique<ChainControls> (processor))
 {
+    audioProcessor.capturePresetSnapshot();
+    startTimerHz (20);
     setLookAndFeel (editorLookAndFeel.get());
     setSize (1600, 900);
     setResizable (true, true);
@@ -1980,6 +2081,8 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
         const auto name = presetBox.getText().trim();
         if (name.isNotEmpty() && audioProcessor.loadUserPreset (name))
         {
+            audioProcessor.capturePresetSnapshot();
+            presetDirty = false;
             refreshUserPresets (name);
             updateRoutingDisplay();
         }
@@ -1989,6 +2092,8 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     resetChainButton.onClick = [this]
     {
         chainControls->resetToDefaultChain();
+        audioProcessor.capturePresetSnapshot();
+        presetDirty = false;
         presetBox.setSelectedId (0, juce::dontSendNotification);
         refreshUserPresets();
         updateRoutingDisplay();
@@ -2024,6 +2129,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     blendValueLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (blendValueLabel);
     blendSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    blendSlider.setName ("irParallelBlend");
     blendSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     blendSlider.setColour (juce::Slider::trackColourId, knobAccent);
     blendSlider.setColour (juce::Slider::textBoxTextColourId, text);
@@ -2084,17 +2190,44 @@ void TheLeadAudioProcessorEditor::resized()
 
 void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
 {
-    const auto previousName = selectName.isNotEmpty() ? selectName : presetBox.getText();
+    const auto previousName = selectName.isNotEmpty() ? selectName : selectedPresetName();
     const auto names = audioProcessor.getUserPresetNames();
     presetBox.clear (juce::dontSendNotification);
     for (int i = 0; i < names.size(); ++i)
-        presetBox.addItem (names[i], i + 1);
+        presetBox.addItem (names[i] + ((presetDirty && names[i] == previousName) ? " *" : juce::String()), i + 1);
     const auto index = names.indexOf (previousName);
     if (index >= 0)
         presetBox.setSelectedId (index + 1, juce::dontSendNotification);
     else
         presetBox.setSelectedId (0, juce::dontSendNotification);
     deletePresetButton.setEnabled (presetBox.getSelectedId() != 0);
+}
+
+juce::String TheLeadAudioProcessorEditor::selectedPresetName() const
+{
+    auto name = presetBox.getText().trim();
+    if (name.endsWith (" *"))
+        name = name.dropLastCharacters (2).trimEnd();
+    return name;
+}
+
+void TheLeadAudioProcessorEditor::timerCallback()
+{
+    const auto changed = audioProcessor.hasUnsavedParameterChanges();
+    if (changed != presetDirty)
+    {
+        presetDirty = changed;
+        if (presetBox.getSelectedId() != 0)
+            refreshUserPresets (selectedPresetName());
+    }
+    const auto repaintChildren = [] (auto&& self, juce::Component& component) -> void
+    {
+        if (auto* slider = dynamic_cast<juce::Slider*> (&component))
+            slider->repaint();
+        for (auto* child : component.getChildren())
+            self (self, *child);
+    };
+    repaintChildren (repaintChildren, *this);
 }
 
 void TheLeadAudioProcessorEditor::updateRoutingDisplay()
@@ -2104,8 +2237,10 @@ void TheLeadAudioProcessorEditor::updateRoutingDisplay()
     const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
     blendAttachment.reset();
+    const auto blendParameterId = parallel ? juce::String ("ampParallelBlend") : juce::String ("irParallelBlend");
+    blendSlider.setName (blendParameterId);
     blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        audioProcessor.parameters, parallel ? "ampParallelBlend" : "irParallelBlend", blendSlider);
+        audioProcessor.parameters, blendParameterId, blendSlider);
     ampRoutingBox.setSelectedId (parallel ? 2 : 1, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
     blendLabel.setText (parallel ? "NAM 1 / NAM 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
@@ -2158,6 +2293,8 @@ void TheLeadAudioProcessorEditor::showSavePresetPrompt()
                                                      "Check the preset name and available storage space.");
             return;
         }
+        safeThis->audioProcessor.capturePresetSnapshot();
+        safeThis->presetDirty = false;
         safeThis->refreshUserPresets (name);
     }), true);
 }
@@ -2175,6 +2312,8 @@ void TheLeadAudioProcessorEditor::showDeletePresetPrompt()
     {
         if (result != 1 || safeThis == nullptr) return;
         safeThis->audioProcessor.deleteUserPreset (name);
+        safeThis->audioProcessor.capturePresetSnapshot();
+        safeThis->presetDirty = false;
         safeThis->refreshUserPresets();
     }), true);
 }

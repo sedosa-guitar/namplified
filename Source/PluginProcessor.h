@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <unordered_map>
 #include "CleanBoost.h"
 
 //==============================================================================
@@ -54,6 +55,9 @@ public:
     std::array<int, numPostFxStages> getPostFxOrder() const;
     void setPostFxOrder (const std::array<int, numPostFxStages>& order);
     void resetToDefaults();
+    void capturePresetSnapshot();
+    bool hasUnsavedParameterChanges() const;
+    bool isParameterModified (const juce::String& parameterId) const;
     juce::StringArray getUserPresetNames() const;
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name);
@@ -115,6 +119,7 @@ private:
     std::array<std::atomic<int>, numAmpSlots> ampSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numIRSlots> irSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numPostFxStages> postFxOrder { 0, 1, 2, 3 };
+    std::unordered_map<std::string, float> presetSnapshot;
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
@@ -139,6 +144,7 @@ private:
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> reverbPreDelayLines[2];
     juce::AudioBuffer<float> reverbWorkBuffer;
     juce::dsp::Chorus<float> chorus;
+    juce::dsp::Limiter<float> outputSafetyLimiter;
     juce::Reverb reverb;
 
     //==============================================================================

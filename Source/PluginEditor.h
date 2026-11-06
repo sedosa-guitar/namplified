@@ -5,7 +5,7 @@
 
 class ChainControls;
 
-class TheLeadAudioProcessorEditor : public juce::AudioProcessorEditor
+class TheLeadAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer
 {
 public:
     explicit TheLeadAudioProcessorEditor (TheLeadAudioProcessor&);
@@ -20,6 +20,8 @@ private:
     void updateBlendValue();
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
+    void timerCallback() override;
+    juce::String selectedPresetName() const;
 
     TheLeadAudioProcessor& audioProcessor;
     std::unique_ptr<juce::LookAndFeel_V4> editorLookAndFeel;
@@ -38,6 +40,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;
     std::unique_ptr<ChainControls> chainControls;
+    bool presetDirty = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessorEditor)
 };

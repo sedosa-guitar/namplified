@@ -177,7 +177,9 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "boostModel", 1 }, "Boost Model",
         juce::StringArray { "Clean Boost", "808 Drive" }, 0));
-    addKnob ("boostGain", "Boost Gain", -6.0f, 24.0f, 6.0f);
+    // Keep the boostGain ID so existing sessions and presets retain the value;
+    // in Clean Boost mode it now controls post-circuit output level.
+    addKnob ("boostGain", "Boost Post Volume", -6.0f, 24.0f, 6.0f);
     addKnob ("boostBass", "Boost Bass", -12.0f, 12.0f, 0.0f);
     addKnob ("boostMid", "Boost Mid", -12.0f, 12.0f, 0.0f);
     addKnob ("boostTreble", "Boost Treble", -12.0f, 12.0f, 0.0f);
@@ -542,6 +544,36 @@ bool TheLeadAudioProcessor::deleteUserPreset (const juce::String& name)
     return file != juce::File() && file.existsAsFile() && file.deleteFile();
 }
 
+void TheLeadAudioProcessor::capturePresetSnapshot()
+{
+    presetSnapshot.clear();
+    for (auto* parameter : getParameters())
+    {
+        const auto* parameterWithID = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter);
+        if (parameterWithID == nullptr)
+            continue;
+        if (const auto* rawValue = parameters.getRawParameterValue (parameterWithID->paramID))
+            presetSnapshot.emplace (parameterWithID->paramID.toStdString(), rawValue->load());
+    }
+}
+
+bool TheLeadAudioProcessor::isParameterModified (const juce::String& parameterId) const
+{
+    const auto baseline = presetSnapshot.find (parameterId.toStdString());
+    const auto* current = parameters.getRawParameterValue (parameterId);
+    return baseline != presetSnapshot.end() && current != nullptr
+        && std::abs (current->load() - baseline->second) > 0.0001f;
+}
+
+bool TheLeadAudioProcessor::hasUnsavedParameterChanges() const
+{
+    for (const auto& [parameterId, baseline] : presetSnapshot)
+        if (const auto* current = parameters.getRawParameterValue (parameterId); current != nullptr
+            && std::abs (current->load() - baseline) > 0.0001f)
+            return true;
+    return false;
+}
+
 void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     const auto channels = static_cast<juce::uint32> (juce::jmax (1, getTotalNumOutputChannels()));
@@ -578,6 +610,10 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     reverbWorkBuffer.setSize (static_cast<int> (channels), samplesPerBlock);
     delayDuckEnvelope = 0.0f;
     chorus.prepare (spec);
+    outputSafetyLimiter.prepare (spec);
+    outputSafetyLimiter.setThreshold (0.0f);
+    outputSafetyLimiter.setRelease (80.0f);
+    outputSafetyLimiter.reset();
     juce::Reverb::Parameters reverbParameters;
     reverbParameters.roomSize = 0.45f;
     reverb.setParameters (reverbParameters);
@@ -728,7 +764,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             }
             else
             {
-                const auto boostGain = juce::Decibels::decibelsToGain (get ("boostGain", 6.0f));
+                const auto postVolume = juce::Decibels::decibelsToGain (get ("boostGain", 6.0f));
                 const float frequencies[] { 120.0f, 800.0f, 5000.0f };
                 const char* ids[] { "boostBass", "boostMid", "boostTreble" };
                 for (int band = 0; band < 3; ++band)
@@ -741,9 +777,10 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                     auto& filters = boostEqFilters[static_cast<size_t> (channel)];
                     for (int i = 0; i < numSamples; ++i)
                     {
-                        samples[i] = boostCircuits[static_cast<size_t> (channel)].processSample (samples[i], boostGain);
+                        samples[i] = boostCircuits[static_cast<size_t> (channel)].processSample (samples[i], 1.0f);
                         for (auto& filter : filters)
                             samples[i] = filter.process (samples[i]);
+                        samples[i] *= postVolume;
                     }
                 }
             }
@@ -1012,7 +1049,13 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     };
     for (const auto stage : getPostFxOrder())
         processPostFx (stage);
-    buffer.applyGain (juce::Decibels::decibelsToGain (get ("outputGain")));
+    const auto outputGainDb = get ("outputGain");
+    buffer.applyGain (juce::Decibels::decibelsToGain (outputGainDb));
+    if (std::abs (outputGainDb) < 0.001f)
+    {
+        auto outputBlock = juce::dsp::AudioBlock<float> (buffer).getSubBlock (0, static_cast<size_t> (numSamples));
+        outputSafetyLimiter.process (juce::dsp::ProcessContextReplacing<float> (outputBlock));
+    }
     float outputBlockPeak = 0.0f;
     for (int channel = 0; channel < numChannels; ++channel)
         outputBlockPeak = juce::jmax (outputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
