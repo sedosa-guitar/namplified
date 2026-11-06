@@ -112,6 +112,8 @@ static juce::String formatControlValue (const ParameterControl& control, double 
     const juce::String id (control.id);
     if (id.containsIgnoreCase ("Freq"))
         return juce::String (value, 0) + " Hz";
+    if (juce::String (control.label).containsIgnoreCase ("Hz"))
+        return juce::String (value, 0) + " Hz";
     if (id.containsIgnoreCase ("Time") || id.containsIgnoreCase ("Attack")
         || id.containsIgnoreCase ("Release") || id.containsIgnoreCase ("PreDelay"))
         return juce::String (value, value < 10.0 ? 2 : 0) + " ms";
@@ -166,6 +168,7 @@ public:
                           const std::vector<ParameterControl>& controls)
         : audioProcessor (processor), isPostEq (title == "Post EQ"),
           isIRShapeEq (title.startsWith ("Cab IR ")),
+          isBoost (title == "Boost Pedal"),
           titleNumber (isIRShapeEq ? title.fromLastOccurrenceOf (" ", false, false) : juce::String())
     {
         heading.setText ((getVisibleStageName (title) + " · Detailed controls").toUpperCase(), juce::dontSendNotification);
@@ -179,6 +182,7 @@ public:
             label->setColour (juce::Label::textColourId, secondaryText);
             addAndMakeVisible (*label);
             labels.push_back (std::move (label));
+            controlIds.emplace_back (control.id);
             if (control.toggle)
             {
                 auto toggle = std::make_unique<juce::ToggleButton>();
@@ -197,6 +201,8 @@ public:
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                     audioProcessor.parameters, control.id, *choice));
+                if (isBoost && juce::String (control.id) == "boostModel")
+                    choice->onChange = [this] { updateBoostControls(); resized(); };
                 controlWidgets.push_back (choice.get());
                 comboBoxes.push_back (std::move (choice));
             }
@@ -212,6 +218,8 @@ public:
                 slider->setColour (juce::Slider::textBoxOutlineColourId, panel);
                 const juce::String parameterId (control.id);
                 if (parameterId.containsIgnoreCase ("Freq"))
+                    slider->setTextValueSuffix (" Hz");
+                else if (juce::String (control.label).containsIgnoreCase ("Hz"))
                     slider->setTextValueSuffix (" Hz");
                 else if (parameterId == "delayTone")
                     slider->setTextValueSuffix (" Hz");
@@ -242,6 +250,7 @@ public:
                 sliders.push_back (std::move (slider));
             }
         }
+        updateBoostControls();
         if (isPostEq || isIRShapeEq)
         {
             constexpr const char* names[] { "LOW", "MID", "HIGH" };
@@ -254,7 +263,10 @@ public:
                 resetButtons.push_back (std::move (button));
             }
         }
-        setSize (430, 48 + static_cast<int> (controlWidgets.size()) * 46);
+        if (isBoost)
+            updateBoostControls();
+        else
+            setSize (430, 48 + static_cast<int> (controlWidgets.size()) * 46);
     }
 
     void paint (juce::Graphics& g) override { g.fillAll (background); }
@@ -265,6 +277,8 @@ public:
         area.removeFromTop (4);
         for (size_t i = 0; i < controlWidgets.size(); ++i)
         {
+            if (isBoost && ! controlWidgets[i]->isVisible())
+                continue;
             auto row = area.removeFromTop (44);
             labels[i]->setBounds (row.removeFromLeft (130));
             if ((isPostEq || isIRShapeEq) && i % 2 == 1)
@@ -273,6 +287,27 @@ public:
         }
     }
 private:
+    void updateBoostControls()
+    {
+        if (! isBoost)
+            return;
+        const auto* modelParameter = audioProcessor.parameters.getRawParameterValue ("boostModel");
+        const auto use808 = modelParameter != nullptr && modelParameter->load() >= 0.5f;
+        int visibleCount = 0;
+        for (size_t i = 0; i < controlWidgets.size(); ++i)
+        {
+            const auto& id = controlIds[i];
+            const auto visible = id == "boostModel"
+                || (use808 ? (id == "boost808Drive" || id == "boost808Tone" || id == "boost808Level")
+                           : (id == "boostGain" || id == "boostBass" || id == "boostMid" || id == "boostTreble"));
+            controlWidgets[i]->setVisible (visible);
+            labels[i]->setVisible (visible);
+            if (visible)
+                ++visibleCount;
+        }
+        setSize (430, 54 + visibleCount * 48);
+    }
+
     void resetEqBand (int band)
     {
         constexpr const char* bandNames[] { "Low", "Mid", "High" };
@@ -287,9 +322,11 @@ private:
     TheLeadAudioProcessor& audioProcessor;
     bool isPostEq = false;
     bool isIRShapeEq = false;
+    bool isBoost = false;
     juce::String titleNumber;
     juce::Label heading;
     std::vector<std::unique_ptr<juce::Label>> labels;
+    std::vector<juce::String> controlIds;
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::ComboBox>> comboBoxes;
     std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
@@ -536,7 +573,7 @@ public:
         {
             toneCurveButton = std::make_unique<ToneCurveButton> ("Edit detailed controls");
             toneCurveButton->setButtonText (stageName.containsIgnoreCase ("Compressor") ? "COMPRESSOR"
-                                            : stageName.containsIgnoreCase ("Boost") ? "TONE"
+                                            : stageName.containsIgnoreCase ("Boost") ? "EDIT BOOST"
                                             : stageName.containsIgnoreCase ("Delay") ? "EDIT DELAY"
                                             : stageName.containsIgnoreCase ("Reverb") ? "EDIT REVERB" : "EDIT EQ");
             addAndMakeVisible (*toneCurveButton);
@@ -1604,7 +1641,11 @@ public:
                    { "compTone", "Tone (dB)" }, { "compBlend", "Blend", true },
                    { "compVolume", "Output (dB)" }, { "compEQ", "EQ", true }});
         addStage ("Boost Pedal", "boostOn", {{ "boostGain", "Gain (dB)" }}, FileKind::none, 0, mover (true, 2),
-                  {{ "boostBass", "Bass (dB)" }, { "boostMid", "Mid (dB)" }, { "boostTreble", "Treble (dB)" }});
+                  {{ "boostModel", "Model", false, juce::StringArray { "Clean Boost", "808 Drive" } },
+                   { "boostGain", "Gain (dB)" }, { "boostBass", "Bass (dB)" },
+                   { "boostMid", "Mid (dB)" }, { "boostTreble", "Treble (dB)" },
+                   { "boost808Drive", "Drive (dB)" }, { "boost808Tone", "Tone (Hz)" },
+                   { "boost808Level", "Level (dB)" }});
         addStage ("PreEQ", "preEqOn",
                   {{ "preLow", "Low (dB)" }, { "preMid", "Mid (dB)" }, { "preHigh", "High (dB)" }},
                   FileKind::none, 0, mover (true, 3),
