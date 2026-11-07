@@ -64,6 +64,11 @@ public:
         return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
     }
 
+    juce::Font getPopupMenuFont() override
+    {
+        return juce::Font (leadFontOptions (16.0f));
+    }
+
     juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
                                            juce::Point<int> screenPos,
                                            juce::Rectangle<int> parentArea) override
@@ -209,6 +214,25 @@ static juce::String getVisibleStageName (const juce::String& stageName)
     if (stageName.startsWith ("Cab IR "))
         return "IR " + stageName.fromLastOccurrenceOf (" ", false, false);
     return stageName;
+}
+
+static juce::String getAmpModelDescription (int model)
+{
+    static const juce::StringArray descriptions {
+        "American clean-inspired voice with open lows and clear, glassy highs. A responsive base for pedals and edge-of-breakup tones.",
+        "British crunch-inspired voice with chewy mids and a lively attack, moving from gritty rhythm to classic rock lead.",
+        "American high-gain-inspired voice with tight lows and focused mids for articulate heavy riffs and sustained leads.",
+        "British chime-inspired voice with bright upper mids and a quick response for jangly chords and crunchy rhythm parts.",
+        "Tweed-era American-inspired voice with warm breakup and touch-sensitive dynamics for roots, blues and vintage drive.",
+        "Modern American metal-inspired voice with firm bass and smooth sustain for dense, high-gain playing.",
+        "Thick British crunch-inspired voice with dense mids and a fuzzy edge that gives chords extra weight.",
+        "Low-wattage British Class A-inspired voice with bright bite, lively dynamics and raw, early breakup.",
+        "Classic British rock stack-inspired voice with punchy upper mids and a cutting crunch for hard rock and metal.",
+        "Large-scale clean-to-doom-inspired voice with deep lows and a broad, heavy feel as the gain rises.",
+        "Extreme low-end drone-inspired voice for long sustain, dense bass and deliberately abrasive textures.",
+        "American hot-rod combo-inspired voice with bright punch, assertive mids and a singing overdrive character."
+    };
+    return descriptions[juce::jlimit (0, descriptions.size() - 1, model)];
 }
 
 static void drawBoostPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour ink)
@@ -801,6 +825,7 @@ public:
                     choice->onChange = [this]
                     {
                         updateConditionalControlVisibility();
+                        updateAmpModelTooltip();
                         resized();
                         if (contentSizeChangedHandler)
                             contentSizeChangedHandler();
@@ -846,6 +871,7 @@ public:
             }
         }
         updateConditionalControlVisibility();
+        updateAmpModelTooltip();
     }
 
     void paint (juce::Graphics& g) override
@@ -1101,6 +1127,7 @@ private:
             loadButton.setVisible (showCapture);
             fileName.setVisible (showCapture);
         }
+        updateAmpModelTooltip();
     }
 
     bool isUsingInternalAmp() const
@@ -1110,6 +1137,30 @@ private:
         const auto parameterId = "amp" + juce::String (slot + 1) + "Source";
         const auto* source = audioProcessor.parameters.getRawParameterValue (parameterId);
         return source != nullptr && source->load() >= 0.5f;
+    }
+
+    void updateAmpModelTooltip()
+    {
+        if (! stageName.startsWith ("NAM Profile"))
+            return;
+        const auto prefix = "amp" + stageName.fromLastOccurrenceOf (" ", false, false);
+        const auto* modelParameter = audioProcessor.parameters.getRawParameterValue (prefix + "Model");
+        const auto model = modelParameter != nullptr
+            ? juce::jlimit (0, 11, juce::roundToInt (modelParameter->load())) : 0;
+        const auto simSelected = isUsingInternalAmp();
+        if (simSelected && model == lastAmpModelTooltip)
+            return;
+        lastAmpModelTooltip = simSelected ? model : -1;
+        const auto description = simSelected ? getAmpModelDescription (model) : juce::String();
+        for (size_t i = 0; i < controlIds.size(); ++i)
+        {
+            if (controlIds[i] != prefix + "Model")
+                continue;
+            if (auto* tooltipClient = dynamic_cast<juce::SettableTooltipClient*> (controlWidgets[i]))
+                tooltipClient->setTooltip (description);
+            controlLabels[i]->setTooltip (description);
+            break;
+        }
     }
 
     static bool usesAmpSimControl (int model, const juce::String& suffix)
@@ -1211,6 +1262,7 @@ private:
             else
                 fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
         }
+        updateAmpModelTooltip();
         repaint();
     }
 
@@ -1228,6 +1280,7 @@ private:
     std::function<void (bool)> fullscreenHandler;
     bool compactMode = false;
     bool isFullscreen = false;
+    int lastAmpModelTooltip = -1;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
     juce::TextButton loadButton, moveUpButton, moveDownButton;
