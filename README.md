@@ -65,6 +65,16 @@ The exact route depends on which blocks are enabled and whether the amp section 
 
 NAMinator uses [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) 0.5.4. The current build supports NAM model file versions 0.5 through 0.7 and expects mono-in/mono-out captures. Stereo processing is handled by running paired mono instances where applicable. NAM A2 architecture parsing is included; individual models still need to use an architecture supported by the bundled NAM Core version.
 
+### TONE3000 model browser
+
+NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMinator downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected amp slot. The OAuth token is kept in memory for this operation; NAMinator does not upload captures or bundle them with presets. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
+
+This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Before using Browse TONE3000, register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI in the TONE3000 API settings for that key. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
+
+The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api).
+
+TONE3000's API and terms can change. See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMinator is an independent project and is not endorsed by TONE3000.
+
 ## Screenshots
 
 ### Series mode
@@ -114,6 +124,8 @@ Build products are placed under `build`. The CMake project currently generates *
 
 > **Placeholder:** Release builds and verified installation steps are not published yet. These sections will be completed when distributable packages are available.
 
+> **Release reminder:** Before preparing installer files, contact TONE3000 support to confirm that the free-tier integration may use the tone metadata and model-list endpoints used by NAMinator.
+
 ### macOS standalone
 
 <!-- TODO: Add download link, supported macOS versions, installation steps, and first-launch audio setup. -->
@@ -132,16 +144,22 @@ Build products are placed under `build`. The CMake project currently generates *
 
 ## Third-party software and licenses
 
-Third-party attributions and license texts are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). The built-in amp simulation DSP is derived from 0xFX under the MIT License. The Boost circuit uses `chowdsp_wdf` under the BSD 3-Clause License. NAM Core and JUCE are fetched as build dependencies; review their upstream license terms when building or distributing NAMinator.
+Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), the 0xFX amp DSP (MIT), KissFFT headers (BSD 3-Clause), and bundled fonts (SIL OFL 1.1). JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
 
-**NAMinator's own distribution license:** <!-- TODO: Choose and add the project's license before publishing source or binaries. -->
+**NAMinator's own code is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only).** See [`LICENSE`](LICENSE). Third-party components retain their own licenses and notices listed above and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
+
+Copyright (C) 2026 Ronny Wels (sedosa). Git commits may also appear under the author's GitLab identity `scalanakamoto`.
+
+NAMinator is currently distributed free of charge, without paid features or donation links. This describes the maintainers' distribution; AGPL-3.0-only still permits compliant third-party forks to charge for copies.
+
+When publishing plugin binaries or installers, provide access to the corresponding source code for that exact release and retain the required third-party license notices. The current repository is not yet a release package: installation steps, signing/notarization, and final per-binary dependency notices remain to be completed.
 
 ## Known limitations
 
 - Current CMake targets are for macOS only.
 - NAM captures must be mono-in/mono-out and compatible with the bundled NAM Core version.
 - Amp simulations are circuit-inspired DSP models, not official recreations endorsed by amplifier manufacturers.
-- Installation packages, signing/notarization guidance, and a project-level license are still to be added.
+- Installation packages and signing/notarization guidance are still to be added.
 
 ## Contributing
 

@@ -87,14 +87,20 @@ endif()
 juce_generate_juce_header(TheLead)
 
 juce_add_binary_data(LeadFonts
-    SOURCES Assets/Fonts/InterVariable.ttf Assets/Fonts/SpaceGrotesk.ttf
+    SOURCES
+        Assets/Fonts/InterVariable.ttf
+        Assets/Fonts/SpaceGrotesk.ttf
+        Assets/Branding/TONE3000Logo.svg
 )
 
 target_sources(TheLead PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
+    Source/Tone3000Client.cpp
     Source/CleanBoost.h
     Source/AmpSimBridge.h
+    Source/Tone3000Client.h
+    Source/Tone3000Config.h
 )
 
 # The amp-only DSP is derived from 0xFX 1.3.1 (MIT). Keep its license in
@@ -126,6 +132,7 @@ target_link_libraries(TheLead PRIVATE
     LeadFonts
     juce::juce_audio_utils
     juce::juce_dsp
+    juce::juce_cryptography
     nam_core
     naminator_amp_sim
     chowdsp_wdf

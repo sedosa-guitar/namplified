@@ -1,5 +1,66 @@
 # Third-party notices
 
+This file covers third-party components currently identified in the source
+tree and the configured macOS build. Before each binary release, regenerate
+and review the dependency inventory for the exact build (including the JUCE
+SPDX inventory described below), then include the applicable notices with the
+binary. Build dependencies may change when their pinned versions change.
+
+## JUCE
+
+NAMinator uses JUCE 9.0.5. The JUCE Framework modules are dual-licensed under
+AGPLv3 or a commercial JUCE licence. This project uses the AGPLv3 option; the
+project's `LICENSE` contains the AGPLv3 text. JUCE's framework dependencies
+and their license identifiers are inventoried in the upstream
+[`JUCE.spdx.json`](https://github.com/juce-framework/JUCE/blob/9.0.5/JUCE.spdx.json)
+for this pinned version. Review the licenses of components included by the
+selected JUCE modules when producing a binary; do not assume every package in
+that inventory is linked into every build.
+
+## NeuralAmpModelerCore
+
+NAMinator uses NeuralAmpModelerCore v0.5.4 by Steven Atkinson, including its
+NAM A1/A2 model parsing and DSP code. The upstream project is licensed under
+the MIT License. Its vendored Eigen dependency is licensed under MPL-2.0; see
+the [Eigen license text](https://github.com/sdatkinson/NeuralAmpModelerCore/blob/v0.5.4/Dependencies/eigen/COPYING.MPL2).
+The bundled AudioDSPTools dependency retains the MIT notice shown below.
+
+```text
+MIT License
+
+Copyright (c) 2023 Steven Atkinson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+## Fonts
+
+The bundled Inter and Space Grotesk font files are distributed under the SIL
+Open Font License 1.1. The corresponding license texts are kept alongside the
+font files in `Assets/Fonts/OFL.txt` and `Assets/Fonts/SpaceGrotesk-OFL.txt`.
+
+## TONE3000 brand asset
+
+`Assets/Branding/TONE3000Logo.svg` is the unmodified TONE3000 logo downloaded
+from TONE3000's official brand asset package. It is used only to identify the
+TONE3000 integration. See the current [API terms and brand requirements](https://www.tone3000.com/api/terms).
+
 ## chowdsp_wdf
 
 NAMinator uses `chowdsp_wdf` v1.0.0, a header-only Wave Digital Filter library by Jatin Chowdhury, to model the Boost stage's diode pair.

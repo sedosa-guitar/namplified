@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "Tone3000Client.h"
 #include <BinaryData.h>
 #include <unordered_set>
 #include <limits>
@@ -879,12 +880,25 @@ public:
             loadButton.setColour (juce::TextButton::textColourOffId, text);
             addAndMakeVisible (loadButton);
 
+            if (loadKind == FileKind::nam)
+            {
+                tone3000Button.setButtonText ({});
+                tone3000Button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff21473f));
+                tone3000Button.setColour (juce::TextButton::textColourOffId, knobAccent);
+                tone3000Button.setTooltip ("Choose a NAM tone on TONE3000, then select and download one capture locally.");
+                addAndMakeVisible (tone3000Button);
+                tone3000Button.onClick = [this] { showToneArchitectureMenu(); };
+                tone3000Logo = juce::Drawable::createFromSVGString (juce::String::fromUTF8 (
+                    BinaryData::TONE3000Logo_svg, BinaryData::TONE3000Logo_svgSize));
+            }
+
             fileName.setText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
                                                         : audioProcessor.getImpulseResponseName (slot),
                               juce::dontSendNotification);
             fileName.setFont (leadFontOptions (15.0f));
             fileName.setColour (juce::Label::textColourId, secondaryText);
-            fileName.setJustificationType (juce::Justification::centredLeft);
+            fileName.setJustificationType (loadKind == FileKind::nam
+                ? juce::Justification::centred : juce::Justification::centredLeft);
             addAndMakeVisible (fileName);
 
             loadButton.onClick = [this]
@@ -904,7 +918,10 @@ public:
                         if (! file.existsAsFile())
                             return;
                         if (safeThis->loadKind == FileKind::nam)
+                        {
+                            safeThis->tone3000Attribution.clear();
                             safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
+                        }
                         else
                             safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
                         safeThis->fileName.setText (file.getFileName(), juce::dontSendNotification);
@@ -1082,7 +1099,7 @@ public:
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = compactMode ? 112 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
-        const auto fileControlsHeight = loadKind == FileKind::none || isUsingInternalAmp() ? 0 : 46;
+        const auto fileControlsHeight = loadKind == FileKind::none || isUsingInternalAmp() || loadKind == FileKind::nam ? 0 : 46;
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
@@ -1126,6 +1143,19 @@ public:
             heading.setBounds (header.withTrimmedLeft (38).withWidth (96));
             controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
                 header.withTrimmedLeft (142).withWidth (142).withHeight (30).withY (header.getY() + 3));
+            if (loadKind == FileKind::nam && ! isUsingInternalAmp())
+            {
+                auto actions = header.withTrimmedLeft (294);
+                const auto gap = 8;
+                const auto loadWidth = juce::jmin (160, juce::jmax (112, (actions.getWidth() - gap) / 3));
+                const auto toneWidth = juce::jmax (0, juce::jmin (220, actions.getWidth() - loadWidth - gap));
+                loadButton.setBounds (actions.removeFromLeft (loadWidth).withHeight (34).withY (header.getY() + 1));
+                actions.removeFromLeft (gap);
+                tone3000Button.setBounds (actions.removeFromLeft (toneWidth).withHeight (34).withY (header.getY() + 1));
+                actions.removeFromLeft (8);
+                fileName.setBounds (actions);
+                fileName.setTooltip (fileName.getText());
+            }
         }
         else
             heading.setBounds (header.withTrimmedLeft (38));
@@ -1144,11 +1174,14 @@ public:
 
         if (loadKind != FileKind::none && ! isUsingInternalAmp())
         {
-            auto fileRow = area.removeFromTop (40);
-            loadButton.setBounds (fileRow.removeFromLeft (130));
-            fileRow.removeFromLeft (10);
-            fileName.setBounds (fileRow);
-            area.removeFromTop (3);
+            if (loadKind != FileKind::nam)
+            {
+                auto fileRow = area.removeFromTop (40);
+                loadButton.setBounds (fileRow.removeFromLeft (130));
+                fileRow.removeFromLeft (10);
+                fileName.setBounds (fileRow);
+                area.removeFromTop (3);
+            }
         }
 
         if (graphicEq != nullptr)
@@ -1218,7 +1251,138 @@ public:
         }
     }
 
+    void paintOverChildren (juce::Graphics& g) override
+    {
+        if (tone3000Logo == nullptr || ! tone3000Button.isVisible() || tone3000Button.getButtonText().isNotEmpty())
+            return;
+
+        auto bounds = tone3000Button.getBounds().toFloat().reduced (8.0f, 5.0f);
+        const auto logoWidth = juce::jmin (bounds.getWidth() * 0.62f, bounds.getHeight() * 6.56f);
+        const auto logoBounds = bounds.removeFromLeft (logoWidth);
+        tone3000Logo->drawWithin (g, logoBounds, juce::RectanglePlacement::centred, 1.0f);
+        bounds.removeFromLeft (6.0f);
+        g.setColour (knobAccent);
+        g.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        g.drawText ("BROWSE", bounds.toNearestInt(), juce::Justification::centred);
+    }
+
 private:
+    void showToneArchitectureMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addItem (1, "A1 Model Architecture");
+        menu.addItem (2, "A2 Model Architecture");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tone3000Button),
+                            [safeThis = juce::Component::SafePointer<StageCard> (this)] (int result)
+        {
+            if (safeThis != nullptr && (result == 1 || result == 2))
+                safeThis->beginToneSelection (result);
+        });
+    }
+
+    void beginToneSelection (int architecture)
+    {
+        if (tone3000Client == nullptr)
+            tone3000Client = std::make_unique<tone3000::Client>();
+
+        tone3000Button.setEnabled (false);
+        tone3000Button.setButtonText ("OPENING TONE3000...");
+        const juce::Component::SafePointer<StageCard> safeThis (this);
+        const auto started = tone3000Client->startSelectFlow (architecture,
+            [safeThis] (std::vector<tone3000::Model> models, juce::String error) mutable
+            {
+                if (safeThis == nullptr)
+                    return;
+                safeThis->tone3000Button.setEnabled (true);
+                safeThis->tone3000Button.setButtonText ({});
+                if (error.isNotEmpty())
+                {
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                            "TONE3000", error);
+                    return;
+                }
+                safeThis->showToneModelMenu (std::move (models));
+            });
+        if (! started)
+        {
+            tone3000Button.setEnabled (true);
+            tone3000Button.setButtonText ({});
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                    "TONE3000", "Could not start the TONE3000 browser. Check that the local callback port is available.");
+        }
+    }
+
+    void showToneModelMenu (std::vector<tone3000::Model> models)
+    {
+        if (models.size() == 1)
+        {
+            downloadToneModel (models.front());
+            return;
+        }
+
+        juce::PopupMenu menu;
+        for (size_t i = 0; i < models.size(); ++i)
+        {
+            const auto& model = models[i];
+            auto title = model.name + "  |  " + model.architecture;
+            if (model.creator.isNotEmpty()) title += "  |  " + model.creator;
+            if (model.license.isNotEmpty()) title += "  |  " + model.license;
+            menu.addItem (static_cast<int> (i + 1), title);
+        }
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tone3000Button),
+            [safeThis = juce::Component::SafePointer<StageCard> (this), models = std::move (models)] (int result) mutable
+            {
+                if (safeThis == nullptr)
+                    return;
+                if (result <= 0 || result > static_cast<int> (models.size()))
+                {
+                    if (safeThis->tone3000Client != nullptr)
+                        safeThis->tone3000Client->cancel();
+                    return;
+                }
+                safeThis->downloadToneModel (models[static_cast<size_t> (result - 1)]);
+            });
+    }
+
+    void downloadToneModel (const tone3000::Model& model)
+    {
+        if (tone3000Client == nullptr)
+            return;
+        tone3000Button.setEnabled (false);
+        tone3000Button.setButtonText ("DOWNLOADING...");
+        fileName.setText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
+        const juce::Component::SafePointer<StageCard> safeThis (this);
+        if (! tone3000Client->downloadModel (model,
+            [safeThis, model] (juce::File file, juce::String error)
+            {
+                if (safeThis == nullptr)
+                    return;
+                safeThis->tone3000Button.setEnabled (true);
+                safeThis->tone3000Button.setButtonText ({});
+                if (error.isNotEmpty() || ! file.existsAsFile())
+                {
+                    safeThis->fileName.setText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
+                                                juce::dontSendNotification);
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                            "TONE3000", error.isNotEmpty() ? error : "Download failed.");
+                    return;
+                }
+                safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
+                safeThis->tone3000Attribution = "POWERED BY TONE3000 | " + model.toneTitle + " | " + model.name
+                    + (model.creator.isNotEmpty() ? " | " + model.creator : "")
+                    + (model.license.isNotEmpty() ? " | " + model.license : "");
+                safeThis->fileName.setText (safeThis->tone3000Attribution, juce::dontSendNotification);
+                safeThis->fileName.setTooltip (safeThis->tone3000Attribution);
+            }))
+        {
+            tone3000Button.setEnabled (true);
+            tone3000Button.setButtonText ({});
+            fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                    "TONE3000", "Could not start the selected capture download.");
+        }
+    }
+
     bool isControlVisible (size_t index) const
     {
         if (index >= controlIds.size())
@@ -1281,6 +1445,7 @@ private:
         {
             const auto showCapture = ! isUsingInternalAmp();
             loadButton.setVisible (showCapture);
+            tone3000Button.setVisible (showCapture);
             fileName.setVisible (showCapture);
         }
         updateAmpModelTooltip();
@@ -1413,11 +1578,13 @@ private:
         {
             const auto status = audioProcessor.getNAMCaptureStatus (slot);
             if (status == "Loaded")
-                fileName.setText (("LOADED: " + audioProcessor.getNAMCaptureName (slot)).toUpperCase(), juce::dontSendNotification);
+                fileName.setText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
+                    : ("LOADED: " + audioProcessor.getNAMCaptureName (slot)).toUpperCase(), juce::dontSendNotification);
             else if (status.isNotEmpty())
                 fileName.setText (status, juce::dontSendNotification);
             else
                 fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
+            fileName.setTooltip (fileName.getText());
         }
         updateAmpModelTooltip();
         repaint();
@@ -1472,7 +1639,7 @@ private:
     int lastAmpModelTooltip = -1;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
-    juce::TextButton loadButton, moveUpButton, moveDownButton;
+    juce::TextButton loadButton, tone3000Button, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::TextButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
@@ -1490,6 +1657,9 @@ private:
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAttachments;
     std::unique_ptr<juce::FileChooser> fileChooser;
+    std::unique_ptr<tone3000::Client> tone3000Client;
+    std::unique_ptr<juce::Drawable> tone3000Logo;
+    juce::String tone3000Attribution;
 };
 
 static void drawAmpHeadIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour);
