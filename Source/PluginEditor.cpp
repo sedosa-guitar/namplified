@@ -2695,6 +2695,17 @@ juce::String TheLeadAudioProcessorEditor::selectedPresetName() const
 
 void TheLeadAudioProcessorEditor::timerCallback()
 {
+    const auto* routingParameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
+    const auto* irModeParameter = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
+    const auto parallel = routingParameter != nullptr && routingParameter->load() >= 0.5f;
+    const auto sharedIR = irModeParameter != nullptr && irModeParameter->load() >= 0.5f;
+    const auto ir1Active = audioProcessor.isImpulseResponseActive (0);
+    const auto ir2Active = audioProcessor.isImpulseResponseActive (1);
+    const auto blendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
+                                 | (ir1Active ? 4 : 0) | (ir2Active ? 8 : 0);
+    if (blendDisplayState != lastBlendDisplayState)
+        updateRoutingDisplay();
+
     const auto changed = audioProcessor.hasUnsavedParameterChanges();
     if (changed != presetDirty)
     {
@@ -2718,17 +2729,36 @@ void TheLeadAudioProcessorEditor::updateRoutingDisplay()
     const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
     const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
+    const auto ir1Active = audioProcessor.isImpulseResponseActive (0);
+    const auto ir2Active = audioProcessor.isImpulseResponseActive (1);
+    lastBlendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
+                          | (ir1Active ? 4 : 0) | (ir2Active ? 8 : 0);
     blendAttachment.reset();
-    const auto blendParameterId = parallel ? juce::String ("ampParallelBlend") : juce::String ("irParallelBlend");
-    blendSlider.setName (blendParameterId);
-    blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        audioProcessor.parameters, blendParameterId, blendSlider);
+    const auto onlyOneCabIsActive = ! parallel && (ir1Active != ir2Active);
+    if (onlyOneCabIsActive)
+    {
+        // Keep the saved two-cab blend intact. With one usable IR, show its
+        // effective 100% position and disable a control that cannot blend.
+        blendSlider.setValue (ir1Active ? 1.0 : 0.0, juce::dontSendNotification);
+        blendSlider.setEnabled (false);
+    }
+    else
+    {
+        const auto blendParameterId = parallel ? juce::String ("ampParallelBlend") : juce::String ("irParallelBlend");
+        blendSlider.setName (blendParameterId);
+        blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            audioProcessor.parameters, blendParameterId, blendSlider);
+        blendSlider.setEnabled (true);
+    }
     ampRoutingBox.setSelectedId (parallel ? 2 : 1, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
         ? "Amp 1 to IR 1 and Amp 2 to IR 2. This controls the Amp 1 share; disabling either amp sends 100% through the other path."
-        : "Centre is 0 (equal blend); negative favours CAB 2, positive favours CAB 1. If one cab is disabled, the other is 100%.");
+        : onlyOneCabIsActive
+            ? (ir1Active ? "IR 1 is the only active cabinet and receives 100% of the signal. Enable IR 2 to blend both cabinets."
+                         : "IR 2 is the only active cabinet and receives 100% of the signal. Enable IR 1 to blend both cabinets.")
+            : "Centre is 0 (equal blend); negative favours CAB 2, positive favours CAB 1. If one cab is disabled, the other is 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
     updateBlendValue();
     resized();

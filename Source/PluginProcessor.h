@@ -45,6 +45,7 @@ public:
     bool consumeOutputClip() noexcept { return outputClipped.exchange (false, std::memory_order_relaxed); }
     IRParameters parameters;
     void loadImpulseResponse (int slot, const juce::File& file);
+    bool isImpulseResponseActive (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
     juce::String getImpulseResponseName (int slot) const;
     juce::String getNAMCaptureName (int slot) const;
