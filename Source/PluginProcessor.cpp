@@ -296,6 +296,12 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 120.0f);
     addKnob ("postMid", "Post EQ Mid", -12.0f, 12.0f, 0.0f);
     addFrequency ("postMidFreq", "Post EQ Mid Frequency", 50.0f, 16000.0f, 1000.0f);
+    addKnob ("postGraphic2", "Post EQ 100 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic3", "Post EQ 200 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic4", "Post EQ 400 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic6", "Post EQ 1.6 kHz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic7", "Post EQ 3.2 kHz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic8", "Post EQ 6.4 kHz", -12.0f, 12.0f, 0.0f);
     addKnob ("postHigh", "Post EQ High", -12.0f, 12.0f, 0.0f);
     addFrequency ("postHighFreq", "Post EQ High Frequency", 50.0f, 16000.0f, 8000.0f);
     addKnob ("outputGain", "Output Gain", -24.0f, 12.0f, 0.0f);
@@ -366,41 +372,47 @@ void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, 
                                                const juce::String& prefix, bool pre)
 {
     const auto sampleRate = juce::jmax (1.0, modelSampleRate.load());
-    constexpr int bandCount = 5;
+    juce::ignoreUnused (prefix);
+    constexpr int preBandCount = 5;
+    constexpr int postBandCount = 9;
     const float preFrequencies[] { 80.0f, 250.0f, 800.0f, 2500.0f, 8000.0f };
     const char* preGainIds[] { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-    const float postDefaults[] { 120.0f, 1000.0f, 8000.0f };
-    const char* postBandNames[] { "Low", "Mid", "High" };
-    auto& filters = pre ? preEqFilters : postEqFilters;
-    for (int band = 0; band < bandCount; ++band)
+    const float postFrequencies[] { 50.0f, 100.0f, 200.0f, 400.0f, 800.0f, 1600.0f, 3200.0f, 6400.0f, 16000.0f };
+    const char* postGainIds[] { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
+                                "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
+    const auto processFilters = [&] (auto& filters, int bandCount, bool isPre)
     {
-        const auto suffix = band < 3 ? juce::String (postBandNames[band]) : juce::String();
-        const auto gainId = pre ? juce::String (preGainIds[band]) : prefix + suffix;
-        const auto* gain = parameters.getRawParameterValue (gainId);
-        const auto* frequency = pre ? nullptr : parameters.getRawParameterValue (prefix + suffix + "Freq");
-        const auto gainDb = gain != nullptr ? gain->load() : 0.0f;
-        const auto hz = pre ? preFrequencies[band]
-                            : (band < 3 && frequency != nullptr ? frequency->load() : postDefaults[band % 3]);
+        for (int band = 0; band < bandCount; ++band)
+        {
+            const auto gainId = isPre ? juce::String (preGainIds[band]) : juce::String (postGainIds[band]);
+            const auto* gain = parameters.getRawParameterValue (gainId);
+            const auto gainDb = gain != nullptr ? gain->load() : 0.0f;
+            const auto hz = isPre ? preFrequencies[band] : postFrequencies[band];
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                const auto filterType = isPre && band == 0 ? 0 : isPre && band == preBandCount - 1 ? 2 : 1;
+                setEqCoefficients (filters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
+                                   filterType, hz, gainDb, sampleRate);
+            }
+        }
+
         for (int channel = 0; channel < channels; ++channel)
         {
-            const auto filterType = pre ? (band == 0 ? 0 : band == 4 ? 2 : 1) : juce::jmin (band, 2);
-            setEqCoefficients (filters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
-                               filterType, hz, gainDb, sampleRate);
+            auto* samplesData = buffer.getWritePointer (channel);
+            auto& channelFilters = filters[static_cast<size_t> (channel)];
+            for (int i = 0; i < samples; ++i)
+            {
+                auto sample = samplesData[i];
+                for (int band = 0; band < bandCount; ++band)
+                    sample = channelFilters[static_cast<size_t> (band)].process (sample);
+                samplesData[i] = sample;
+            }
         }
-    }
-
-    for (int channel = 0; channel < channels; ++channel)
-    {
-        auto* samplesData = buffer.getWritePointer (channel);
-        auto& channelFilters = filters[static_cast<size_t> (channel)];
-        for (int i = 0; i < samples; ++i)
-        {
-            auto sample = samplesData[i];
-            for (auto& filter : channelFilters)
-                sample = filter.process (sample);
-            samplesData[i] = sample;
-        }
-    }
+    };
+    if (pre)
+        processFilters (preEqFilters, preBandCount, true);
+    else
+        processFilters (postEqFilters, postBandCount, false);
 }
 
 void TheLeadAudioProcessor::processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot)

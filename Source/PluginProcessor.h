@@ -133,7 +133,7 @@ private:
     float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f;
     std::atomic<bool> inputClipped { false }, outputClipped { false };
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
-    std::array<std::array<BiquadState, 5>, 2> postEqFilters {};
+    std::array<std::array<BiquadState, 9>, 2> postEqFilters {};
     std::array<std::array<std::array<BiquadState, 3>, 2>, numIRSlots> irShapeEqFilters {};
     std::array<std::array<BiquadState, 3>, 2> boostEqFilters {};
     std::array<WdfBoostCircuit, 2> boostCircuits {};

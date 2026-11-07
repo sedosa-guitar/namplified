@@ -18,6 +18,7 @@ private:
     void refreshUserPresets (const juce::String& selectName = {});
     void updateRoutingDisplay();
     void updateBlendValue();
+    void setEqFullscreen (bool shouldBeFullscreen);
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
     void timerCallback() override;
@@ -46,6 +47,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
     std::unique_ptr<ChainControls> chainControls;
     bool presetDirty = false;
+    bool eqFullscreen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessorEditor)
 };

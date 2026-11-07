@@ -455,28 +455,37 @@ public:
     }
 };
 
-class FiveBandEqEditor final : public juce::Component
+class GraphicEqEditor final : public juce::Component
 {
 public:
-    explicit FiveBandEqEditor (TheLeadAudioProcessor& processor) : audioProcessor (processor)
+    explicit GraphicEqEditor (TheLeadAudioProcessor& processor, bool postEq) : audioProcessor (processor)
     {
-        parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-        frequencyNames = { "80 Hz", "250 Hz", "800 Hz", "2.5 kHz", "8 kHz" };
+        if (postEq)
+        {
+            parameterIds = { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
+                             "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
+            frequencyNames = { "50 Hz", "100 Hz", "200 Hz", "400 Hz", "800 Hz", "1.6 kHz", "3.2 kHz", "6.4 kHz", "16 kHz" };
+        }
+        else
+        {
+            parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
+            frequencyNames = { "80 Hz", "250 Hz", "800 Hz", "2.5 kHz", "8 kHz" };
+        }
         setMouseCursor (juce::MouseCursor::CrosshairCursor);
-        for (int band = 0; band < 5; ++band)
+        for (int band = 0; band < parameterIds.size(); ++band)
         {
             auto button = std::make_unique<juce::TextButton> ("RESET");
             button->setTooltip ("Reset " + frequencyNames[band] + " band to 0 dB");
             button->onClick = [this, band] { resetBand (band); };
             addAndMakeVisible (*button);
-            resetButtons[static_cast<size_t> (band)] = std::move (button);
+            resetButtons.push_back (std::move (button));
         }
     }
 
     void resized() override
     {
         const auto plot = getPlotBounds();
-        for (int band = 0; band < 5; ++band)
+        for (int band = 0; band < parameterIds.size(); ++band)
             resetButtons[static_cast<size_t> (band)]->setBounds (
                 juce::roundToInt (pointX (band, plot) - 25.0f), juce::roundToInt (plot.getBottom() + 34.0f), 50, 22);
     }
@@ -573,9 +582,10 @@ private:
         return plot;
     }
 
-    static float pointX (int index, juce::Rectangle<float> plot)
+    float pointX (int index, juce::Rectangle<float> plot) const
     {
-        return plot.getX() + plot.getWidth() * static_cast<float> (index) / 4.0f;
+        return plot.getX() + plot.getWidth() * static_cast<float> (index)
+             / static_cast<float> (juce::jmax (1, parameterIds.size() - 1));
     }
 
     static float gainToY (float gain, juce::Rectangle<float> plot)
@@ -604,7 +614,7 @@ private:
 
     TheLeadAudioProcessor& audioProcessor;
     juce::StringArray parameterIds, frequencyNames;
-    std::array<std::unique_ptr<juce::TextButton>, 5> resetButtons;
+    std::vector<std::unique_ptr<juce::TextButton>> resetButtons;
     int activeBand = -1;
 };
 
@@ -653,10 +663,18 @@ public:
             moveDownButton.onClick = [moveHandler] { moveHandler (1); };
         }
 
-        if (stageName == "PreEQ")
+        if (stageName == "PreEQ" || stageName == "Post EQ")
         {
-            graphicEq = std::make_unique<FiveBandEqEditor> (audioProcessor);
+            graphicEq = std::make_unique<GraphicEqEditor> (audioProcessor, stageName == "Post EQ");
             addAndMakeVisible (*graphicEq);
+            expandButton = std::make_unique<juce::TextButton> ("FULL SCREEN");
+            expandButton->setTooltip ("Expand this graphic EQ to fill the plugin window.");
+            addAndMakeVisible (*expandButton);
+            expandButton->onClick = [this]
+            {
+                if (fullscreenHandler)
+                    fullscreenHandler (! isFullscreen);
+            };
             return;
         }
 
@@ -843,6 +861,16 @@ public:
     const juce::String& getStageName() const { return stageName; }
     const juce::String& getEnableParameterId() const { return enableParameterId; }
     std::function<void (int)> getMoveHandler() const { return moveHandler; }
+    void setFullscreenHandler (std::function<void (bool)> handler) { fullscreenHandler = std::move (handler); }
+    void setFullscreenMode (bool fullscreen)
+    {
+        isFullscreen = fullscreen;
+        if (expandButton != nullptr)
+        {
+            expandButton->setButtonText (fullscreen ? "RESTORE" : "FULL SCREEN");
+            expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
+        }
+    }
     void setCompactMode (bool shouldBeCompact)
     {
         if (compactMode == shouldBeCompact)
@@ -904,7 +932,7 @@ public:
             if (controlIds[i].endsWith ("Source"))
                 sourceIndex = static_cast<int> (i);
         const auto rightWidth = (hasEnableControl ? 92 : 0) + (hasMoveControls ? 68 : 0)
-                              + (toneCurveButton != nullptr ? 94 : 0);
+                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 110 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
         {
@@ -929,6 +957,8 @@ public:
         }
         if (toneCurveButton != nullptr)
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
+        if (expandButton != nullptr)
+            expandButton->setBounds (right.removeFromLeft (104).withY (header.getY() + 4).withHeight (28));
 
         if (loadKind != FileKind::none && ! isUsingInternalAmp())
         {
@@ -1195,12 +1225,15 @@ private:
     int dragStartY = 0, lastDragStep = 0;
     std::function<void (int)> moveHandler;
     std::function<void()> contentSizeChangedHandler;
+    std::function<void (bool)> fullscreenHandler;
     bool compactMode = false;
+    bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
     juce::TextButton loadButton, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
-    std::unique_ptr<FiveBandEqEditor> graphicEq;
+    std::unique_ptr<juce::TextButton> expandButton;
+    std::unique_ptr<GraphicEqEditor> graphicEq;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     std::vector<std::unique_ptr<juce::Label>> controlLabels;
     std::vector<juce::String> controlIds;
@@ -1985,7 +2018,8 @@ private:
 class ChainControls final : public juce::Component, private juce::Timer
 {
 public:
-    explicit ChainControls (TheLeadAudioProcessor& processor) : audioProcessor (processor)
+    explicit ChainControls (TheLeadAudioProcessor& processor, std::function<void (bool)> fullscreenChanged)
+        : audioProcessor (processor), fullscreenChangedHandler (std::move (fullscreenChanged))
     {
         startTimerHz (30);
         addAndMakeVisible (chainViewport);
@@ -2070,11 +2104,7 @@ public:
         addStage ("Chorus", "chorusOn",
                   {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 2));
-        addStage ("Post EQ", "postOn", {{ "postLow", "Low (dB)" }, { "postMid", "Mid (dB)" }, { "postHigh", "High (dB)" }},
-                  FileKind::none, 0, mover (false, 3),
-                  {{ "postLowFreq", "Low Frequency (Hz)" }, { "postLow", "Low Gain (dB)" },
-                   { "postMidFreq", "Mid Frequency (Hz)" }, { "postMid", "Mid Gain (dB)" },
-                   { "postHighFreq", "High Frequency (Hz)" }, { "postHigh", "High Gain (dB)" }});
+        addStage ("Post EQ", "postOn", {}, FileKind::none, 0, mover (false, 3));
         addStage ("Output", {}, {{ "outputGain", "Level (dB)" }});
         refreshTileOrder();
         selectStage (findCard ("1176-Style FET Compressor"));
@@ -2105,6 +2135,18 @@ public:
 
     void resized() override
     {
+        if (fullscreenStage != nullptr)
+        {
+            chainViewport.setVisible (false);
+            detailsViewport.setVisible (true);
+            detailsViewport.setBounds (getLocalBounds().reduced (12));
+            if (detailsViewport.getViewedComponent() != fullscreenStage)
+                detailsViewport.setViewedComponent (fullscreenStage, false);
+            fullscreenStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
+                                      juce::jmax (1, detailsViewport.getHeight()));
+            return;
+        }
+        chainViewport.setVisible (true);
         auto area = getLocalBounds().reduced (22, 18);
         auto chainArea = area.removeFromTop (tileList->getRequiredHeight());
         chainViewport.setBounds (chainArea.withTrimmedLeft (58).withTrimmedRight (58));
@@ -2321,6 +2363,8 @@ private:
                                                   std::move (fullControls), kind, slot, std::move (moveHandler),
                                                   std::vector<ParameterControl> {}, [this] { resized(); });
         auto* stagePtr = stage.get();
+        if (tileName == "PreEQ" || tileName == "Post EQ")
+            stagePtr->setFullscreenHandler ([this, stagePtr] (bool fullscreen) { setFullscreenStage (stagePtr, fullscreen); });
         cards.push_back (std::move (stage));
         auto tile = std::make_unique<StageTile> (audioProcessor.parameters, tileName, tileEnableId,
                                                  tileMoveHandler, [this, stagePtr] { selectStage (stagePtr); });
@@ -2328,11 +2372,30 @@ private:
         tiles.push_back (std::move (tile));
     }
 
+    void setFullscreenStage (StageCard* stage, bool fullscreen)
+    {
+        fullscreenStage = fullscreen ? stage : nullptr;
+        if (stage != nullptr)
+            stage->setFullscreenMode (fullscreen);
+        if (fullscreen && stage != nullptr)
+        {
+            selectedStage = stage;
+            detailsViewport.setViewedComponent (stage, false);
+            for (auto& tile : tiles)
+                tile->setSelected (tile->getName() == stage->getStageName());
+        }
+        if (fullscreenChangedHandler)
+            fullscreenChangedHandler (fullscreen);
+        resized();
+    }
+
     TheLeadAudioProcessor& audioProcessor;
+    std::function<void (bool)> fullscreenChangedHandler;
     juce::Viewport chainViewport;
     juce::Viewport detailsViewport;
     std::unique_ptr<StageTileList> tileList = std::make_unique<StageTileList>();
     StageCard* selectedStage = nullptr;
+    StageCard* fullscreenStage = nullptr;
     double inputClipUntilMs = 0.0, outputClipUntilMs = 0.0;
     std::vector<std::unique_ptr<StageCard>> cards;
     std::vector<std::unique_ptr<StageTile>> tiles;
@@ -2342,7 +2405,8 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     : AudioProcessorEditor (&processor), audioProcessor (processor),
       tooltipWindow (this, 650),
       editorLookAndFeel (std::make_unique<LeadLookAndFeel> (processor)),
-      chainControls (std::make_unique<ChainControls> (processor))
+      chainControls (std::make_unique<ChainControls> (processor,
+          [this] (bool fullscreen) { setEqFullscreen (fullscreen); }))
 {
     audioProcessor.capturePresetSnapshot();
     startTimerHz (20);
@@ -2486,6 +2550,11 @@ void TheLeadAudioProcessorEditor::paint (juce::Graphics& g)
 
 void TheLeadAudioProcessorEditor::resized()
 {
+    if (eqFullscreen)
+    {
+        chainControls->setBounds (getLocalBounds().reduced (12));
+        return;
+    }
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
     auto titleArea = top.removeFromLeft (260);
@@ -2522,6 +2591,30 @@ void TheLeadAudioProcessorEditor::resized()
     blendControls.removeFromRight (6);
     blendSlider.setBounds (blendControls);
     chainControls->setBounds (area);
+}
+
+void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
+{
+    eqFullscreen = shouldBeFullscreen;
+    const auto showChrome = ! shouldBeFullscreen;
+    title.setVisible (showChrome);
+    subtitle.setVisible (showChrome);
+    presetLabel.setVisible (showChrome);
+    presetBox.setVisible (showChrome);
+    savePresetButton.setVisible (showChrome);
+    deletePresetButton.setVisible (showChrome);
+    resetChainButton.setVisible (showChrome);
+    pitchLabel.setVisible (showChrome);
+    pitchSlider.setVisible (showChrome);
+    pitchValueLabel.setVisible (showChrome);
+    blendLabel.setVisible (showChrome);
+    blendValueLabel.setVisible (showChrome);
+    blendSlider.setVisible (showChrome);
+    ampRoutingBox.setVisible (showChrome);
+    parallelIRBox.setVisible (showChrome && parallelIRBox.getSelectedId() == 2);
+    if (showChrome)
+        updateRoutingDisplay();
+    resized();
 }
 
 void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
