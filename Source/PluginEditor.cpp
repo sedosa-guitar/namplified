@@ -3,6 +3,7 @@
 #include <BinaryData.h>
 #include <unordered_set>
 #include <limits>
+#include <array>
 
 const auto background = juce::Colour::fromRGB (10, 12, 18);
 const auto panel = juce::Colour::fromRGB (22, 25, 32);
@@ -61,6 +62,11 @@ public:
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
         return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
+    }
+
+    juce::Font getPopupMenuFont() override
+    {
+        return juce::Font (leadFontOptions (16.0f));
     }
 
     juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
@@ -164,8 +170,8 @@ private:
 
 struct ParameterControl
 {
-    const char* id;
-    const char* label;
+    juce::String id;
+    juce::String label;
     bool percent = false;
     juce::StringArray choices;
     bool toggle = false;
@@ -204,10 +210,29 @@ static juce::String getVisibleStageName (const juce::String& stageName)
     if (stageName == "Boost Pedal")
         return "Boost";
     if (stageName.startsWith ("NAM Profile "))
-        return "NAM " + stageName.fromLastOccurrenceOf (" ", false, false);
+        return "AMP " + stageName.fromLastOccurrenceOf (" ", false, false);
     if (stageName.startsWith ("Cab IR "))
         return "IR " + stageName.fromLastOccurrenceOf (" ", false, false);
     return stageName;
+}
+
+static juce::String getAmpModelDescription (int model)
+{
+    static const juce::StringArray descriptions {
+        "American clean-inspired voice with open lows and clear, glassy highs. A responsive base for pedals and edge-of-breakup tones.",
+        "British crunch-inspired voice with chewy mids and a lively attack, moving from gritty rhythm to classic rock lead.",
+        "American high-gain-inspired voice with tight lows and focused mids for articulate heavy riffs and sustained leads.",
+        "British chime-inspired voice with bright upper mids and a quick response for jangly chords and crunchy rhythm parts.",
+        "Tweed-era American-inspired voice with warm breakup and touch-sensitive dynamics for roots, blues and vintage drive.",
+        "Modern American metal-inspired voice with firm bass and smooth sustain for dense, high-gain playing.",
+        "Thick British crunch-inspired voice with dense mids and a fuzzy edge that gives chords extra weight.",
+        "Low-wattage British Class A-inspired voice with bright bite, lively dynamics and raw, early breakup.",
+        "Classic British rock stack-inspired voice with punchy upper mids and a cutting crunch for hard rock and metal.",
+        "Large-scale clean-to-doom-inspired voice with deep lows and a broad, heavy feel as the gain rises.",
+        "Extreme low-end drone-inspired voice for long sustain, dense bass and deliberately abrasive textures.",
+        "American hot-rod combo-inspired voice with bright punch, assertive mids and a singing overdrive character."
+    };
+    return descriptions[juce::jlimit (0, descriptions.size() - 1, model)];
 }
 
 static void drawBoostPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour ink)
@@ -454,28 +479,37 @@ public:
     }
 };
 
-class FiveBandEqEditor final : public juce::Component
+class GraphicEqEditor final : public juce::Component
 {
 public:
-    explicit FiveBandEqEditor (TheLeadAudioProcessor& processor) : audioProcessor (processor)
+    explicit GraphicEqEditor (TheLeadAudioProcessor& processor, bool postEq) : audioProcessor (processor)
     {
-        parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-        frequencyNames = { "80 Hz", "250 Hz", "800 Hz", "2.5 kHz", "8 kHz" };
+        if (postEq)
+        {
+            parameterIds = { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
+                             "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
+            frequencyNames = { "50 Hz", "100 Hz", "200 Hz", "400 Hz", "800 Hz", "1.6 kHz", "3.2 kHz", "6.4 kHz", "16 kHz" };
+        }
+        else
+        {
+            parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
+            frequencyNames = { "80 Hz", "250 Hz", "800 Hz", "2.5 kHz", "8 kHz" };
+        }
         setMouseCursor (juce::MouseCursor::CrosshairCursor);
-        for (int band = 0; band < 5; ++band)
+        for (int band = 0; band < parameterIds.size(); ++band)
         {
             auto button = std::make_unique<juce::TextButton> ("RESET");
             button->setTooltip ("Reset " + frequencyNames[band] + " band to 0 dB");
             button->onClick = [this, band] { resetBand (band); };
             addAndMakeVisible (*button);
-            resetButtons[static_cast<size_t> (band)] = std::move (button);
+            resetButtons.push_back (std::move (button));
         }
     }
 
     void resized() override
     {
         const auto plot = getPlotBounds();
-        for (int band = 0; band < 5; ++band)
+        for (int band = 0; band < parameterIds.size(); ++band)
             resetButtons[static_cast<size_t> (band)]->setBounds (
                 juce::roundToInt (pointX (band, plot) - 25.0f), juce::roundToInt (plot.getBottom() + 34.0f), 50, 22);
     }
@@ -572,9 +606,10 @@ private:
         return plot;
     }
 
-    static float pointX (int index, juce::Rectangle<float> plot)
+    float pointX (int index, juce::Rectangle<float> plot) const
     {
-        return plot.getX() + plot.getWidth() * static_cast<float> (index) / 4.0f;
+        return plot.getX() + plot.getWidth() * static_cast<float> (index)
+             / static_cast<float> (juce::jmax (1, parameterIds.size() - 1));
     }
 
     static float gainToY (float gain, juce::Rectangle<float> plot)
@@ -603,7 +638,7 @@ private:
 
     TheLeadAudioProcessor& audioProcessor;
     juce::StringArray parameterIds, frequencyNames;
-    std::array<std::unique_ptr<juce::TextButton>, 5> resetButtons;
+    std::vector<std::unique_ptr<juce::TextButton>> resetButtons;
     int activeBand = -1;
 };
 
@@ -613,9 +648,10 @@ public:
     StageCard (TheLeadAudioProcessor& processor, juce::String name, juce::String enableId,
                std::vector<ParameterControl> controls, FileKind fileKind = FileKind::none,
                int fileSlot = 0, std::function<void (int)> moveHandler = {},
-               std::vector<ParameterControl> detailControls = {})
+               std::vector<ParameterControl> detailControls = {}, std::function<void()> contentSizeChanged = {})
         : audioProcessor (processor), lookAndFeel (processor), stageName (std::move (name)), enableParameterId (std::move (enableId)), loadKind (fileKind),
-          slot (fileSlot), hasMoveControls (false), moveHandler (std::move (moveHandler))
+          slot (fileSlot), hasMoveControls (false), moveHandler (std::move (moveHandler)),
+          contentSizeChangedHandler (std::move (contentSizeChanged))
     {
         setName (stageName);
         heading.setText (getVisibleStageName (stageName).toUpperCase(), juce::dontSendNotification);
@@ -651,10 +687,18 @@ public:
             moveDownButton.onClick = [moveHandler] { moveHandler (1); };
         }
 
-        if (stageName == "PreEQ")
+        if (stageName == "PreEQ" || stageName == "Post EQ")
         {
-            graphicEq = std::make_unique<FiveBandEqEditor> (audioProcessor);
+            graphicEq = std::make_unique<GraphicEqEditor> (audioProcessor, stageName == "Post EQ");
             addAndMakeVisible (*graphicEq);
+            expandButton = std::make_unique<juce::TextButton> ("FULL SCREEN");
+            expandButton->setTooltip ("Expand this graphic EQ to fill the plugin window.");
+            addAndMakeVisible (*expandButton);
+            expandButton->onClick = [this]
+            {
+                if (fullscreenHandler)
+                    fullscreenHandler (! isFullscreen);
+            };
             return;
         }
 
@@ -738,6 +782,36 @@ public:
                 toggles.push_back (std::move (toggle));
                 widgetValueLabels.push_back (nullptr);
             }
+            else if (stageName.startsWith ("NAM Profile") && control.id.endsWith ("Source"))
+            {
+                auto sourceButton = std::make_unique<juce::TextButton> ("NAM CAPTURE");
+                sourceButton->setClickingTogglesState (false);
+                sourceButton->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (40, 45, 54));
+                sourceButton->setColour (juce::TextButton::textColourOffId, text);
+                sourceButton->setTooltip ("Click to switch this amp slot between a NAM capture and a built-in amp sim.");
+                addAndMakeVisible (*sourceButton);
+                const auto parameterId = control.id;
+                sourceButton->onClick = [this, parameterId]
+                {
+                    auto* parameter = audioProcessor.parameters.getParameter (parameterId);
+                    const auto* current = audioProcessor.parameters.getRawParameterValue (parameterId);
+                    if (parameter != nullptr && current != nullptr)
+                    {
+                        const auto nextChoice = current->load() >= 0.5f ? 0.0f : 1.0f;
+                        parameter->beginChangeGesture();
+                        parameter->setValueNotifyingHost (parameter->convertTo0to1 (nextChoice));
+                        parameter->endChangeGesture();
+                        updateConditionalControlVisibility();
+                        resized();
+                        if (contentSizeChangedHandler)
+                            contentSizeChangedHandler();
+                    }
+                };
+                controlWidgets.push_back (sourceButton.get());
+                controlIds.emplace_back (control.id);
+                sourceButtons.push_back (std::move (sourceButton));
+                widgetValueLabels.push_back (nullptr);
+            }
             else if (! control.choices.isEmpty())
             {
                 auto choice = std::make_unique<juce::ComboBox>();
@@ -745,8 +819,17 @@ public:
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                     audioProcessor.parameters, control.id, *choice));
-                if (stageName == "Boost Pedal" && juce::String (control.id) == "boostModel")
-                    choice->onChange = [this] { updateConditionalControlVisibility(); resized(); };
+                if ((stageName == "Boost Pedal" && juce::String (control.id) == "boostModel")
+                    || (stageName.startsWith ("NAM Profile")
+                        && (juce::String (control.id).endsWith ("Source") || juce::String (control.id).endsWith ("Model"))))
+                    choice->onChange = [this]
+                    {
+                        updateConditionalControlVisibility();
+                        updateAmpModelTooltip();
+                        resized();
+                        if (contentSizeChangedHandler)
+                            contentSizeChangedHandler();
+                    };
                 controlWidgets.push_back (choice.get());
                 controlIds.emplace_back (control.id);
                 comboBoxes.push_back (std::move (choice));
@@ -788,6 +871,7 @@ public:
             }
         }
         updateConditionalControlVisibility();
+        updateAmpModelTooltip();
     }
 
     void paint (juce::Graphics& g) override
@@ -803,6 +887,16 @@ public:
     const juce::String& getStageName() const { return stageName; }
     const juce::String& getEnableParameterId() const { return enableParameterId; }
     std::function<void (int)> getMoveHandler() const { return moveHandler; }
+    void setFullscreenHandler (std::function<void (bool)> handler) { fullscreenHandler = std::move (handler); }
+    void setFullscreenMode (bool fullscreen)
+    {
+        isFullscreen = fullscreen;
+        if (expandButton != nullptr)
+        {
+            expandButton->setButtonText (fullscreen ? "RESTORE" : "FULL SCREEN");
+            expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
+        }
+    }
     void setCompactMode (bool shouldBeCompact)
     {
         if (compactMode == shouldBeCompact)
@@ -821,6 +915,8 @@ public:
         {
             if (! isControlVisible (i))
                 continue;
+            if (controlIds[i].endsWith ("Source"))
+                continue;
             if (dynamic_cast<juce::ComboBox*> (controlWidgets[i]) != nullptr)
                 ++selectorCount;
             else
@@ -830,7 +926,7 @@ public:
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = compactMode ? 112 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
-        const auto fileControlsHeight = loadKind == FileKind::none ? 0 : 46;
+        const auto fileControlsHeight = loadKind == FileKind::none || isUsingInternalAmp() ? 0 : 46;
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
@@ -857,15 +953,26 @@ public:
     {
         auto area = getLocalBounds().reduced (26, 20);
         auto header = area.removeFromTop (40);
+        int sourceIndex = -1;
+        for (size_t i = 0; i < controlIds.size(); ++i)
+            if (controlIds[i].endsWith ("Source"))
+                sourceIndex = static_cast<int> (i);
         const auto rightWidth = (hasEnableControl ? 92 : 0) + (hasMoveControls ? 68 : 0)
-                              + (toneCurveButton != nullptr ? 94 : 0);
+                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 110 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
         {
             dragHandle.setBounds (header.removeFromLeft (24).withHeight (32));
             header.removeFromLeft (8);
         }
-        heading.setBounds (header.withTrimmedLeft (38));
+        if (sourceIndex >= 0)
+        {
+            heading.setBounds (header.withTrimmedLeft (38).withWidth (96));
+            controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
+                header.withTrimmedLeft (142).withWidth (142).withHeight (30).withY (header.getY() + 3));
+        }
+        else
+            heading.setBounds (header.withTrimmedLeft (38));
         if (hasEnableControl)
             enableButton.setBounds (right.removeFromLeft (92));
         if (hasMoveControls)
@@ -876,8 +983,10 @@ public:
         }
         if (toneCurveButton != nullptr)
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
+        if (expandButton != nullptr)
+            expandButton->setBounds (right.removeFromLeft (104).withY (header.getY() + 4).withHeight (28));
 
-        if (loadKind != FileKind::none)
+        if (loadKind != FileKind::none && ! isUsingInternalAmp())
         {
             auto fileRow = area.removeFromTop (40);
             loadButton.setBounds (fileRow.removeFromLeft (130));
@@ -903,6 +1012,8 @@ public:
         for (size_t i = 0; i < controlWidgets.size(); ++i)
         {
             if (! isControlVisible (i))
+                continue;
+            if (controlIds[i].endsWith ("Source"))
                 continue;
             if (dynamic_cast<juce::ComboBox*> (controlWidgets[i]) != nullptr)
                 selectors.push_back (static_cast<int> (i));
@@ -954,7 +1065,27 @@ public:
 private:
     bool isControlVisible (size_t index) const
     {
-        if (stageName != "Boost Pedal" || index >= controlIds.size())
+        if (index >= controlIds.size())
+            return true;
+        if (stageName.startsWith ("NAM Profile"))
+        {
+            const auto prefix = "amp" + stageName.fromLastOccurrenceOf (" ", false, false);
+            const auto* source = audioProcessor.parameters.getRawParameterValue (prefix + "Source");
+            const auto isInternal = source != nullptr && source->load() >= 0.5f;
+            const auto& id = controlIds[index];
+            if (id == prefix + "Source" || id == prefix + "In" || id == prefix + "Out")
+                return true;
+            if (! isInternal)
+                return false;
+            if (id == prefix + "Model")
+                return true;
+            const auto* selectedModel = audioProcessor.parameters.getRawParameterValue (prefix + "Model");
+            const auto model = selectedModel != nullptr
+                ? juce::jlimit (0, 11, juce::roundToInt (selectedModel->load())) : 0;
+            const auto suffix = id.fromFirstOccurrenceOf (prefix, false, false);
+            return usesAmpSimControl (model, suffix);
+        }
+        if (stageName != "Boost Pedal")
             return true;
         const auto* model = audioProcessor.parameters.getRawParameterValue ("boostModel");
         const auto use808 = model != nullptr && model->load() >= 0.5f;
@@ -970,10 +1101,89 @@ private:
         {
             const auto visible = isControlVisible (i);
             controlWidgets[i]->setVisible (visible);
-            controlLabels[i]->setVisible (visible);
+            controlLabels[i]->setVisible (visible && ! controlIds[i].endsWith ("Source"));
             if (widgetValueLabels[i] != nullptr)
                 widgetValueLabels[i]->setVisible (visible);
+            if (controlIds[i].endsWith ("Source"))
+            {
+                const auto* source = audioProcessor.parameters.getRawParameterValue (controlIds[i]);
+                const auto isSim = source != nullptr && source->load() >= 0.5f;
+                if (auto* sourceButton = dynamic_cast<juce::TextButton*> (controlWidgets[i]))
+                {
+                    sourceButton->setButtonText (isSim ? "AMP SIM" : "NAM CAPTURE");
+                    sourceButton->setColour (juce::TextButton::buttonColourId,
+                                             isSim ? juce::Colour (0xff21473f) : juce::Colour::fromRGB (40, 45, 54));
+                    sourceButton->setColour (juce::TextButton::textColourOffId,
+                                             isSim ? knobAccent : text);
+                    sourceButton->setTooltip (isSim
+                        ? "Built-in algorithmic amp sim. Click to switch to a NAM capture."
+                        : "NAM capture profile. Click to switch to a built-in amp sim.");
+                }
+            }
         }
+        if (loadKind == FileKind::nam)
+        {
+            const auto showCapture = ! isUsingInternalAmp();
+            loadButton.setVisible (showCapture);
+            fileName.setVisible (showCapture);
+        }
+        updateAmpModelTooltip();
+    }
+
+    bool isUsingInternalAmp() const
+    {
+        if (loadKind != FileKind::nam)
+            return false;
+        const auto parameterId = "amp" + juce::String (slot + 1) + "Source";
+        const auto* source = audioProcessor.parameters.getRawParameterValue (parameterId);
+        return source != nullptr && source->load() >= 0.5f;
+    }
+
+    void updateAmpModelTooltip()
+    {
+        if (! stageName.startsWith ("NAM Profile"))
+            return;
+        const auto prefix = "amp" + stageName.fromLastOccurrenceOf (" ", false, false);
+        const auto* modelParameter = audioProcessor.parameters.getRawParameterValue (prefix + "Model");
+        const auto model = modelParameter != nullptr
+            ? juce::jlimit (0, 11, juce::roundToInt (modelParameter->load())) : 0;
+        const auto simSelected = isUsingInternalAmp();
+        if (simSelected && model == lastAmpModelTooltip)
+            return;
+        lastAmpModelTooltip = simSelected ? model : -1;
+        const auto description = simSelected ? getAmpModelDescription (model) : juce::String();
+        for (size_t i = 0; i < controlIds.size(); ++i)
+        {
+            if (controlIds[i] != prefix + "Model")
+                continue;
+            if (auto* tooltipClient = dynamic_cast<juce::SettableTooltipClient*> (controlWidgets[i]))
+                tooltipClient->setTooltip (description);
+            controlLabels[i]->setTooltip (description);
+            break;
+        }
+    }
+
+    static bool usesAmpSimControl (int model, const juce::String& suffix)
+    {
+        // Parameter indices follow 0xFX's fx_amp_param_t ordering.
+        static const std::array<std::array<int, 7>, 12> models {{
+            {{ 1, 4, 3, 2, 5, 0, 6 }}, {{ 5, 2, 3, 4, 1, 0, 7 }},
+            {{ 0, 2, 3, 4, 5, 7, -1 }}, {{ 1, 2, 4, 9, 5, 0, -1 }},
+            {{ 1, 2, 4, 0, 7, -1, -1 }}, {{ 0, 2, 3, 4, 5, 1, 7 }},
+            {{ 0, 2, 3, 4, 1, -1, -1 }}, {{ 0, 10, 1, -1, -1, -1, -1 }},
+            {{ 0, 2, 3, 4, 5, 1, 7 }}, {{ 0, 2, 3, 4, 1, 7, -1 }},
+            {{ 0, 2, 3, 4, 11, 1, -1 }}, {{ 1, 4, 3, 2, 5, 0, 6 }}
+        }};
+        static const juce::StringArray parameterNames {
+            "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
+            "Sag", "Master", "Bright", "Cut", "Tone", "Feedback"
+        };
+        if (model < 0 || model >= static_cast<int> (models.size()))
+            return false;
+        for (const auto parameter : models[static_cast<size_t> (model)])
+            if (parameter >= 0 && parameterNames[parameter] == suffix)
+                return true;
+        return false;
     }
 
     friend class StageTile;
@@ -1035,7 +1245,14 @@ private:
 
     void timerCallback() override
     {
-        if (loadKind == FileKind::nam)
+        if (loadKind == FileKind::nam && loadButton.isVisible() == isUsingInternalAmp())
+        {
+            updateConditionalControlVisibility();
+            resized();
+            if (contentSizeChangedHandler)
+                contentSizeChangedHandler();
+        }
+        if (loadKind == FileKind::nam && ! isUsingInternalAmp())
         {
             const auto status = audioProcessor.getNAMCaptureStatus (slot);
             if (status == "Loaded")
@@ -1045,6 +1262,7 @@ private:
             else
                 fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
         }
+        updateAmpModelTooltip();
         repaint();
     }
 
@@ -1058,12 +1276,17 @@ private:
     bool hasMoveControls = false;
     int dragStartY = 0, lastDragStep = 0;
     std::function<void (int)> moveHandler;
+    std::function<void()> contentSizeChangedHandler;
+    std::function<void (bool)> fullscreenHandler;
     bool compactMode = false;
+    bool isFullscreen = false;
+    int lastAmpModelTooltip = -1;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
     juce::TextButton loadButton, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
-    std::unique_ptr<FiveBandEqEditor> graphicEq;
+    std::unique_ptr<juce::TextButton> expandButton;
+    std::unique_ptr<GraphicEqEditor> graphicEq;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     std::vector<std::unique_ptr<juce::Label>> controlLabels;
     std::vector<juce::String> controlIds;
@@ -1073,11 +1296,14 @@ private:
     std::vector<std::unique_ptr<juce::Slider>> sliders;
     std::vector<std::unique_ptr<juce::ComboBox>> comboBoxes;
     std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
+    std::vector<std::unique_ptr<juce::TextButton>> sourceButtons;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAttachments;
     std::unique_ptr<juce::FileChooser> fileChooser;
 };
+
+static void drawAmpHeadIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour);
 
 class StageTile final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
@@ -1090,7 +1316,7 @@ public:
     {
         setName (stageName);
         if (stageName.startsWith ("NAM Profile"))
-            setTooltip ("NAM captures can represent amps, preamps, pedals (including boosts and overdrives), or combo amps. Some combo captures already include a speaker cabinet. Disable the Cab IRs in that case to avoid running two cabinets in the signal path.");
+            setTooltip ("Choose a NAM capture or one of NAMinator's built-in algorithmic amp models for this slot.");
         startTimerHz (4);
     }
 
@@ -1149,7 +1375,11 @@ public:
             const juce::Graphics::ScopedSaveState iconState (g);
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
-            drawModuleIcon (g, iconBounds, getModuleKind());
+            const auto kind = getModuleKind();
+            if (kind == ModuleKind::nam && isInternalAmpSelected())
+                drawAmpHeadIcon (g, iconBounds, getIconColour (ModuleKind::nam));
+            else
+                drawModuleIcon (g, iconBounds, kind);
         }
         if (kind == ModuleKind::nam)
         {
@@ -1250,6 +1480,15 @@ private:
         if (const auto* value = parameterState.getRawParameterValue (enableParameterId))
             return value->load() >= 0.5f;
         return true;
+    }
+
+    bool isInternalAmpSelected() const
+    {
+        if (! stageName.startsWith ("NAM Profile"))
+            return false;
+        const auto slot = stageName.fromLastOccurrenceOf (" ", false, false);
+        const auto* source = parameterState.getRawParameterValue ("amp" + slot + "Source");
+        return source != nullptr && source->load() >= 0.5f;
     }
 
     ModuleKind getModuleKind() const
@@ -1466,9 +1705,26 @@ private:
     juce::TextButton moveUp, moveDown;
 };
 
+static void drawAmpHeadIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour)
+{
+    g.setColour (colour);
+    const auto body = r.reduced (2.5f, 4.0f);
+    g.drawRoundedRectangle (body, 3.0f, 1.8f);
+    g.drawLine (body.getX() + 2.0f, body.getY() + 7.0f,
+                body.getRight() - 2.0f, body.getY() + 7.0f, 1.4f);
+    for (int i = 0; i < 3; ++i)
+        g.drawEllipse (body.getX() + 4.0f + i * 6.0f, body.getY() + 2.0f, 2.0f, 2.0f, 1.1f);
+    g.drawRoundedRectangle (juce::Rectangle<float> (body.getX() + 4.0f, body.getY() + 11.0f,
+                                                      body.getWidth() - 8.0f, body.getHeight() - 14.0f),
+                             1.5f, 1.2f);
+}
+
 void StageCard::drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
-    StageTile::drawStageIcon (g, bounds, stageName);
+    if (stageName.startsWith ("NAM Profile") && isUsingInternalAmp())
+        drawAmpHeadIcon (g, bounds, juce::Colour (0xff79baff));
+    else
+        StageTile::drawStageIcon (g, bounds, stageName);
 }
 
 class StageTileList final : public juce::Component
@@ -1498,8 +1754,8 @@ public:
         g.setColour (secondaryText);
         if (parallelRouting)
         {
-            g.drawText (parallelSharedIR ? "NAM PARALLEL  |  BOTH NAMS -> IR 1"
-                                         : "NAM PARALLEL  |  NAM 1 -> IR 1  /  NAM 2 -> IR 2",
+            g.drawText (parallelSharedIR ? "AMP PARALLEL  |  BOTH AMPS -> IR 1"
+                                         : "AMP PARALLEL  |  AMP 1 -> IR 1  /  AMP 2 -> IR 2",
                         0, 2, getWidth(), 18, juce::Justification::centred);
             const auto tileWidth = juce::jmax (90, juce::jmin (92, juce::roundToInt ((getWidth() - 20) / 8.0f) - 12));
             const auto postY = 50 + 2 * (tileWidth + 12) + 10 + tileWidth + 8;
@@ -1508,7 +1764,7 @@ public:
             return;
         }
 
-        g.drawText ("NAM SERIES  |  CAB 1 / CAB 2 BLEND", 0, 2, getWidth(), 18,
+        g.drawText ("AMP SERIES  |  CAB 1 / CAB 2 BLEND", 0, 2, getWidth(), 18,
                     juce::Justification::centred);
         drawSerialWiring (g, wire);
     }
@@ -1815,7 +2071,8 @@ private:
 class ChainControls final : public juce::Component, private juce::Timer
 {
 public:
-    explicit ChainControls (TheLeadAudioProcessor& processor) : audioProcessor (processor)
+    explicit ChainControls (TheLeadAudioProcessor& processor, std::function<void (bool)> fullscreenChanged)
+        : audioProcessor (processor), fullscreenChangedHandler (std::move (fullscreenChanged))
     {
         startTimerHz (30);
         addAndMakeVisible (chainViewport);
@@ -1851,9 +2108,22 @@ public:
         for (int slot = 0; slot < TheLeadAudioProcessor::numAmpSlots; ++slot)
         {
             const auto number = juce::String (slot + 1);
+            const auto prefix = "amp" + number;
+            const juce::StringArray ampModels {
+                "Fullerton Clean", "British Crunch", "Southwest Lead", "Essex Chime",
+                "Tweed Blues", "Meridian High Gain", "Citrus Roar", "Citrus Terror",
+                "Regent 800", "Solar Monolith", "Eclipse Drone", "Emerald Ratrod Deluxe"
+            };
             addStage ("NAM Profile " + number, "amp" + number + "On",
-                      {{ ("amp" + number + "In").toRawUTF8(), "Input (dB)" },
-                       { ("amp" + number + "Out").toRawUTF8(), "Output (dB)" }},
+                      {{ prefix + "Source", "Source", false, juce::StringArray { "NAM Capture", "Amp Sim" } },
+                       { prefix + "Model", "Amp Model", false, ampModels },
+                       { prefix + "Gain", "Gain", true }, { prefix + "Volume", "Volume", true },
+                       { prefix + "Bass", "Bass", true }, { prefix + "Mid", "Mid", true },
+                       { prefix + "Treble", "Treble", true }, { prefix + "Presence", "Presence", true },
+                       { prefix + "Sag", "Sag", true }, { prefix + "Master", "Master", true },
+                       { prefix + "Bright", "Bright", true }, { prefix + "Cut", "Cut", true },
+                       { prefix + "Tone", "Tone", true }, { prefix + "Feedback", "Feedback", true },
+                       { prefix + "In", "Input (dB)" }, { prefix + "Out", "Output (dB)" }},
                       FileKind::nam, slot, ampMover (slot));
         }
 
@@ -1887,11 +2157,7 @@ public:
         addStage ("Chorus", "chorusOn",
                   {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 2));
-        addStage ("Post EQ", "postOn", {{ "postLow", "Low (dB)" }, { "postMid", "Mid (dB)" }, { "postHigh", "High (dB)" }},
-                  FileKind::none, 0, mover (false, 3),
-                  {{ "postLowFreq", "Low Frequency (Hz)" }, { "postLow", "Low Gain (dB)" },
-                   { "postMidFreq", "Mid Frequency (Hz)" }, { "postMid", "Mid Gain (dB)" },
-                   { "postHighFreq", "High Frequency (Hz)" }, { "postHigh", "High Gain (dB)" }});
+        addStage ("Post EQ", "postOn", {}, FileKind::none, 0, mover (false, 3));
         addStage ("Output", {}, {{ "outputGain", "Level (dB)" }});
         refreshTileOrder();
         selectStage (findCard ("1176-Style FET Compressor"));
@@ -1922,6 +2188,18 @@ public:
 
     void resized() override
     {
+        if (fullscreenStage != nullptr)
+        {
+            chainViewport.setVisible (false);
+            detailsViewport.setVisible (true);
+            detailsViewport.setBounds (getLocalBounds().reduced (12));
+            if (detailsViewport.getViewedComponent() != fullscreenStage)
+                detailsViewport.setViewedComponent (fullscreenStage, false);
+            fullscreenStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
+                                      juce::jmax (1, detailsViewport.getHeight()));
+            return;
+        }
+        chainViewport.setVisible (true);
         auto area = getLocalBounds().reduced (22, 18);
         auto chainArea = area.removeFromTop (tileList->getRequiredHeight());
         chainViewport.setBounds (chainArea.withTrimmedLeft (58).withTrimmedRight (58));
@@ -2125,7 +2403,7 @@ private:
         const auto appendUnique = [&] (const std::vector<ParameterControl>& source)
         {
             for (const auto& control : source)
-                if (usedParameters.insert (control.id).second)
+                if (usedParameters.insert (control.id.toStdString()).second)
                     fullControls.push_back (control);
         };
         appendUnique (detailControls);
@@ -2135,8 +2413,11 @@ private:
         const auto tileEnableId = enableId;
         const auto tileMoveHandler = moveHandler;
         auto stage = std::make_unique<StageCard> (audioProcessor, std::move (name), std::move (enableId),
-                                                  std::move (fullControls), kind, slot, std::move (moveHandler));
+                                                  std::move (fullControls), kind, slot, std::move (moveHandler),
+                                                  std::vector<ParameterControl> {}, [this] { resized(); });
         auto* stagePtr = stage.get();
+        if (tileName == "PreEQ" || tileName == "Post EQ")
+            stagePtr->setFullscreenHandler ([this, stagePtr] (bool fullscreen) { setFullscreenStage (stagePtr, fullscreen); });
         cards.push_back (std::move (stage));
         auto tile = std::make_unique<StageTile> (audioProcessor.parameters, tileName, tileEnableId,
                                                  tileMoveHandler, [this, stagePtr] { selectStage (stagePtr); });
@@ -2144,11 +2425,30 @@ private:
         tiles.push_back (std::move (tile));
     }
 
+    void setFullscreenStage (StageCard* stage, bool fullscreen)
+    {
+        fullscreenStage = fullscreen ? stage : nullptr;
+        if (stage != nullptr)
+            stage->setFullscreenMode (fullscreen);
+        if (fullscreen && stage != nullptr)
+        {
+            selectedStage = stage;
+            detailsViewport.setViewedComponent (stage, false);
+            for (auto& tile : tiles)
+                tile->setSelected (tile->getName() == stage->getStageName());
+        }
+        if (fullscreenChangedHandler)
+            fullscreenChangedHandler (fullscreen);
+        resized();
+    }
+
     TheLeadAudioProcessor& audioProcessor;
+    std::function<void (bool)> fullscreenChangedHandler;
     juce::Viewport chainViewport;
     juce::Viewport detailsViewport;
     std::unique_ptr<StageTileList> tileList = std::make_unique<StageTileList>();
     StageCard* selectedStage = nullptr;
+    StageCard* fullscreenStage = nullptr;
     double inputClipUntilMs = 0.0, outputClipUntilMs = 0.0;
     std::vector<std::unique_ptr<StageCard>> cards;
     std::vector<std::unique_ptr<StageTile>> tiles;
@@ -2158,7 +2458,8 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     : AudioProcessorEditor (&processor), audioProcessor (processor),
       tooltipWindow (this, 650),
       editorLookAndFeel (std::make_unique<LeadLookAndFeel> (processor)),
-      chainControls (std::make_unique<ChainControls> (processor))
+      chainControls (std::make_unique<ChainControls> (processor,
+          [this] (bool fullscreen) { setEqFullscreen (fullscreen); }))
 {
     audioProcessor.capturePresetSnapshot();
     startTimerHz (20);
@@ -2186,6 +2487,33 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     resetChainButton.setButtonText ("RESET CHAIN");
     resetChainButton.setTooltip ("Restore the default signal chain and default parameter values");
     presetBox.setTooltip ("Load a saved NAMinator preset");
+    pitchLabel.setText ("PITCH", juce::dontSendNotification);
+    pitchLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchLabel.setColour (juce::Label::textColourId, secondaryText);
+    pitchLabel.setJustificationType (juce::Justification::centredRight);
+    pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -24 to +24 semitones.");
+    addAndMakeVisible (pitchLabel);
+    pitchSlider.setName ("pitchSemitones");
+    pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
+    pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
+    addAndMakeVisible (pitchSlider);
+    pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.parameters, "pitchSemitones", pitchSlider);
+    pitchValueLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchValueLabel.setColour (juce::Label::textColourId, text);
+    pitchValueLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (pitchValueLabel);
+    const auto updatePitchValue = [this]
+    {
+        const auto semitones = juce::roundToInt (pitchSlider.getValue());
+        const auto prefix = semitones > 0 ? "+" : "";
+        pitchValueLabel.setText (prefix + juce::String (semitones) + " ST", juce::dontSendNotification);
+    };
+    pitchSlider.onValueChange = updatePitchValue;
+    updatePitchValue();
     addAndMakeVisible (presetBox);
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
     deletePresetButton.setTooltip ("Delete the selected user preset");
@@ -2227,7 +2555,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
 
     parallelIRBox.addItem ("PAIRED IRs", 1);
     parallelIRBox.addItem ("SHARED IR 1", 2);
-    parallelIRBox.setTooltip ("Paired IRs: NAM 1 to IR 1 and NAM 2 to IR 2. Shared IR 1: blend both NAM outputs, then process them through IR 1.");
+    parallelIRBox.setTooltip ("Paired IRs: Amp 1 to IR 1 and Amp 2 to IR 2. Shared IR 1: blend both amp outputs, then process them through IR 1.");
     addAndMakeVisible (parallelIRBox);
     parallelIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.parameters, "parallelIRMode", parallelIRBox);
@@ -2275,6 +2603,11 @@ void TheLeadAudioProcessorEditor::paint (juce::Graphics& g)
 
 void TheLeadAudioProcessorEditor::resized()
 {
+    if (eqFullscreen)
+    {
+        chainControls->setBounds (getLocalBounds().reduced (12));
+        return;
+    }
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
     auto titleArea = top.removeFromLeft (260);
@@ -2290,6 +2623,12 @@ void TheLeadAudioProcessorEditor::resized()
     deletePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
     presetArea.removeFromLeft (6);
     resetChainButton.setBounds (presetArea.removeFromLeft (104).reduced (0, 4));
+    presetArea.removeFromLeft (18);
+    pitchLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
+    presetArea.removeFromLeft (8);
+    pitchSlider.setBounds (presetArea.removeFromLeft (160).reduced (0, 10));
+    presetArea.removeFromLeft (4);
+    pitchValueLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     ampRoutingBox.setBounds (controlRow.removeFromRight (180).reduced (0, 2));
@@ -2305,6 +2644,30 @@ void TheLeadAudioProcessorEditor::resized()
     blendControls.removeFromRight (6);
     blendSlider.setBounds (blendControls);
     chainControls->setBounds (area);
+}
+
+void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
+{
+    eqFullscreen = shouldBeFullscreen;
+    const auto showChrome = ! shouldBeFullscreen;
+    title.setVisible (showChrome);
+    subtitle.setVisible (showChrome);
+    presetLabel.setVisible (showChrome);
+    presetBox.setVisible (showChrome);
+    savePresetButton.setVisible (showChrome);
+    deletePresetButton.setVisible (showChrome);
+    resetChainButton.setVisible (showChrome);
+    pitchLabel.setVisible (showChrome);
+    pitchSlider.setVisible (showChrome);
+    pitchValueLabel.setVisible (showChrome);
+    blendLabel.setVisible (showChrome);
+    blendValueLabel.setVisible (showChrome);
+    blendSlider.setVisible (showChrome);
+    ampRoutingBox.setVisible (showChrome);
+    parallelIRBox.setVisible (showChrome && parallelIRBox.getSelectedId() == 2);
+    if (showChrome)
+        updateRoutingDisplay();
+    resized();
 }
 
 void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
@@ -2362,9 +2725,9 @@ void TheLeadAudioProcessorEditor::updateRoutingDisplay()
         audioProcessor.parameters, blendParameterId, blendSlider);
     ampRoutingBox.setSelectedId (parallel ? 2 : 1, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
-    blendLabel.setText (parallel ? "NAM 1 / NAM 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
+    blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
-        ? "NAM 1 to CAB 1 and NAM 2 to CAB 2. This controls the NAM 1 share; disabling either NAM sends 100% through the other path."
+        ? "Amp 1 to IR 1 and Amp 2 to IR 2. This controls the Amp 1 share; disabling either amp sends 100% through the other path."
         : "Centre is 0 (equal blend); negative favours CAB 2, positive favours CAB 1. If one cab is disabled, the other is 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
     updateBlendValue();

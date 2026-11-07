@@ -94,7 +94,26 @@ target_sources(TheLead PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/CleanBoost.h
+    Source/AmpSimBridge.h
 )
+
+# The amp-only DSP is derived from 0xFX 1.3.1 (MIT). Keep its license in
+# ThirdParty/0xFX and compile only the amp and shared biquad implementation;
+# NAMinator continues to use its own UI, routing, pedals, and cabinet stages.
+add_library(naminator_amp_sim STATIC
+    Source/AmpSimBridge.c
+    ThirdParty/0xFX/engine/internal/amp.c
+    ThirdParty/0xFX/engine/internal/biquad.c
+)
+target_include_directories(naminator_amp_sim PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/0xFX"
+    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/0xFX/deps"
+)
+target_compile_features(naminator_amp_sim PRIVATE c_std_99)
+if (UNIX)
+    target_link_libraries(naminator_amp_sim PRIVATE m)
+endif()
+set_target_properties(naminator_amp_sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(TheLead PUBLIC cxx_std_17)
 target_compile_definitions(TheLead PUBLIC
@@ -108,6 +127,7 @@ target_link_libraries(TheLead PRIVATE
     juce::juce_audio_utils
     juce::juce_dsp
     nam_core
+    naminator_amp_sim
     chowdsp_wdf
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags

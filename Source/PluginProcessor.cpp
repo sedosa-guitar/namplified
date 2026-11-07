@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "AmpSimBridge.h"
 #include <get_dsp.h>
 
 #include <array>
@@ -13,6 +14,9 @@ struct TheLeadAudioProcessor::AmpModel
     std::array<std::vector<NAM_SAMPLE>, 2> output;
     juce::String path;
     juce::String status;
+    NAMinatorAmpSim* internalAmp = naminAmpSimCreate (0);
+
+    ~AmpModel() { naminAmpSimDestroy (internalAmp); }
 
     void prepare (double sampleRate, int maxBlockSize)
     {
@@ -103,6 +107,19 @@ struct TheLeadAudioProcessor::AmpModel
         }
     }
 
+    void processInternal (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples,
+                          int model, const std::array<float, 12>& controls, float sampleRate)
+    {
+        const juce::SpinLock::ScopedTryLockType guard (lock);
+        if (! guard.isLocked() || internalAmp == nullptr)
+            return;
+        naminAmpSimSetModel (internalAmp, model);
+        for (int parameter = 0; parameter < static_cast<int> (controls.size()); ++parameter)
+            naminAmpSimSetParameter (internalAmp, parameter, controls[static_cast<size_t> (parameter)]);
+        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            naminAmpSimProcess (internalAmp, channel, buffer.getWritePointer (channel), numSamples, sampleRate);
+    }
+
     juce::String getPath() const
     {
         const juce::SpinLock::ScopedLockType guard (lock);
@@ -157,6 +174,10 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     };
 
     addKnob ("inputGain", "Input Gain", -24.0f, 24.0f, 0.0f);
+    layout.add (std::make_unique<juce::AudioParameterFloat> (
+        juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
+        juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+        juce::AudioParameterFloatAttributes().withLabel ("st")));
     addToggle ("gateOn", "Noise Gate", true);
     // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
@@ -203,8 +224,27 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
         juce::StringArray { "Paired IRs", "Shared IR 1" }, 0));
     for (int slot = 0; slot < numAmpSlots; ++slot)
     {
+        const auto number = juce::String (slot + 1);
         addToggle (("amp" + juce::String (slot + 1) + "On").toRawUTF8(),
                    ("Amp " + juce::String (slot + 1)).toRawUTF8(), slot == 0);
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "Source").toRawUTF8(), 1 },
+            ("Amp " + number + " Source").toRawUTF8(),
+            juce::StringArray { "NAM Capture", "Amp Sim" }, 0));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "Model").toRawUTF8(), 1 },
+            ("Amp " + number + " Model").toRawUTF8(),
+            juce::StringArray { "Fullerton Clean", "British Crunch", "Southwest Lead", "Essex Chime",
+                                "Tweed Blues", "Meridian High Gain", "Citrus Roar", "Citrus Terror",
+                                "Regent 800", "Solar Monolith", "Eclipse Drone", "Emerald Ratrod Deluxe" }, 0));
+        const char* ampControlNames[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
+                                        "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
+        for (int index = 0; index < 12; ++index)
+        {
+            const auto* controlName = ampControlNames[index];
+            const auto defaultValue = index == 6 ? 0.3f : index == 11 ? 0.0f : index == 8 ? 0.0f : 0.5f;
+            addKnob (("amp" + number + controlName).toRawUTF8(), ("Amp " + juce::String (controlName)).toRawUTF8(), 0.0f, 1.0f, defaultValue);
+        }
         addKnob (("amp" + juce::String (slot + 1) + "In").toRawUTF8(), "Amp Input", -24.0f, 24.0f, 0.0f);
         addKnob (("amp" + juce::String (slot + 1) + "Out").toRawUTF8(), "Amp Output", -24.0f, 24.0f, 0.0f);
     }
@@ -256,6 +296,12 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 120.0f);
     addKnob ("postMid", "Post EQ Mid", -12.0f, 12.0f, 0.0f);
     addFrequency ("postMidFreq", "Post EQ Mid Frequency", 50.0f, 16000.0f, 1000.0f);
+    addKnob ("postGraphic2", "Post EQ 100 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic3", "Post EQ 200 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic4", "Post EQ 400 Hz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic6", "Post EQ 1.6 kHz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic7", "Post EQ 3.2 kHz", -12.0f, 12.0f, 0.0f);
+    addKnob ("postGraphic8", "Post EQ 6.4 kHz", -12.0f, 12.0f, 0.0f);
     addKnob ("postHigh", "Post EQ High", -12.0f, 12.0f, 0.0f);
     addFrequency ("postHighFreq", "Post EQ High Frequency", 50.0f, 16000.0f, 8000.0f);
     addKnob ("outputGain", "Output Gain", -24.0f, 12.0f, 0.0f);
@@ -326,41 +372,47 @@ void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, 
                                                const juce::String& prefix, bool pre)
 {
     const auto sampleRate = juce::jmax (1.0, modelSampleRate.load());
-    constexpr int bandCount = 5;
+    juce::ignoreUnused (prefix);
+    constexpr int preBandCount = 5;
+    constexpr int postBandCount = 9;
     const float preFrequencies[] { 80.0f, 250.0f, 800.0f, 2500.0f, 8000.0f };
     const char* preGainIds[] { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-    const float postDefaults[] { 120.0f, 1000.0f, 8000.0f };
-    const char* postBandNames[] { "Low", "Mid", "High" };
-    auto& filters = pre ? preEqFilters : postEqFilters;
-    for (int band = 0; band < bandCount; ++band)
+    const float postFrequencies[] { 50.0f, 100.0f, 200.0f, 400.0f, 800.0f, 1600.0f, 3200.0f, 6400.0f, 16000.0f };
+    const char* postGainIds[] { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
+                                "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
+    const auto processFilters = [&] (auto& filters, int bandCount, bool isPre)
     {
-        const auto suffix = band < 3 ? juce::String (postBandNames[band]) : juce::String();
-        const auto gainId = pre ? juce::String (preGainIds[band]) : prefix + suffix;
-        const auto* gain = parameters.getRawParameterValue (gainId);
-        const auto* frequency = pre ? nullptr : parameters.getRawParameterValue (prefix + suffix + "Freq");
-        const auto gainDb = gain != nullptr ? gain->load() : 0.0f;
-        const auto hz = pre ? preFrequencies[band]
-                            : (band < 3 && frequency != nullptr ? frequency->load() : postDefaults[band % 3]);
+        for (int band = 0; band < bandCount; ++band)
+        {
+            const auto gainId = isPre ? juce::String (preGainIds[band]) : juce::String (postGainIds[band]);
+            const auto* gain = parameters.getRawParameterValue (gainId);
+            const auto gainDb = gain != nullptr ? gain->load() : 0.0f;
+            const auto hz = isPre ? preFrequencies[band] : postFrequencies[band];
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                const auto filterType = isPre && band == 0 ? 0 : isPre && band == preBandCount - 1 ? 2 : 1;
+                setEqCoefficients (filters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
+                                   filterType, hz, gainDb, sampleRate);
+            }
+        }
+
         for (int channel = 0; channel < channels; ++channel)
         {
-            const auto filterType = pre ? (band == 0 ? 0 : band == 4 ? 2 : 1) : juce::jmin (band, 2);
-            setEqCoefficients (filters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
-                               filterType, hz, gainDb, sampleRate);
+            auto* samplesData = buffer.getWritePointer (channel);
+            auto& channelFilters = filters[static_cast<size_t> (channel)];
+            for (int i = 0; i < samples; ++i)
+            {
+                auto sample = samplesData[i];
+                for (int band = 0; band < bandCount; ++band)
+                    sample = channelFilters[static_cast<size_t> (band)].process (sample);
+                samplesData[i] = sample;
+            }
         }
-    }
-
-    for (int channel = 0; channel < channels; ++channel)
-    {
-        auto* samplesData = buffer.getWritePointer (channel);
-        auto& channelFilters = filters[static_cast<size_t> (channel)];
-        for (int i = 0; i < samples; ++i)
-        {
-            auto sample = samplesData[i];
-            for (auto& filter : channelFilters)
-                sample = filter.process (sample);
-            samplesData[i] = sample;
-        }
-    }
+    };
+    if (pre)
+        processFilters (preEqFilters, preBandCount, true);
+    else
+        processFilters (postEqFilters, postBandCount, false);
 }
 
 void TheLeadAudioProcessor::processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot)
@@ -580,6 +632,12 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     const juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), channels };
     modelSampleRate.store (sampleRate);
     modelMaxBlockSize.store (samplesPerBlock);
+    pitchBufferSize = juce::jmax (2, juce::roundToInt (sampleRate * 0.16));
+    for (auto& channel : pitchBuffers)
+        channel.assign (static_cast<size_t> (pitchBufferSize), 0.0f);
+    pitchWritePosition = 0;
+    pitchPhase = 0.0f;
+    pitchCurrentSemitones = 0.0f;
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot]->prepare (sampleRate, samplesPerBlock);
     for (auto& circuit : tubeScreamerCircuits)
@@ -668,6 +726,63 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
     inputPeak.store (juce::jmax (inputBlockPeak, inputPeak.load (std::memory_order_relaxed) * meterFall),
                      std::memory_order_relaxed);
+
+    // Two crossfaded delay taps provide a low-latency, monophonic-style pitch
+    // shift before the rest of the chain. The 20 ms minimum delay prevents the
+    // read heads from catching the write head; all memory is allocated in prepareToPlay.
+    const auto pitchTarget = juce::jlimit (-24.0f, 24.0f, get ("pitchSemitones"));
+    const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
+    const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
+    const auto pitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto wrapReadIndex = [this] (float position)
+    {
+        while (position < 0.0f) position += static_cast<float> (pitchBufferSize);
+        while (position >= static_cast<float> (pitchBufferSize)) position -= static_cast<float> (pitchBufferSize);
+        return position;
+    };
+    for (int sample = 0; sample < numSamples; ++sample)
+    {
+        pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
+        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
+                = buffer.getReadPointer (channel)[sample];
+
+        if (std::abs (pitchCurrentSemitones) > 0.01f)
+        {
+            const auto ratio = std::exp2 (pitchCurrentSemitones / 12.0f);
+            const auto phaseIncrement = std::abs (1.0f - ratio) / pitchRange;
+            auto phaseA = pitchPhase;
+            auto phaseB = phaseA + 0.5f;
+            if (phaseB >= 1.0f) phaseB -= 1.0f;
+            const auto delayForPhase = [pitchCurrent = pitchCurrentSemitones, pitchMinDelay, pitchRange] (float phase)
+            {
+                return pitchCurrent > 0.0f ? pitchMinDelay + (1.0f - phase) * pitchRange
+                                           : pitchMinDelay + phase * pitchRange;
+            };
+            const auto delayA = delayForPhase (phaseA);
+            const auto delayB = delayForPhase (phaseB);
+            const auto weightA = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * phaseA);
+            const auto weightB = 1.0f - weightA;
+            for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
+            {
+                const auto readTap = [this, channel, &wrapReadIndex] (float delay)
+                {
+                    const auto position = wrapReadIndex (static_cast<float> (pitchWritePosition) - delay);
+                    const auto index0 = static_cast<int> (position);
+                    const auto index1 = (index0 + 1) % pitchBufferSize;
+                    const auto fraction = position - static_cast<float> (index0);
+                    const auto& data = pitchBuffers[static_cast<size_t> (channel)];
+                    return data[static_cast<size_t> (index0)] * (1.0f - fraction)
+                         + data[static_cast<size_t> (index1)] * fraction;
+                };
+                buffer.getWritePointer (channel)[sample] = readTap (delayA) * weightA + readTap (delayB) * weightB;
+            }
+            pitchPhase += phaseIncrement;
+            if (pitchPhase >= 1.0f)
+                pitchPhase -= std::floor (pitchPhase);
+        }
+        pitchWritePosition = (pitchWritePosition + 1) % pitchBufferSize;
+    }
 
     const auto inputGain = juce::Decibels::decibelsToGain (get ("inputGain"));
     buffer.applyGain (inputGain);
@@ -801,6 +916,23 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     constexpr const char* irEnableIds[] { "ir1On", "ir2On" };
     const auto parallelNAMs = get ("ampRouting") >= 0.5f;
     const auto sharedParallelIR = get ("parallelIRMode") >= 0.5f;
+    const auto processAmpSlot = [&] (juce::AudioBuffer<float>& target, int slot)
+    {
+        const auto number = juce::String (slot + 1);
+        if (get (("amp" + number + "Source").toRawUTF8()) >= 0.5f)
+        {
+            std::array<float, 12> controls {};
+            const char* suffixes[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
+                                     "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
+            for (size_t index = 0; index < controls.size(); ++index)
+                controls[index] = get (("amp" + number + suffixes[index]).toRawUTF8(), 0.5f);
+            const auto model = juce::jlimit (0, 11, juce::roundToInt (get (("amp" + number + "Model").toRawUTF8())));
+            ampModels[slot]->processInternal (target, numChannels, numSamples, model, controls,
+                                              static_cast<float> (sampleRate));
+        }
+        else
+            ampModels[slot]->process (target, numChannels, numSamples);
+    };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
         if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
@@ -816,7 +948,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             if (enabled (ampEnableIds[slot]))
             {
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
-                ampModels[slot]->process (buffer, numChannels, numSamples);
+                processAmpSlot (buffer, slot);
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
             }
         }
@@ -847,7 +979,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
-                ampModels[slot]->process (branch, numChannels, numSamples);
+                processAmpSlot (branch, slot);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);

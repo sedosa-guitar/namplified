@@ -18,6 +18,7 @@ private:
     void refreshUserPresets (const juce::String& selectName = {});
     void updateRoutingDisplay();
     void updateBlendValue();
+    void setEqFullscreen (bool shouldBeFullscreen);
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
     void timerCallback() override;
@@ -33,6 +34,8 @@ private:
     juce::TextButton savePresetButton { "Save" };
     juce::TextButton deletePresetButton { "Delete" };
     juce::TextButton resetChainButton { "Reset Chain" };
+    juce::Label pitchLabel, pitchValueLabel;
+    juce::Slider pitchSlider;
     juce::Label blendLabel;
     juce::Label blendValueLabel;
     juce::Slider blendSlider;
@@ -41,8 +44,10 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampRoutingAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
     std::unique_ptr<ChainControls> chainControls;
     bool presetDirty = false;
+    bool eqFullscreen = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessorEditor)
 };
