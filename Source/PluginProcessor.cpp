@@ -174,6 +174,7 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     };
 
     addKnob ("inputGain", "Input Gain", -24.0f, 24.0f, 0.0f);
+    addKnob ("masterVolume", "Master Volume", -24.0f, 24.0f, 0.0f);
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
         juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
@@ -613,6 +614,16 @@ bool TheLeadAudioProcessor::deleteUserPreset (const juce::String& name)
     return file != juce::File() && file.existsAsFile() && file.deleteFile();
 }
 
+juce::String TheLeadAudioProcessor::getSelectedUserPresetName() const
+{
+    return parameters.state.getProperty ("selectedUserPreset").toString();
+}
+
+void TheLeadAudioProcessor::setSelectedUserPresetName (const juce::String& name)
+{
+    parameters.state.setProperty ("selectedUserPreset", name, nullptr);
+}
+
 void TheLeadAudioProcessor::capturePresetSnapshot()
 {
     presetSnapshot.clear();
@@ -976,9 +987,7 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         int activeCount = 0;
         for (int slot = 0; slot < numAmpSlots; ++slot)
         {
-            const auto matchingCab = sharedParallelIR ? 0 : slot;
-            const auto cabPathEnabled = enabled (irEnableIds[matchingCab]);
-            if (enabled (ampEnableIds[slot]) && cabPathEnabled)
+            if (enabled (ampEnableIds[slot]))
                 activeSlots[static_cast<size_t> (activeCount++)] = slot;
         }
 
@@ -1206,11 +1215,9 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         processPostFx (stage);
     const auto outputGainDb = get ("outputGain");
     buffer.applyGain (juce::Decibels::decibelsToGain (outputGainDb));
-    if (std::abs (outputGainDb) < 0.001f)
-    {
-        auto outputBlock = juce::dsp::AudioBlock<float> (buffer).getSubBlock (0, static_cast<size_t> (numSamples));
-        outputSafetyLimiter.process (juce::dsp::ProcessContextReplacing<float> (outputBlock));
-    }
+    buffer.applyGain (juce::Decibels::decibelsToGain (get ("masterVolume")));
+    auto outputBlock = juce::dsp::AudioBlock<float> (buffer).getSubBlock (0, static_cast<size_t> (numSamples));
+    outputSafetyLimiter.process (juce::dsp::ProcessContextReplacing<float> (outputBlock));
     float outputBlockPeak = 0.0f;
     for (int channel = 0; channel < numChannels; ++channel)
         outputBlockPeak = juce::jmax (outputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));

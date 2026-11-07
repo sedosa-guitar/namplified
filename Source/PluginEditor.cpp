@@ -259,7 +259,7 @@ static void drawBoostPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juc
     g.fillPath (arrow);
 }
 
-class ParameterDetailPanel final : public juce::Component, private juce::Timer
+class ParameterDetailPanel final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
     ParameterDetailPanel (TheLeadAudioProcessor& processor, LeadLookAndFeel& lookAndFeelToUse,
@@ -296,12 +296,13 @@ public:
             else if (! control.choices.isEmpty())
             {
                 auto choice = std::make_unique<juce::ComboBox>();
+                choice->setName (control.id);
                 choice->addItemList (control.choices, 1);
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                     audioProcessor.parameters, control.id, *choice));
                 if (isBoost && juce::String (control.id) == "boostModel")
-                    choice->onChange = [this] { updateBoostControls(); resized(); };
+                    choice->addListener (this);
                 controlWidgets.push_back (choice.get());
                 comboBoxes.push_back (std::move (choice));
             }
@@ -395,6 +396,21 @@ public:
         }
     }
 private:
+    void comboBoxChanged (juce::ComboBox* box) override
+    {
+        if (! isBoost || box == nullptr || box->getName() != "boostModel")
+            return;
+        const juce::Component::SafePointer<ParameterDetailPanel> safeThis (this);
+        juce::MessageManager::callAsync ([safeThis]
+        {
+            if (safeThis != nullptr)
+            {
+                safeThis->updateBoostControls();
+                safeThis->resized();
+            }
+        });
+    }
+
     void timerCallback() override
     {
         for (auto* widget : controlWidgets)
@@ -798,7 +814,7 @@ private:
     int activeBand = -1;
 };
 
-class StageCard final : public juce::Component, private juce::Timer
+class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
     StageCard (TheLeadAudioProcessor& processor, juce::String name, juce::String enableId,
@@ -987,6 +1003,7 @@ public:
             else if (! control.choices.isEmpty())
             {
                 auto choice = std::make_unique<juce::ComboBox>();
+                choice->setName (control.id);
                 choice->addItemList (control.choices, 1);
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
@@ -994,14 +1011,7 @@ public:
                 if ((stageName == "Boost Pedal" && juce::String (control.id) == "boostModel")
                     || (stageName.startsWith ("NAM Profile")
                         && (juce::String (control.id).endsWith ("Source") || juce::String (control.id).endsWith ("Model"))))
-                    choice->onChange = [this]
-                    {
-                        updateConditionalControlVisibility();
-                        updateAmpModelTooltip();
-                        resized();
-                        if (contentSizeChangedHandler)
-                            contentSizeChangedHandler();
-                    };
+                    choice->addListener (this);
                 controlWidgets.push_back (choice.get());
                 controlIds.emplace_back (control.id);
                 comboBoxes.push_back (std::move (choice));
@@ -1267,6 +1277,30 @@ public:
     }
 
 private:
+    void comboBoxChanged (juce::ComboBox* box) override
+    {
+        if (box == nullptr)
+            return;
+        const auto id = box->getName();
+        const auto isBoostModel = stageName == "Boost Pedal" && id == "boostModel";
+        const auto isAmpChoice = stageName.startsWith ("NAM Profile")
+                              && (id.endsWith ("Source") || id.endsWith ("Model"));
+        if (! isBoostModel && ! isAmpChoice)
+            return;
+        const juce::Component::SafePointer<StageCard> safeThis (this);
+        juce::MessageManager::callAsync ([safeThis]
+        {
+            if (safeThis != nullptr)
+            {
+                safeThis->updateConditionalControlVisibility();
+                safeThis->updateAmpModelTooltip();
+                safeThis->resized();
+                if (safeThis->contentSizeChangedHandler)
+                    safeThis->contentSizeChangedHandler();
+            }
+        });
+    }
+
     void showToneArchitectureMenu()
     {
         juce::PopupMenu menu;
@@ -1594,32 +1628,12 @@ private:
     {
         if (! stageName.startsWith ("NAM Profile") || ! hasEnableControl)
             return;
-
-        const auto* routing = audioProcessor.parameters.getRawParameterValue ("ampRouting");
-        const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
-        const auto parallel = routing != nullptr && routing->load() >= 0.5f;
-        const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
-        const auto matchingIR = sharedIR ? 1 : slot + 1;
-        const auto* cabEnabled = audioProcessor.parameters.getRawParameterValue (
-            "ir" + juce::String (matchingIR) + "On");
-        const auto blocked = parallel && cabEnabled != nullptr && cabEnabled->load() < 0.5f;
-
-        enableButton.setEnabled (! blocked);
-        enableButton.setButtonText (blocked ? "AMP DISABLED (CAB OFF)" : "ENABLED");
-        if (blocked)
-        {
-            enableButton.setToggleState (false, juce::dontSendNotification);
-            enableButton.setTooltip (sharedIR
-                ? "This amp path is disabled because the shared cabinet IR is off. Enable IR 1 to use the amp."
-                : "This amp path is disabled because its paired cabinet IR is off. Enable the paired IR to use the amp.");
-        }
-        else
-        {
-            const auto* ampEnabled = audioProcessor.parameters.getRawParameterValue (enableParameterId);
-            enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
-                                         juce::dontSendNotification);
-            enableButton.setTooltip ({});
-        }
+        enableButton.setEnabled (true);
+        enableButton.setButtonText ("ENABLED");
+        const auto* ampEnabled = audioProcessor.parameters.getRawParameterValue (enableParameterId);
+        enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
+                                     juce::dontSendNotification);
+        enableButton.setTooltip ("The amp can run with or without a cabinet IR. Disable the IR independently to bypass its cabinet processing.");
     }
 
     TheLeadAudioProcessor& audioProcessor;
@@ -1798,7 +1812,7 @@ public:
 
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
-        if (enableParameterId.isEmpty() || isAmpBlockedByCab())
+        if (enableParameterId.isEmpty())
             return;
         if (auto* parameter = parameterState.getParameter (enableParameterId))
         {
@@ -1840,24 +1854,10 @@ private:
 
     bool isBlockEnabled() const
     {
-        if (isAmpBlockedByCab())
-            return false;
         if (enableParameterId.isEmpty()) return true;
         if (const auto* value = parameterState.getRawParameterValue (enableParameterId))
             return value->load() >= 0.5f;
         return true;
-    }
-
-    bool isAmpBlockedByCab() const
-    {
-        if (! stageName.startsWith ("NAM Profile") || ! parallelRouting)
-            return false;
-        const auto* irMode = parameterState.getRawParameterValue ("parallelIRMode");
-        const auto sharedIR = parallelSharedIR || (irMode != nullptr && irMode->load() >= 0.5f);
-        const auto ampSlot = stageName.fromLastOccurrenceOf (" ", false, false).getIntValue();
-        const auto irSlot = sharedIR ? 1 : ampSlot;
-        const auto* irEnabled = parameterState.getRawParameterValue ("ir" + juce::String (irSlot) + "On");
-        return irEnabled != nullptr && irEnabled->load() < 0.5f;
     }
 
     bool isInternalAmpSelected() const
@@ -2067,11 +2067,7 @@ private:
 
     void timerCallback() override
     {
-        if (isAmpBlockedByCab())
-            setTooltip (parallelSharedIR
-                ? "This amp path is disabled because the shared cabinet IR is off. Enable IR 1 to use it."
-                : "This amp path is disabled because its paired cabinet IR is off.");
-        else if (stageName.startsWith ("NAM Profile"))
+        if (stageName.startsWith ("NAM Profile"))
             setTooltip ("Choose a NAM capture or one of NAMinator's built-in algorithmic amp models for this slot.");
         repaint();
     }
@@ -2896,18 +2892,42 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     };
     pitchSlider.onValueChange = updatePitchValue;
     updatePitchValue();
+    masterVolumeLabel.setText ("MASTER", juce::dontSendNotification);
+    masterVolumeLabel.setFont (leadFontOptions (12.0f, juce::Font::bold));
+    masterVolumeLabel.setColour (juce::Label::textColourId, secondaryText);
+    masterVolumeLabel.setJustificationType (juce::Justification::centredRight);
+    masterVolumeLabel.setTooltip ("Overall plugin output level, applied after the Output block.");
+    addAndMakeVisible (masterVolumeLabel);
+    masterVolumeValueLabel.setFont (leadFontOptions (11.0f, juce::Font::bold));
+    masterVolumeValueLabel.setColour (juce::Label::textColourId, text);
+    masterVolumeValueLabel.setJustificationType (juce::Justification::centredLeft);
+    addAndMakeVisible (masterVolumeValueLabel);
+    masterVolumeSlider.setName ("masterVolume");
+    masterVolumeSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    masterVolumeSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    masterVolumeSlider.setLookAndFeel (editorLookAndFeel.get());
+    masterVolumeSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    masterVolumeSlider.setColour (juce::Slider::textBoxTextColourId, text);
+    masterVolumeSlider.setColour (juce::Slider::textBoxBackgroundColourId, panel);
+    masterVolumeSlider.setColour (juce::Slider::textBoxOutlineColourId, panel);
+    masterVolumeSlider.setTooltip ("Master Volume: overall plugin output after the Output block.");
+    addAndMakeVisible (masterVolumeSlider);
+    masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.parameters, "masterVolume", masterVolumeSlider);
+    updateMasterVolumeValueLabel();
     addAndMakeVisible (presetBox);
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
     deletePresetButton.setTooltip ("Delete the selected user preset");
     addAndMakeVisible (savePresetButton);
     addAndMakeVisible (deletePresetButton);
     addAndMakeVisible (resetChainButton);
-    refreshUserPresets();
+    refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     presetBox.onChange = [this]
     {
         const auto name = presetBox.getText().trim();
         if (name.isNotEmpty() && audioProcessor.loadUserPreset (name))
         {
+            audioProcessor.setSelectedUserPresetName (name);
             audioProcessor.capturePresetSnapshot();
             presetDirty = false;
             refreshUserPresets (name);
@@ -2919,6 +2939,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     resetChainButton.onClick = [this]
     {
         chainControls->resetToDefaultChain();
+        audioProcessor.setSelectedUserPresetName ({});
         audioProcessor.capturePresetSnapshot();
         presetDirty = false;
         presetBox.setSelectedId (0, juce::dontSendNotification);
@@ -2934,6 +2955,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     addAndMakeVisible (ampRoutingBox);
     ampRoutingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.parameters, "ampRouting", ampRoutingBox);
+    ampRoutingBox.addListener (this);
 
     parallelIRBox.addItem ("PAIRED IRs", 1);
     parallelIRBox.addItem ("SHARED IR 1", 2);
@@ -2941,7 +2963,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     addAndMakeVisible (parallelIRBox);
     parallelIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
         processor.parameters, "parallelIRMode", parallelIRBox);
-    parallelIRBox.onChange = [this] { updateRoutingDisplay(); };
+    parallelIRBox.addListener (this);
     parallelIRBox.setVisible (false);
 
     blendLabel.setText ("CAB 1 / CAB 2", juce::dontSendNotification);
@@ -2965,7 +2987,6 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     addAndMakeVisible (blendSlider);
     blendSlider.onValueChange = [this] { updateBlendValue(); };
 
-    ampRoutingBox.onChange = [this] { updateRoutingDisplay(); };
     updateRoutingDisplay();
     addAndMakeVisible (*chainControls);
 
@@ -2992,25 +3013,31 @@ void TheLeadAudioProcessorEditor::resized()
     }
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
-    auto titleArea = top.removeFromLeft (260);
+    auto titleArea = top.removeFromLeft (240);
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
     auto presetArea = top;
     presetLabel.setBounds (presetArea.removeFromLeft (58));
     presetArea.removeFromLeft (8);
-    presetBox.setBounds (presetArea.removeFromLeft (190).reduced (0, 4));
+    presetBox.setBounds (presetArea.removeFromLeft (165).reduced (0, 4));
     presetArea.removeFromLeft (8);
     savePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
     presetArea.removeFromLeft (6);
     deletePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
     presetArea.removeFromLeft (6);
     resetChainButton.setBounds (presetArea.removeFromLeft (104).reduced (0, 4));
-    presetArea.removeFromLeft (18);
-    pitchLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
-    presetArea.removeFromLeft (8);
-    pitchSlider.setBounds (presetArea.removeFromLeft (160).reduced (0, 10));
+    presetArea.removeFromLeft (10);
+    pitchLabel.setBounds (presetArea.removeFromLeft (46).reduced (0, 4));
+    presetArea.removeFromLeft (6);
+    pitchSlider.setBounds (presetArea.removeFromLeft (112).reduced (0, 10));
     presetArea.removeFromLeft (4);
-    pitchValueLabel.setBounds (presetArea.removeFromLeft (54).reduced (0, 4));
+    pitchValueLabel.setBounds (presetArea.removeFromLeft (44).reduced (0, 4));
+    presetArea.removeFromLeft (8);
+    masterVolumeLabel.setBounds (presetArea.removeFromLeft (56).reduced (0, 4));
+    presetArea.removeFromLeft (4);
+    masterVolumeSlider.setBounds (presetArea.removeFromLeft (48).reduced (0, 2));
+    presetArea.removeFromLeft (4);
+    masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (48).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     ampRoutingBox.setBounds (controlRow.removeFromRight (180).reduced (0, 2));
@@ -3042,6 +3069,9 @@ void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
+    masterVolumeLabel.setVisible (showChrome);
+    masterVolumeSlider.setVisible (showChrome);
+    masterVolumeValueLabel.setVisible (showChrome);
     blendLabel.setVisible (showChrome);
     blendValueLabel.setVisible (showChrome);
     blendSlider.setVisible (showChrome);
@@ -3054,7 +3084,9 @@ void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
 
 void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
 {
-    const auto previousName = selectName.isNotEmpty() ? selectName : selectedPresetName();
+    auto previousName = selectName.isNotEmpty() ? selectName : selectedPresetName();
+    if (previousName.isEmpty())
+        previousName = audioProcessor.getSelectedUserPresetName();
     const auto names = audioProcessor.getUserPresetNames();
     presetBox.clear (juce::dontSendNotification);
     for (int i = 0; i < names.size(); ++i)
@@ -3077,6 +3109,7 @@ juce::String TheLeadAudioProcessorEditor::selectedPresetName() const
 
 void TheLeadAudioProcessorEditor::timerCallback()
 {
+    updateMasterVolumeValueLabel();
     const auto* routingParameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
     const auto* irModeParameter = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto parallel = routingParameter != nullptr && routingParameter->load() >= 0.5f;
@@ -3103,6 +3136,26 @@ void TheLeadAudioProcessorEditor::timerCallback()
             self (self, *child);
     };
     repaintChildren (repaintChildren, *this);
+}
+
+void TheLeadAudioProcessorEditor::updateMasterVolumeValueLabel()
+{
+    const auto value = masterVolumeSlider.getValue();
+    const auto roundedDb = std::abs (value) < 0.05 ? 0.0 : std::round (value * 10.0) / 10.0;
+    const auto valueText = roundedDb == 0.0 ? juce::String ("0") : juce::String (roundedDb, 1);
+    masterVolumeValueLabel.setText (valueText + " dB", juce::dontSendNotification);
+}
+
+void TheLeadAudioProcessorEditor::comboBoxChanged (juce::ComboBox* box)
+{
+    if (box != &ampRoutingBox && box != &parallelIRBox)
+        return;
+    const juce::Component::SafePointer<TheLeadAudioProcessorEditor> safeThis (this);
+    juce::MessageManager::callAsync ([safeThis]
+    {
+        if (safeThis != nullptr)
+            safeThis->updateRoutingDisplay();
+    });
 }
 
 void TheLeadAudioProcessorEditor::updateRoutingDisplay()
@@ -3188,6 +3241,7 @@ void TheLeadAudioProcessorEditor::showSavePresetPrompt()
             return;
         }
         safeThis->audioProcessor.capturePresetSnapshot();
+        safeThis->audioProcessor.setSelectedUserPresetName (name);
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets (name);
     }), true);
@@ -3206,6 +3260,8 @@ void TheLeadAudioProcessorEditor::showDeletePresetPrompt()
     {
         if (result != 1 || safeThis == nullptr) return;
         safeThis->audioProcessor.deleteUserPreset (name);
+        if (safeThis->audioProcessor.getSelectedUserPresetName() == name)
+            safeThis->audioProcessor.setSelectedUserPresetName ({});
         safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets();
