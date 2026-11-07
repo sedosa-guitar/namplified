@@ -48,6 +48,7 @@ private:
     std::unique_ptr<ChainControls> chainControls;
     bool presetDirty = false;
     bool eqFullscreen = false;
+    int lastBlendDisplayState = -1;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessorEditor)
 };

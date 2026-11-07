@@ -1308,6 +1308,16 @@ juce::String TheLeadAudioProcessor::getImpulseResponseName (int slot) const
     return juce::File (irFilePaths[slot]).getFileName();
 }
 
+bool TheLeadAudioProcessor::isImpulseResponseActive (int slot) const
+{
+    if (slot < 0 || slot >= numIRSlots || ! irLoaded[slot].load (std::memory_order_relaxed))
+        return false;
+
+    const auto parameterId = "ir" + juce::String (slot + 1) + "On";
+    const auto* enabledParameter = parameters.getRawParameterValue (parameterId);
+    return enabledParameter != nullptr && enabledParameter->load (std::memory_order_relaxed) >= 0.5f;
+}
+
 void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
 {
     if (slot < 0 || slot >= numAmpSlots || ! file.existsAsFile())
