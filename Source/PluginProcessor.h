@@ -66,6 +66,8 @@ public:
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name);
     bool deleteUserPreset (const juce::String& name);
+    juce::String getSelectedUserPresetName() const;
+    void setSelectedUserPresetName (const juce::String& name);
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
