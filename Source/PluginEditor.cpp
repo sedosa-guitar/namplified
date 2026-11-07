@@ -4,6 +4,7 @@
 #include <unordered_set>
 #include <limits>
 #include <array>
+#include <cmath>
 
 const auto background = juce::Colour::fromRGB (10, 12, 18);
 const auto panel = juce::Colour::fromRGB (22, 25, 32);
@@ -479,39 +480,65 @@ public:
     }
 };
 
-class GraphicEqEditor final : public juce::Component
+class GraphicEqEditor final : public juce::Component, private juce::Timer
 {
 public:
-    explicit GraphicEqEditor (TheLeadAudioProcessor& processor, bool postEq) : audioProcessor (processor)
+    explicit GraphicEqEditor (TheLeadAudioProcessor& processor, bool postEq)
+        : audioProcessor (processor), isPostEq (postEq), qParameterId (postEq ? "postEqQ" : "preEqQ")
     {
         if (postEq)
         {
             parameterIds = { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
                              "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
-            frequencyNames = { "50 Hz", "100 Hz", "200 Hz", "400 Hz", "800 Hz", "1.6 kHz", "3.2 kHz", "6.4 kHz", "16 kHz" };
+            frequencyIds = { "postLowFreq", "postGraphic2Freq", "postGraphic3Freq", "postGraphic4Freq",
+                             "postMidFreq", "postGraphic6Freq", "postGraphic7Freq", "postGraphic8Freq",
+                             "postHighFreq" };
         }
         else
         {
             parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-            frequencyNames = { "80 Hz", "250 Hz", "800 Hz", "2.5 kHz", "8 kHz" };
+            frequencyIds = { "preLowFreq", "preBand2Freq", "preMidFreq", "preBand4Freq", "preHighFreq" };
         }
+
+        qLabel.setText ("BAND WIDTH / Q", juce::dontSendNotification);
+        qLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        qLabel.setColour (juce::Label::textColourId, secondaryText);
+        qLabel.setTooltip ("Controls the width of the bell bands. Lower Q is wider; higher Q is narrower.");
+        addAndMakeVisible (qLabel);
+
+        qSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+        qSlider.setName (qParameterId);
+        qSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 54, 22);
+        qSlider.setDoubleClickReturnValue (true, 0.707);
+        qSlider.setColour (juce::Slider::trackColourId, knobAccent);
+        qSlider.setColour (juce::Slider::textBoxTextColourId, text);
+        qSlider.setColour (juce::Slider::textBoxBackgroundColourId, panel);
+        qSlider.setColour (juce::Slider::textBoxOutlineColourId, panel);
+        qSlider.textFromValueFunction = [] (double value) { return juce::String (value, 2); };
+        qSlider.valueFromTextFunction = [] (const juce::String& value) { return value.getDoubleValue(); };
+        qSlider.setTooltip ("Controls the width of the bell bands. Lower Q is wider; higher Q is narrower.");
+        addAndMakeVisible (qSlider);
+        qAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            audioProcessor.parameters, qParameterId, qSlider);
+
         setMouseCursor (juce::MouseCursor::CrosshairCursor);
         for (int band = 0; band < parameterIds.size(); ++band)
         {
             auto button = std::make_unique<juce::TextButton> ("RESET");
-            button->setTooltip ("Reset " + frequencyNames[band] + " band to 0 dB");
+            button->setTooltip ("Reset this band's frequency and gain");
             button->onClick = [this, band] { resetBand (band); };
             addAndMakeVisible (*button);
             resetButtons.push_back (std::move (button));
         }
+        startTimerHz (30);
     }
 
     void resized() override
     {
         const auto plot = getPlotBounds();
-        for (int band = 0; band < parameterIds.size(); ++band)
-            resetButtons[static_cast<size_t> (band)]->setBounds (
-                juce::roundToInt (pointX (band, plot) - 25.0f), juce::roundToInt (plot.getBottom() + 34.0f), 50, 22);
+        qLabel.setBounds (juce::roundToInt (plot.getRight() - 230.0f), 18, 94, 24);
+        qSlider.setBounds (juce::roundToInt (plot.getRight() - 132.0f), 17, 132, 26);
+        positionResetButtons (plot);
     }
 
     void paint (juce::Graphics& g) override
@@ -535,40 +562,73 @@ public:
                         juce::Justification::centredRight);
         }
 
-        juce::Path response;
-        for (int i = 0; i < parameterIds.size(); ++i)
+        for (const auto frequency : { 100.0f, 1000.0f, 10000.0f })
         {
-            const auto x = pointX (i, plot);
+            const auto x = frequencyToX (frequency, plot);
+            g.setColour (juce::Colour::fromRGB (36, 44, 56));
+            g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
+            g.setColour (secondaryText);
+            g.setFont (leadFontOptions (12.0f));
+            g.drawText (formatFrequency (frequency), juce::Rectangle<int> (
+                juce::roundToInt (x - 30.0f), juce::roundToInt (plot.getBottom() + 12.0f), 60, 16),
+                juce::Justification::centred);
+        }
+
+        std::vector<juce::Point<float>> points;
+        points.reserve (static_cast<size_t> (parameterIds.size()));
+        for (int band = 0; band < parameterIds.size(); ++band)
+        {
+            const auto x = bandX (band, plot);
+            const auto gain = bandGain (band);
+            const juce::Point<float> point (x, gainToY (gain, plot));
+            points.push_back (point);
             g.setColour (juce::Colour::fromRGB (41, 49, 61));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
-            const auto* value = audioProcessor.parameters.getRawParameterValue (parameterIds[i]);
-            const auto gain = value != nullptr ? value->load() : 0.0f;
-            const juce::Point<float> point (x, gainToY (gain, plot));
-            if (i == 0)
-                response.startNewSubPath (point);
-            else
-                response.lineTo (point);
-            g.setFont (leadFontOptions (14.0f));
+            g.setFont (leadFontOptions (12.0f));
             g.setColour (text);
-            g.drawText (frequencyNames[i], juce::Rectangle<int> (juce::roundToInt (x - 42.0f),
-                        juce::roundToInt (plot.getBottom() + 12.0f), 84, 18), juce::Justification::centred);
+            g.drawText (formatFrequency (bandFrequency (band)), juce::Rectangle<int> (
+                juce::roundToInt (x - 34.0f), juce::roundToInt (plot.getBottom() + 12.0f), 68, 18),
+                juce::Justification::centred);
             g.setColour (secondaryText);
             g.drawText ((gain > 0.0f ? "+" : "") + juce::String (gain, 1),
-                        juce::Rectangle<int> (juce::roundToInt (x - 38.0f), juce::roundToInt (point.y - 28.0f), 76, 17),
+                        juce::Rectangle<int> (juce::roundToInt (x - 34.0f), juce::roundToInt (point.y - 27.0f), 68, 16),
                         juce::Justification::centred);
         }
-        g.setColour (juce::Colour (0xff66d6b2));
-        g.strokePath (response, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
-                                                       juce::PathStrokeType::rounded));
-        for (int i = 0; i < parameterIds.size(); ++i)
+
+        if (! points.empty())
         {
-            const auto* value = audioProcessor.parameters.getRawParameterValue (parameterIds[i]);
-            const auto gain = value != nullptr ? value->load() : 0.0f;
-            const juce::Point<float> point (pointX (i, plot), gainToY (gain, plot));
-            g.setColour (juce::Colour::fromRGB (19, 24, 32));
-            g.fillEllipse (point.x - 9.0f, point.y - 9.0f, 18.0f, 18.0f);
+            juce::Path response;
+            const auto firstShelfGain = bandGain (0);
+            response.startNewSubPath (plot.getX(), gainToY (firstShelfGain, plot));
+            if (points.front().x > plot.getX())
+                response.lineTo (points.front());
+            else
+                response.startNewSubPath (points.front());
+            for (size_t i = 0; i + 1 < points.size(); ++i)
+            {
+                const auto p0 = i == 0 ? points[i] : points[i - 1];
+                const auto p1 = points[i];
+                const auto p2 = points[i + 1];
+                const auto p3 = i + 2 < points.size() ? points[i + 2] : points[i + 1];
+                auto c1 = p1 + (p2 - p0) * (1.0f / 6.0f);
+                auto c2 = p2 - (p3 - p1) * (1.0f / 6.0f);
+                c1.x = juce::jlimit (p1.x, p2.x, c1.x);
+                c2.x = juce::jlimit (p1.x, p2.x, c2.x);
+                response.cubicTo (c1, c2, p2);
+            }
+            if (points.back().x < plot.getRight())
+                response.lineTo (plot.getRight(), gainToY (bandGain (parameterIds.size() - 1), plot));
             g.setColour (juce::Colour (0xff66d6b2));
-            g.fillEllipse (point.x - 5.0f, point.y - 5.0f, 10.0f, 10.0f);
+            g.strokePath (response, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
+                                                           juce::PathStrokeType::rounded));
+        }
+
+        for (const auto& point : points)
+        {
+            g.setColour (juce::Colour::fromRGB (19, 24, 32));
+            g.fillEllipse (point.x - 10.0f, point.y - 10.0f, 20.0f, 20.0f);
+            g.setColour (juce::Colour (0xff66d6b2));
+            g.fillEllipse (point.x - 5.5f, point.y - 5.5f, 11.0f, 11.0f);
         }
     }
 
@@ -577,39 +637,109 @@ public:
         const auto plot = getPlotBounds();
         auto nearest = 0;
         auto nearestDistance = std::numeric_limits<float>::max();
-        for (int i = 0; i < parameterIds.size(); ++i)
+        for (int band = 0; band < parameterIds.size(); ++band)
         {
-            const auto distance = std::abs (event.position.x - pointX (i, plot));
-            if (distance < nearestDistance) { nearestDistance = distance; nearest = i; }
+            const auto point = juce::Point<float> (bandX (band, plot), gainToY (bandGain (band), plot));
+            const auto distance = point.getDistanceFrom (event.position);
+            if (distance < nearestDistance) { nearestDistance = distance; nearest = band; }
         }
         activeBand = nearest;
         if (auto* parameter = audioProcessor.parameters.getParameter (parameterIds[activeBand]))
             parameter->beginChangeGesture();
-        updateBand (event.position.y, plot);
+        if (auto* parameter = audioProcessor.parameters.getParameter (frequencyIds[activeBand]))
+            parameter->beginChangeGesture();
+        updateBand (event.position.x, event.position.y, plot);
     }
 
-    void mouseDrag (const juce::MouseEvent& event) override { updateBand (event.position.y, getPlotBounds()); }
+    void mouseDrag (const juce::MouseEvent& event) override
+    {
+        updateBand (event.position.x, event.position.y, getPlotBounds());
+    }
 
     void mouseUp (const juce::MouseEvent&) override
     {
         if (activeBand >= 0)
+        {
             if (auto* parameter = audioProcessor.parameters.getParameter (parameterIds[activeBand]))
                 parameter->endChangeGesture();
+            if (auto* parameter = audioProcessor.parameters.getParameter (frequencyIds[activeBand]))
+                parameter->endChangeGesture();
+        }
         activeBand = -1;
     }
 
 private:
+    void timerCallback() override
+    {
+        positionResetButtons (getPlotBounds());
+        repaint();
+    }
+
     juce::Rectangle<float> getPlotBounds() const
     {
         auto plot = getLocalBounds().toFloat().reduced (66.0f, 46.0f);
+        plot.translate (0.0f, 6.0f);
         plot.removeFromBottom (58.0f);
         return plot;
     }
 
-    float pointX (int index, juce::Rectangle<float> plot) const
+    float bandFrequency (int band) const
     {
-        return plot.getX() + plot.getWidth() * static_cast<float> (index)
-             / static_cast<float> (juce::jmax (1, parameterIds.size() - 1));
+        const auto* value = audioProcessor.parameters.getRawParameterValue (frequencyIds[band]);
+        return value != nullptr ? value->load() : 1000.0f;
+    }
+
+    float bandGain (int band) const
+    {
+        const auto* value = audioProcessor.parameters.getRawParameterValue (parameterIds[band]);
+        return value != nullptr ? value->load() : 0.0f;
+    }
+
+    float bandX (int band, juce::Rectangle<float> plot) const
+    {
+        return frequencyToX (bandFrequency (band), plot);
+    }
+
+    float frequencyToX (float frequency, juce::Rectangle<float> plot) const
+    {
+        const auto minAxis = 20.0f;
+        const auto maxAxis = isPostEq ? 20000.0f : 16000.0f;
+        const auto proportion = std::log (juce::jlimit (minAxis, maxAxis, frequency) / minAxis)
+                              / std::log (maxAxis / minAxis);
+        return plot.getX() + proportion * plot.getWidth();
+    }
+
+    float xToFrequency (float x, juce::Rectangle<float> plot) const
+    {
+        const auto proportion = juce::jlimit (0.0f, 1.0f, (x - plot.getX()) / plot.getWidth());
+        const auto minAxis = 20.0f;
+        const auto maxAxis = isPostEq ? 20000.0f : 16000.0f;
+        return minAxis * std::pow (maxAxis / minAxis, proportion);
+    }
+
+    float allowedMinFrequency() const { return 50.0f; }
+    float allowedMaxFrequency() const { return isPostEq ? 16000.0f : 12000.0f; }
+
+    static juce::String formatFrequency (float frequency)
+    {
+        if (frequency >= 1000.0f)
+        {
+            const auto kHz = frequency / 1000.0f;
+            return juce::String (kHz, kHz >= 10.0f || std::abs (kHz - std::round (kHz)) < 0.05f ? 0 : 1) + " kHz";
+        }
+        return juce::String (juce::roundToInt (frequency)) + " Hz";
+    }
+
+    void positionResetButtons (juce::Rectangle<float> plot)
+    {
+        for (int band = 0; band < parameterIds.size(); ++band)
+        {
+            constexpr int buttonWidth = 48;
+            const auto x = juce::jlimit (0.0f, static_cast<float> (getWidth() - buttonWidth),
+                                         bandX (band, plot) - buttonWidth * 0.5f);
+            resetButtons[static_cast<size_t> (band)]->setBounds (
+                juce::roundToInt (x), juce::roundToInt (plot.getBottom() + 34.0f), buttonWidth, 22);
+        }
     }
 
     static float gainToY (float gain, juce::Rectangle<float> plot)
@@ -618,26 +748,51 @@ private:
                            plot.getBottom(), plot.getY());
     }
 
-    void updateBand (float y, juce::Rectangle<float> plot)
+    void updateBand (float x, float y, juce::Rectangle<float> plot)
     {
         if (activeBand < 0)
             return;
+
+        const auto gap = juce::jmin (42.0f, plot.getWidth() / static_cast<float> (parameterIds.size() + 1) * 0.8f);
+        auto minX = plot.getX();
+        auto maxX = plot.getRight();
+        if (activeBand > 0)
+            minX = bandX (activeBand - 1, plot) + gap;
+        if (activeBand + 1 < parameterIds.size())
+            maxX = bandX (activeBand + 1, plot) - gap;
+        const auto constrainedX = minX <= maxX ? juce::jlimit (minX, maxX, x) : bandX (activeBand, plot);
+        const auto frequency = juce::jlimit (allowedMinFrequency(), allowedMaxFrequency(), xToFrequency (constrainedX, plot));
         const auto gain = juce::jmap (juce::jlimit (plot.getY(), plot.getBottom(), y),
                                       plot.getBottom(), plot.getY(), -12.0f, 12.0f);
+
+        if (auto* parameter = audioProcessor.parameters.getParameter (frequencyIds[activeBand]))
+            parameter->setValueNotifyingHost (parameter->convertTo0to1 (frequency));
         if (auto* parameter = audioProcessor.parameters.getParameter (parameterIds[activeBand]))
             parameter->setValueNotifyingHost (parameter->convertTo0to1 (gain));
+        positionResetButtons (plot);
         repaint();
     }
 
     void resetBand (int band)
     {
-        if (auto* parameter = audioProcessor.parameters.getParameter (parameterIds[band]))
-            parameter->setValueNotifyingHost (parameter->getDefaultValue());
+        for (const auto& id : { frequencyIds[band], parameterIds[band] })
+            if (auto* parameter = audioProcessor.parameters.getParameter (id))
+            {
+                parameter->beginChangeGesture();
+                parameter->setValueNotifyingHost (parameter->getDefaultValue());
+                parameter->endChangeGesture();
+            }
+        positionResetButtons (getPlotBounds());
         repaint();
     }
 
     TheLeadAudioProcessor& audioProcessor;
-    juce::StringArray parameterIds, frequencyNames;
+    bool isPostEq = false;
+    juce::String qParameterId;
+    juce::StringArray parameterIds, frequencyIds;
+    juce::Label qLabel;
+    juce::Slider qSlider;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> qAttachment;
     std::vector<std::unique_ptr<juce::TextButton>> resetButtons;
     int activeBand = -1;
 };
@@ -872,6 +1027,7 @@ public:
         }
         updateConditionalControlVisibility();
         updateAmpModelTooltip();
+        updateAmpCabDependency();
     }
 
     void paint (juce::Graphics& g) override
@@ -1245,6 +1401,7 @@ private:
 
     void timerCallback() override
     {
+        updateAmpCabDependency();
         if (loadKind == FileKind::nam && loadButton.isVisible() == isUsingInternalAmp())
         {
             updateConditionalControlVisibility();
@@ -1264,6 +1421,38 @@ private:
         }
         updateAmpModelTooltip();
         repaint();
+    }
+
+    void updateAmpCabDependency()
+    {
+        if (! stageName.startsWith ("NAM Profile") || ! hasEnableControl)
+            return;
+
+        const auto* routing = audioProcessor.parameters.getRawParameterValue ("ampRouting");
+        const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
+        const auto parallel = routing != nullptr && routing->load() >= 0.5f;
+        const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
+        const auto matchingIR = sharedIR ? 1 : slot + 1;
+        const auto* cabEnabled = audioProcessor.parameters.getRawParameterValue (
+            "ir" + juce::String (matchingIR) + "On");
+        const auto blocked = parallel && cabEnabled != nullptr && cabEnabled->load() < 0.5f;
+
+        enableButton.setEnabled (! blocked);
+        enableButton.setButtonText (blocked ? "AMP DISABLED (CAB OFF)" : "ENABLED");
+        if (blocked)
+        {
+            enableButton.setToggleState (false, juce::dontSendNotification);
+            enableButton.setTooltip (sharedIR
+                ? "This amp path is disabled because the shared cabinet IR is off. Enable IR 1 to use the amp."
+                : "This amp path is disabled because its paired cabinet IR is off. Enable the paired IR to use the amp.");
+        }
+        else
+        {
+            const auto* ampEnabled = audioProcessor.parameters.getRawParameterValue (enableParameterId);
+            enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
+                                         juce::dontSendNotification);
+            enableButton.setTooltip ({});
+        }
     }
 
     TheLeadAudioProcessor& audioProcessor;
@@ -1332,7 +1521,12 @@ public:
         repaint();
     }
 
-    void setParallelRouting (bool parallel) { parallelRouting = parallel; }
+    void setParallelRouting (bool parallel, bool sharedIR)
+    {
+        parallelRouting = parallel;
+        parallelSharedIR = sharedIR;
+        repaint();
+    }
 
     void paint (juce::Graphics& g) override
     {
@@ -1345,7 +1539,7 @@ public:
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
         const auto borderColour = isSelected ? selectionAccent
                                : ioBlock ? juce::Colour::fromRGB (72, 79, 92)
-                                         : juce::Colour (0xff70d9b6);
+                                         : getIconColour (kind);
         g.setColour (borderColour);
         g.drawRoundedRectangle (r.reduced (2.0f), cornerRadius - 2.0f, isSelected ? 4.5f : 4.0f);
         if (isDragging)
@@ -1434,7 +1628,7 @@ public:
 
     void mouseDoubleClick (const juce::MouseEvent&) override
     {
-        if (enableParameterId.isEmpty())
+        if (enableParameterId.isEmpty() || isAmpBlockedByCab())
             return;
         if (auto* parameter = parameterState.getParameter (enableParameterId))
         {
@@ -1476,10 +1670,24 @@ private:
 
     bool isBlockEnabled() const
     {
+        if (isAmpBlockedByCab())
+            return false;
         if (enableParameterId.isEmpty()) return true;
         if (const auto* value = parameterState.getRawParameterValue (enableParameterId))
             return value->load() >= 0.5f;
         return true;
+    }
+
+    bool isAmpBlockedByCab() const
+    {
+        if (! stageName.startsWith ("NAM Profile") || ! parallelRouting)
+            return false;
+        const auto* irMode = parameterState.getRawParameterValue ("parallelIRMode");
+        const auto sharedIR = parallelSharedIR || (irMode != nullptr && irMode->load() >= 0.5f);
+        const auto ampSlot = stageName.fromLastOccurrenceOf (" ", false, false).getIntValue();
+        const auto irSlot = sharedIR ? 1 : ampSlot;
+        const auto* irEnabled = parameterState.getRawParameterValue ("ir" + juce::String (irSlot) + "On");
+        return irEnabled != nullptr && irEnabled->load() < 0.5f;
     }
 
     bool isInternalAmpSelected() const
@@ -1677,7 +1885,7 @@ private:
             case ModuleKind::compressor: return juce::Colour (0xffff9b5b);
             case ModuleKind::boost: return juce::Colour (0xffffd06f);
             case ModuleKind::equalizer: return juce::Colour (0xffb69cff);
-            case ModuleKind::nam: return juce::Colour (0xff79baff);
+            case ModuleKind::nam: return juce::Colour (0xff68d9b4);
             case ModuleKind::ir: return juce::Colour (0xffec8ed2);
             case ModuleKind::delay: return juce::Colour (0xff5bc5ef);
             case ModuleKind::reverb: return juce::Colour (0xffa792f5);
@@ -1689,6 +1897,12 @@ private:
 
     void timerCallback() override
     {
+        if (isAmpBlockedByCab())
+            setTooltip (parallelSharedIR
+                ? "This amp path is disabled because the shared cabinet IR is off. Enable IR 1 to use it."
+                : "This amp path is disabled because its paired cabinet IR is off.");
+        else if (stageName.startsWith ("NAM Profile"))
+            setTooltip ("Choose a NAM capture or one of NAMinator's built-in algorithmic amp models for this slot.");
         repaint();
     }
 
@@ -1699,7 +1913,7 @@ private:
     juce::Point<int> dragStartPosition;
     int lastDragStep = 0;
     int dragDirection = 1;
-    bool parallelRouting = false;
+    bool parallelRouting = false, parallelSharedIR = false;
     std::function<void (int)> reorderHandler;
     std::function<void()> selectHandler;
     juce::TextButton moveUp, moveDown;
@@ -1722,7 +1936,7 @@ static void drawAmpHeadIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::
 void StageCard::drawBlockIcon (juce::Graphics& g, juce::Rectangle<float> bounds)
 {
     if (stageName.startsWith ("NAM Profile") && isUsingInternalAmp())
-        drawAmpHeadIcon (g, bounds, juce::Colour (0xff79baff));
+        drawAmpHeadIcon (g, bounds, juce::Colour (0xff68d9b4));
     else
         StageTile::drawStageIcon (g, bounds, stageName);
 }
@@ -1740,7 +1954,7 @@ public:
         parallelSharedIR = useSharedIR;
         for (auto* tile : tiles)
         {
-            tile->setParallelRouting (parallelRouting);
+            tile->setParallelRouting (parallelRouting, parallelSharedIR);
             tile->setVisible (! (parallelRouting && parallelSharedIR && tile->getName() == "Cab IR 2"));
         }
         resized();
@@ -1754,9 +1968,6 @@ public:
         g.setColour (secondaryText);
         if (parallelRouting)
         {
-            g.drawText (parallelSharedIR ? "AMP PARALLEL  |  BOTH AMPS -> IR 1"
-                                         : "AMP PARALLEL  |  AMP 1 -> IR 1  /  AMP 2 -> IR 2",
-                        0, 2, getWidth(), 18, juce::Justification::centred);
             const auto tileWidth = juce::jmax (90, juce::jmin (92, juce::roundToInt ((getWidth() - 20) / 8.0f) - 12));
             const auto postY = 50 + 2 * (tileWidth + 12) + 10 + tileWidth + 8;
             g.drawText ("POST FX  /  OUTPUT", 10, postY, getWidth() - 20, 18, juce::Justification::centredLeft);
@@ -1764,8 +1975,6 @@ public:
             return;
         }
 
-        g.drawText ("AMP SERIES  |  CAB 1 / CAB 2 BLEND", 0, 2, getWidth(), 18,
-                    juce::Justification::centred);
         drawSerialWiring (g, wire);
     }
 
@@ -1774,7 +1983,7 @@ public:
         tiles = std::move (ordered);
         for (auto* tile : tiles)
         {
-            tile->setParallelRouting (parallelRouting);
+            tile->setParallelRouting (parallelRouting, parallelSharedIR);
             tile->setVisible (! (parallelRouting && parallelSharedIR && tile->getName() == "Cab IR 2"));
         }
         resized();
@@ -2131,7 +2340,7 @@ public:
         {
             const auto number = juce::String (slot + 1);
             addStage ("Cab IR " + number, "ir" + number + "On", {},
-                      FileKind::impulseResponse, slot, irMover (slot),
+                      FileKind::impulseResponse, slot, {},
                       {{ ("ir" + number + "ShapeLow").toRawUTF8(), "Low (dB)" },
                        { ("ir" + number + "ShapeLowFreq").toRawUTF8(), "Low Frequency (Hz)" },
                        { ("ir" + number + "ShapeMid").toRawUTF8(), "Mid (dB)" },
@@ -2184,6 +2393,20 @@ public:
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
         drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT",
                         now < outputClipUntilMs);
+
+        const auto* routing = audioProcessor.parameters.getRawParameterValue ("ampRouting");
+        const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
+        const auto parallel = routing != nullptr && routing->load() >= 0.5f;
+        const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
+        const auto heading = parallel
+            ? (sharedIR ? "AMP PARALLEL  |  BOTH AMPS -> IR 1"
+                        : "AMP PARALLEL  |  AMP 1 -> IR 1  /  AMP 2 -> IR 2")
+            : "AMP SERIES  |  CAB 1 / CAB 2 BLEND";
+        const auto chainBounds = chainViewport.getBounds();
+        g.setFont (leadFontOptions (15.0f, juce::Font::bold));
+        g.setColour (secondaryText);
+        g.drawText (heading, chainBounds.getX() + 60, chainBounds.getY() - 8,
+                    chainBounds.getWidth() - 120, 18, juce::Justification::centred);
     }
 
     void resized() override
@@ -2298,17 +2521,6 @@ private:
         };
     }
 
-    std::function<void (int)> irMover (int stageId)
-    {
-        return [this, stageId] (int delta)
-        {
-            auto order = audioProcessor.getIRSlotOrder();
-            swapNeighbor (order, stageId, delta);
-            audioProcessor.setIRSlotOrder (order);
-            resized();
-        };
-    }
-
     void moveStage (bool pre, int stageId, int delta)
     {
         if (pre)
@@ -2385,8 +2597,8 @@ private:
             ordered.push_back (findCard (preNames[static_cast<size_t> (stage)]));
         for (const auto slot : audioProcessor.getAmpSlotOrder())
             ordered.push_back (findCard ("NAM Profile " + juce::String (slot + 1)));
-        for (const auto slot : audioProcessor.getIRSlotOrder())
-            ordered.push_back (findCard ("Cab IR " + juce::String (slot + 1)));
+        ordered.push_back (findCard ("Cab IR 1"));
+        ordered.push_back (findCard ("Cab IR 2"));
         constexpr const char* postNames[] { "Delay", "Reverb", "Chorus", "Post EQ" };
         for (const auto stage : audioProcessor.getPostFxOrder())
             ordered.push_back (findCard (postNames[static_cast<size_t> (stage)]));

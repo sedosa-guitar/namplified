@@ -104,7 +104,8 @@ private:
     void processEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples,
                            const juce::String& prefix, bool pre);
     void processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot);
-    void setEqCoefficients (BiquadState& filter, int band, float frequency, float gainDb, double sampleRate);
+    void setEqCoefficients (BiquadState& filter, int band, float frequency, float gainDb,
+                            double sampleRate, float q = 1.0f);
     struct AmpModel;
     std::unique_ptr<AmpModel> ampModels[numAmpSlots];
     juce::ThreadPool modelLoader { 1 };

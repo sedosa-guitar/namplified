@@ -209,13 +209,16 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addKnob ("boost808Level", "808 Level", -24.0f, 12.0f, 0.0f);
     addToggle ("preEqOn", "Pre EQ");
     addKnob ("preLow", "Pre EQ Low", -12.0f, 12.0f, 0.0f);
-    addFrequency ("preLowFreq", "Pre EQ Low Frequency", 80.0f, 12000.0f, 120.0f);
+    addFrequency ("preLowFreq", "Pre EQ Low Frequency", 50.0f, 12000.0f, 80.0f);
     addKnob ("preBand2", "Pre EQ Band 2", -12.0f, 12.0f, 0.0f);
+    addFrequency ("preBand2Freq", "Pre EQ Band 2 Frequency", 50.0f, 12000.0f, 250.0f);
     addKnob ("preMid", "Pre EQ Mid", -12.0f, 12.0f, 0.0f);
-    addFrequency ("preMidFreq", "Pre EQ Mid Frequency", 80.0f, 12000.0f, 1000.0f);
+    addFrequency ("preMidFreq", "Pre EQ Mid Frequency", 50.0f, 12000.0f, 800.0f);
     addKnob ("preBand4", "Pre EQ Band 4", -12.0f, 12.0f, 0.0f);
+    addFrequency ("preBand4Freq", "Pre EQ Band 4 Frequency", 50.0f, 12000.0f, 2500.0f);
     addKnob ("preHigh", "Pre EQ High", -12.0f, 12.0f, 0.0f);
-    addFrequency ("preHighFreq", "Pre EQ High Frequency", 80.0f, 12000.0f, 8000.0f);
+    addFrequency ("preHighFreq", "Pre EQ High Frequency", 50.0f, 12000.0f, 8000.0f);
+    addKnob ("preEqQ", "Pre EQ Band Width / Q", 0.30f, 4.0f, 0.707f);
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "ampRouting", 1 }, "Amp Routing",
         juce::StringArray { "Series", "Parallel Blend" }, 0));
@@ -293,17 +296,24 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addKnob ("chorusMix", "Chorus Mix", 0.0f, 1.0f, 0.25f);
     addToggle ("postOn", "Post EQ");
     addKnob ("postLow", "Post EQ Low", -12.0f, 12.0f, 0.0f);
-    addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 120.0f);
+    addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 50.0f);
     addKnob ("postMid", "Post EQ Mid", -12.0f, 12.0f, 0.0f);
-    addFrequency ("postMidFreq", "Post EQ Mid Frequency", 50.0f, 16000.0f, 1000.0f);
+    addFrequency ("postGraphic2Freq", "Post EQ 100 Hz Frequency", 50.0f, 16000.0f, 100.0f);
     addKnob ("postGraphic2", "Post EQ 100 Hz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postGraphic3Freq", "Post EQ 200 Hz Frequency", 50.0f, 16000.0f, 200.0f);
     addKnob ("postGraphic3", "Post EQ 200 Hz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postGraphic4Freq", "Post EQ 400 Hz Frequency", 50.0f, 16000.0f, 400.0f);
     addKnob ("postGraphic4", "Post EQ 400 Hz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postMidFreq", "Post EQ Mid Frequency", 50.0f, 16000.0f, 800.0f);
     addKnob ("postGraphic6", "Post EQ 1.6 kHz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postGraphic6Freq", "Post EQ 1.6 kHz Frequency", 50.0f, 16000.0f, 1600.0f);
     addKnob ("postGraphic7", "Post EQ 3.2 kHz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postGraphic7Freq", "Post EQ 3.2 kHz Frequency", 50.0f, 16000.0f, 3200.0f);
     addKnob ("postGraphic8", "Post EQ 6.4 kHz", -12.0f, 12.0f, 0.0f);
+    addFrequency ("postGraphic8Freq", "Post EQ 6.4 kHz Frequency", 50.0f, 16000.0f, 6400.0f);
     addKnob ("postHigh", "Post EQ High", -12.0f, 12.0f, 0.0f);
-    addFrequency ("postHighFreq", "Post EQ High Frequency", 50.0f, 16000.0f, 8000.0f);
+    addFrequency ("postHighFreq", "Post EQ High Frequency", 50.0f, 16000.0f, 16000.0f);
+    addKnob ("postEqQ", "Post EQ Band Width / Q", 0.30f, 4.0f, 0.707f);
     addKnob ("outputGain", "Output Gain", -24.0f, 12.0f, 0.0f);
     return layout;
 }
@@ -327,7 +337,7 @@ float TheLeadAudioProcessor::BiquadState::process (float input)
 }
 
 void TheLeadAudioProcessor::setEqCoefficients (BiquadState& filter, int band, float frequency,
-                                               float gainDb, double sampleRate)
+                                               float gainDb, double sampleRate, float q)
 {
     const auto sr = static_cast<float> (juce::jmax (sampleRate, 1.0));
     const auto f = juce::jlimit (20.0f, sr * 0.45f, frequency);
@@ -335,7 +345,7 @@ void TheLeadAudioProcessor::setEqCoefficients (BiquadState& filter, int band, fl
     const auto c = std::cos (w);
     const auto s = std::sin (w);
     const auto A = std::pow (10.0f, gainDb / 40.0f);
-    const auto alpha = s * 0.5f;
+    const auto alpha = s / (2.0f * juce::jmax (0.1f, q));
     float b0, b1, b2, a0, a1, a2;
 
     if (band == 1)
@@ -375,11 +385,15 @@ void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, 
     juce::ignoreUnused (prefix);
     constexpr int preBandCount = 5;
     constexpr int postBandCount = 9;
-    const float preFrequencies[] { 80.0f, 250.0f, 800.0f, 2500.0f, 8000.0f };
     const char* preGainIds[] { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
-    const float postFrequencies[] { 50.0f, 100.0f, 200.0f, 400.0f, 800.0f, 1600.0f, 3200.0f, 6400.0f, 16000.0f };
+    const char* preFrequencyIds[] { "preLowFreq", "preBand2Freq", "preMidFreq", "preBand4Freq", "preHighFreq" };
     const char* postGainIds[] { "postLow", "postGraphic2", "postGraphic3", "postGraphic4", "postMid",
                                 "postGraphic6", "postGraphic7", "postGraphic8", "postHigh" };
+    const char* postFrequencyIds[] { "postLowFreq", "postGraphic2Freq", "postGraphic3Freq", "postGraphic4Freq",
+                                     "postMidFreq", "postGraphic6Freq", "postGraphic7Freq", "postGraphic8Freq",
+                                     "postHighFreq" };
+    const auto* qParameter = parameters.getRawParameterValue (pre ? "preEqQ" : "postEqQ");
+    const auto q = qParameter != nullptr ? qParameter->load() : 0.707f;
     const auto processFilters = [&] (auto& filters, int bandCount, bool isPre)
     {
         for (int band = 0; band < bandCount; ++band)
@@ -387,12 +401,15 @@ void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, 
             const auto gainId = isPre ? juce::String (preGainIds[band]) : juce::String (postGainIds[band]);
             const auto* gain = parameters.getRawParameterValue (gainId);
             const auto gainDb = gain != nullptr ? gain->load() : 0.0f;
-            const auto hz = isPre ? preFrequencies[band] : postFrequencies[band];
+            const auto frequencyId = isPre ? juce::String (preFrequencyIds[band])
+                                            : juce::String (postFrequencyIds[band]);
+            const auto* frequency = parameters.getRawParameterValue (frequencyId);
+            const auto hz = frequency != nullptr ? frequency->load() : 1000.0f;
             for (int channel = 0; channel < channels; ++channel)
             {
-                const auto filterType = isPre && band == 0 ? 0 : isPre && band == preBandCount - 1 ? 2 : 1;
+                const auto filterType = band == 0 ? 0 : band == bandCount - 1 ? 2 : 1;
                 setEqCoefficients (filters[static_cast<size_t> (channel)][static_cast<size_t> (band)],
-                                   filterType, hz, gainDb, sampleRate);
+                                   filterType, hz, gainDb, sampleRate, q);
             }
         }
 
@@ -958,8 +975,12 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         std::array<int, numAmpSlots> activeSlots {};
         int activeCount = 0;
         for (int slot = 0; slot < numAmpSlots; ++slot)
-            if (enabled (ampEnableIds[slot]))
+        {
+            const auto matchingCab = sharedParallelIR ? 0 : slot;
+            const auto cabPathEnabled = enabled (irEnableIds[matchingCab]);
+            if (enabled (ampEnableIds[slot]) && cabPathEnabled)
                 activeSlots[static_cast<size_t> (activeCount++)] = slot;
+        }
 
         if (activeCount > 0)
         {
