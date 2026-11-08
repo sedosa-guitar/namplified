@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="Assets/Branding/NAMplifiedAppIcon.svg" alt="NAMplified app icon" width="144">
+</p>
+
 # NAMplified
 
 **A guitar signal-chain plugin built around Neural Amp Modeler captures and amp simulations.**
@@ -84,27 +88,29 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ## Screenshots
 
-### Series mode with NAM capture controls
+### Series mode and NAM capture controls
 
-![NAMplified series signal chain with NAM capture details selected](docs/images/series-nam-details.png)
-
-### Series mode with one cabinet IR enabled
-
-![Series signal chain with the cabinet blend routed fully through the enabled IR](docs/images/series-single-ir.png)
+![Series signal chain with a NAM capture selected and its tone controls open](docs/images/series-nam-capture.png)
 
 ### Parallel amps with a shared IR
 
-![Parallel amp paths blended into a shared cabinet IR](docs/images/parallel-shared-ir-compressor.png)
+![Parallel amp paths summed into a shared cabinet IR, with IR shaping controls open](docs/images/parallel-shared-ir-shaping.png)
 
-### Parallel amps with paired IRs
+### Built-in amp simulation
 
-![Parallel amp paths with separate cabinet IRs and the second IR disabled](docs/images/parallel-single-ir.png)
+![Parallel signal chain with an amp simulation selected and its controls open](docs/images/amp-sim-parallel.png)
 
-### Parallel cabinet blend and IR shaping
+### Compressor controls
 
-![Parallel amp paths with both cabinet IRs enabled and IR 2 shaping controls open](docs/images/parallel-paired-ir-shaping.png)
+![Compressor detail panel with ratio, attack, release, tone, blend, output and EQ controls](docs/images/compressor-parallel.png)
 
-<!-- TODO: Add screenshots of the expanded Post EQ and Delay/Reverb controls when available. -->
+### Pre EQ in the signal-chain view
+
+![Pre EQ detail panel open below a parallel amp signal chain](docs/images/pre-eq-inline.png)
+
+### Expanded Pre EQ editor
+
+![Expanded Pre EQ editor with five draggable bands and a band-width control](docs/images/pre-eq-full-screen.png)
 
 ## Build from source (macOS)
 
