@@ -99,14 +99,6 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ![Parallel amp paths with both cabinet IRs enabled and IR 2 shaping controls open](docs/images/parallel-paired-ir-shaping.png)
 
-### Built-in amp simulation
-
-![NAMinator Amp Sim block and model controls](docs/images/amp-sim-detail.png)
-
-### NAM capture
-
-![NAMinator NAM capture block](docs/images/nam-detail.png)
-
 <!-- TODO: Add screenshots of the expanded Post EQ and Delay/Reverb controls when available. -->
 
 ## Build from source (macOS)
