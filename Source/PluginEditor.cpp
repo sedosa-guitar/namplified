@@ -196,6 +196,8 @@ static juce::String formatControlValue (const ParameterControl& control, double 
     if (id.containsIgnoreCase ("Time") || id.containsIgnoreCase ("Attack")
         || id.containsIgnoreCase ("Release") || id.containsIgnoreCase ("PreDelay"))
         return juce::String (value, value < 10.0 ? 2 : 0) + " ms";
+    if (id.endsWith ("EqBass") || id.endsWith ("EqMid") || id.endsWith ("EqTreble"))
+        return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1) + " dB";
     if (juce::String (control.label).containsIgnoreCase ("dB"))
         return juce::String (value, 1) + " dB";
     return juce::String (value, 2);
@@ -1235,7 +1237,9 @@ public:
 
         if (knobs.empty())
             return;
-        const auto columns = juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
+        const auto isNamCapture = stageName.startsWith ("NAM Profile") && ! isUsingInternalAmp();
+        const auto columns = isNamCapture ? juce::jmin (3, static_cast<int> (knobs.size()))
+                                         : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
         for (size_t position = 0; position < knobs.size(); ++position)
         {
@@ -1429,6 +1433,9 @@ private:
             const auto& id = controlIds[index];
             if (id == prefix + "Source" || id == prefix + "In" || id == prefix + "Out")
                 return true;
+            if (id == prefix + "EqPosition" || id == prefix + "EqBass"
+                || id == prefix + "EqMid" || id == prefix + "EqTreble")
+                return ! isInternal;
             if (! isInternal)
                 return false;
             if (id == prefix + "Model")
@@ -2491,6 +2498,9 @@ public:
             };
             addStage ("NAM Profile " + number, "amp" + number + "On",
                       {{ prefix + "Source", "Source", false, juce::StringArray { "NAM Capture", "Amp Sim" } },
+                       { prefix + "EqPosition", "EQ Position", false, juce::StringArray { "Pre", "Post" } },
+                       { prefix + "EqBass", "Bass" }, { prefix + "EqMid", "Mid" },
+                       { prefix + "EqTreble", "Treble" },
                        { prefix + "Model", "Amp Model", false, ampModels },
                        { prefix + "Gain", "Gain", true }, { prefix + "Volume", "Volume", true },
                        { prefix + "Bass", "Bass", true }, { prefix + "Mid", "Mid", true },
