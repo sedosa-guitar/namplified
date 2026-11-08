@@ -79,17 +79,25 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ## Screenshots
 
-### Series mode
+### Series mode with NAM capture controls
 
-![NAMinator signal chain in Series mode](docs/images/signal-chain-series.png)
+![NAMinator series signal chain with NAM capture details selected](docs/images/series-nam-details.png)
+
+### Series mode with one cabinet IR enabled
+
+![Series signal chain with the cabinet blend routed fully through the enabled IR](docs/images/series-single-ir.png)
 
 ### Parallel amps with a shared IR
 
-![Parallel amp paths blended into a shared cabinet IR](docs/images/parallel-shared-ir.png)
+![Parallel amp paths blended into a shared cabinet IR](docs/images/parallel-shared-ir-compressor.png)
 
 ### Parallel amps with paired IRs
 
-![Parallel amp paths routed to separate cabinet IRs](docs/images/parallel-paired-irs.png)
+![Parallel amp paths with separate cabinet IRs and the second IR disabled](docs/images/parallel-single-ir.png)
+
+### Parallel cabinet blend and IR shaping
+
+![Parallel amp paths with both cabinet IRs enabled and IR 2 shaping controls open](docs/images/parallel-paired-ir-shaping.png)
 
 ### Built-in amp simulation
 

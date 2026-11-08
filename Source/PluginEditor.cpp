@@ -252,10 +252,11 @@ struct ParameterControl
 
 static juce::String formatControlValue (const ParameterControl& control, double value)
 {
+    const auto cleanDb = [] (double db) { return std::abs (db) < 0.05 ? 0.0 : db; };
     if (juce::String (control.id) == "gateThreshold")
         return juce::String (value, 0) + " dB";
     if (control.inputDb)
-        return juce::String (-6.0 + value * 30.0, 1) + " dB";
+        return juce::String (cleanDb (-6.0 + value * 30.0), 1) + " dB";
     if (control.percent)
         return juce::String (value * 100.0, 0) + "%";
     const juce::String id (control.id);
@@ -267,9 +268,9 @@ static juce::String formatControlValue (const ParameterControl& control, double 
         || id.containsIgnoreCase ("Release") || id.containsIgnoreCase ("PreDelay"))
         return juce::String (value, value < 10.0 ? 2 : 0) + " ms";
     if (id.endsWith ("EqBass") || id.endsWith ("EqMid") || id.endsWith ("EqTreble"))
-        return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1) + " dB";
+        return juce::String (cleanDb (value), 1) + " dB";
     if (juce::String (control.label).containsIgnoreCase ("dB"))
-        return juce::String (value, 1) + " dB";
+        return juce::String (cleanDb (value), 1) + " dB";
     return juce::String (value, 2);
 }
 
@@ -408,6 +409,16 @@ public:
                     slider->setTextValueSuffix (" ms");
                 else if (parameterId.containsIgnoreCase ("Threshold"))
                     slider->setTextValueSuffix (" dB");
+                if (! control.percent && ! control.inputDb && parameterId != "gateThreshold"
+                    && juce::String (control.label).containsIgnoreCase ("dB"))
+                {
+                    slider->textFromValueFunction = [] (double value)
+                    {
+                        return juce::String (std::abs (value) < 0.05 ? 0.0 : value, 1);
+                    };
+                    slider->valueFromTextFunction = [] (const juce::String& value) { return value.getDoubleValue(); };
+                    slider->setTextValueSuffix (" dB");
+                }
                 if (control.percent)
                 {
                     slider->textFromValueFunction = [] (double value) { return juce::String (value * 100.0, 0); };
@@ -416,7 +427,11 @@ public:
                 }
                 if (control.inputDb)
                 {
-                    slider->textFromValueFunction = [] (double value) { return juce::String (-6.0 + value * 30.0, 1); };
+                    slider->textFromValueFunction = [] (double value)
+                    {
+                        const auto db = -6.0 + value * 30.0;
+                        return juce::String (std::abs (db) < 0.05 ? 0.0 : db, 1);
+                    };
                     slider->valueFromTextFunction = [] (const juce::String& value)
                     {
                         return juce::jlimit (0.0, 1.0, (value.getDoubleValue() + 6.0) / 30.0);
@@ -1052,6 +1067,8 @@ public:
             label->setText (juce::String (control.label).replace ("(dB)", "").trim().toUpperCase(), juce::dontSendNotification);
             label->setFont (naminatorFontOptions (15.0f));
             label->setColour (juce::Label::textColourId, secondaryText);
+            if (stageName == "Input" || stageName == "Noise Gate" || stageName == "Output")
+                label->setJustificationType (juce::Justification::centred);
             addAndMakeVisible (*label);
             controlLabels.push_back (std::move (label));
 
@@ -1209,7 +1226,8 @@ public:
         }
         const auto columns = selectorCount > 0 ? 4 : 5;
         const auto rows = (knobCount + columns - 1) / columns;
-        const auto rowPitch = compactMode ? 112 : 148;
+        const auto denseControls = compactMode || isUsingInternalAmp() || stageName == "Delay";
+        const auto rowPitch = denseControls ? 104 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::none || isUsingInternalAmp() || loadKind == FileKind::nam ? 0 : 46;
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
@@ -1312,7 +1330,8 @@ public:
         constexpr int maxControlWidth = 1320;
         if (area.getWidth() > maxControlWidth)
             area = area.withSizeKeepingCentre (maxControlWidth, area.getHeight());
-        const auto rowPitch = compactMode ? 112 : 148;
+        const auto denseControls = compactMode || isUsingInternalAmp() || stageName == "Delay";
+        const auto rowPitch = denseControls ? 104 : 148;
         std::vector<int> selectors;
         std::vector<int> knobs;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
@@ -1355,14 +1374,14 @@ public:
                                                area.getY() + row * rowPitch,
                                                column + 1 == columns ? area.getWidth() - column * cellWidth : cellWidth,
                                                rowPitch - 6).reduced (8, 3);
-            controlLabels[index]->setBounds (cell.removeFromTop (compactMode ? 19 : 22));
+            controlLabels[index]->setBounds (cell.removeFromTop (denseControls ? 18 : 22));
             if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
             {
-                auto valueArea = cell.removeFromBottom (compactMode ? 18 : 20);
+                auto valueArea = cell.removeFromBottom (denseControls ? 17 : 20);
                 if (widgetValueLabels[index] != nullptr)
                     widgetValueLabels[index]->setBounds (valueArea);
-                const auto knobWidth = juce::jmin (compactMode ? 86 : 102, cell.getWidth());
-                auto knob = cell.withSizeKeepingCentre (knobWidth, compactMode ? 72 : 94);
+                const auto knobWidth = juce::jmin (denseControls ? 78 : 102, cell.getWidth());
+                auto knob = cell.withSizeKeepingCentre (knobWidth, denseControls ? 68 : 94);
                 controlWidgets[index]->setBounds (knob);
             }
             else
@@ -1860,7 +1879,7 @@ public:
         g.beginTransparencyLayer (isBlockEnabled() ? 1.0f : 0.32f);
         auto r = getLocalBounds().toFloat();
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
-        g.setColour (isSelected ? juce::Colour::fromRGB (28, 39, 54) : tileSurface);
+        g.setColour (isSelected ? juce::Colour::fromRGB (37, 49, 66) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
         const auto kind = getModuleKind();
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
