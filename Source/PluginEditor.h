@@ -26,6 +26,7 @@ private:
     void showAboutDialog();
     void timerCallback() override;
     void comboBoxChanged (juce::ComboBox*) override;
+    void mouseDown (const juce::MouseEvent&) override;
     juce::String selectedPresetName() const;
 
     NAMinatorAudioProcessor& audioProcessor;
@@ -39,6 +40,7 @@ private:
     juce::TextButton deletePresetButton { "Delete" };
     juce::TextButton resetChainButton { "Reset Chain" };
     juce::TextButton aboutButton { "About" };
+    juce::TextButton midiLearnButton { "MIDI LEARN" };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;
     juce::Slider masterVolumeSlider;
@@ -56,6 +58,8 @@ private:
     bool presetDirty = false;
     bool eqFullscreen = false;
     int lastBlendDisplayState = -1;
+    bool midiLearnArmed = false;
+    bool midiTargetArmed = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessorEditor)
 };

@@ -72,6 +72,19 @@ public:
     bool deleteUserPreset (const juce::String& name);
     juce::String getSelectedUserPresetName() const;
     void setSelectedUserPresetName (const juce::String& name);
+    bool setMidiLearnTarget (const juce::String& parameterId);
+    void armMidiLearn() noexcept;
+    bool isMidiLearnArmed() const noexcept;
+    bool hasMidiLearnTarget() const noexcept;
+
+    void cancelMidiLearn() noexcept;
+
+    bool takeMidiLearnResult (int& controller, juce::String& parameterId);
+
+    int getMidiMappingCount() const noexcept;
+
+    bool saveMidiMappings() const;
+
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -100,6 +113,12 @@ private:
     static IRParameters::ParameterLayout createParameterLayout();
     juce::File getUserPresetDirectory() const;
     juce::File getUserPresetFile (const juce::String& name) const;
+    juce::File getMidiMappingsFile() const;
+
+    void loadMidiMappings();
+
+    int findMidiParameterIndex (const juce::String& parameterId) const;
+
     struct BiquadState
     {
         float b0 = 1.0f, b1 = 0.0f, b2 = 0.0f, a1 = 0.0f, a2 = 0.0f;
@@ -137,6 +156,17 @@ private:
     std::array<std::atomic<int>, numPostFxStages> postFxOrder { 0, 1, 2, 3 };
     std::unordered_map<std::string, float> presetSnapshot;
     std::unordered_map<std::string, juce::String> presetFileSnapshot;
+    std::vector<juce::String> midiParameterIds;
+
+    std::array<std::atomic<int>, 128> midiCCParameterIndices {};
+
+    std::atomic<int> midiLearnTargetIndex { -1 };
+    std::atomic<bool> midiLearningArmed { false };
+
+    std::atomic<int> learnedMidiCC { -1 };
+
+    std::atomic<int> learnedMidiParameterIndex { -1 };
+
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
