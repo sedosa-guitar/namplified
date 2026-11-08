@@ -10,6 +10,7 @@
 
 #include <JuceHeader.h>
 #include <array>
+#include <functional>
 #include <unordered_map>
 #include <vector>
 #include "CleanBoost.h"
@@ -85,6 +86,10 @@ public:
 
     bool saveMidiMappings() const;
 
+    void setAudioSettingsCallback (std::function<void()> callback) { audioSettingsCallback = std::move (callback); }
+    bool hasAudioSettingsCallback() const noexcept { return static_cast<bool> (audioSettingsCallback); }
+    void showAudioSettings() { if (audioSettingsCallback) audioSettingsCallback(); }
+
 
     //==============================================================================
     juce::AudioProcessorEditor* createEditor() override;
@@ -132,9 +137,9 @@ private:
     void setEqCoefficients (BiquadState& filter, int band, float frequency, float gainDb,
                             double sampleRate, float q = 1.0f);
     void setCutFilterCoefficients (BiquadState& filter, bool highPass, float frequency, double sampleRate);
-    struct AmpModel;
-    std::unique_ptr<AmpModel> ampModels[numAmpSlots];
-    std::unique_ptr<AmpModel> boostNAMModel;
+    struct NAMModel;
+    std::unique_ptr<NAMModel> namModels[numAmpSlots];
+    std::unique_ptr<NAMModel> boostNAMModel;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];
@@ -166,6 +171,7 @@ private:
     std::atomic<int> learnedMidiCC { -1 };
 
     std::atomic<int> learnedMidiParameterIndex { -1 };
+    std::function<void()> audioSettingsCallback;
 
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };

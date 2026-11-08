@@ -7,6 +7,7 @@
 #include <juce_gui_extra/juce_gui_extra.h>
 #include <juce_audio_utils/juce_audio_utils.h>
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
+#include "PluginProcessor.h"
 
 namespace
 {
@@ -105,10 +106,19 @@ private:
         const juce::Array<juce::StandalonePluginHolder::PluginInOuts> channelConfig;
        #endif
 
-        return std::make_unique<juce::StandalonePluginHolder> (appProperties.getUserSettings(),
-                                                                false,
-                                                                juce::String{}, nullptr,
-                                                                channelConfig, false);
+        auto holder = std::make_unique<juce::StandalonePluginHolder> (appProperties.getUserSettings(),
+                                                                       false,
+                                                                       juce::String{}, nullptr,
+                                                                       channelConfig, false);
+        if (auto* processor = dynamic_cast<NAMplifiedAudioProcessor*> (holder->processor.get()))
+        {
+            auto* holderForCallback = holder.get();
+            processor->setAudioSettingsCallback ([holderForCallback]
+            {
+                holderForCallback->showAudioSettingsDialog();
+            });
+        }
+        return holder;
     }
 
     juce::ApplicationProperties appProperties;

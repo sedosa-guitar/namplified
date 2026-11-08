@@ -1,6 +1,5 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include "AmpSimBridge.h"
 #include <get_dsp.h>
 
 #include <array>
@@ -60,7 +59,7 @@ juce::String displayNameForNAMFile (const juce::File& file, int slot)
 }
 }
 
-struct NAMplifiedAudioProcessor::AmpModel
+struct NAMplifiedAudioProcessor::NAMModel
 {
     mutable juce::SpinLock lock;
     std::unique_ptr<nam::DSP> models[2];
@@ -68,10 +67,6 @@ struct NAMplifiedAudioProcessor::AmpModel
     std::array<std::vector<NAM_SAMPLE>, 2> output;
     juce::String path;
     juce::String status;
-    NAMplifiedAmpSim* internalAmp = naminAmpSimCreate (0);
-
-    ~AmpModel() { naminAmpSimDestroy (internalAmp); }
-
     void prepare (double sampleRate, int maxBlockSize)
     {
         const juce::SpinLock::ScopedLockType guard (lock);
@@ -161,19 +156,6 @@ struct NAMplifiedAudioProcessor::AmpModel
         }
     }
 
-    void processInternal (juce::AudioBuffer<float>& buffer, int numChannels, int numSamples,
-                          int model, const std::array<float, 12>& controls, float sampleRate)
-    {
-        const juce::SpinLock::ScopedTryLockType guard (lock);
-        if (! guard.isLocked() || internalAmp == nullptr)
-            return;
-        naminAmpSimSetModel (internalAmp, model);
-        for (int parameter = 0; parameter < static_cast<int> (controls.size()); ++parameter)
-            naminAmpSimSetParameter (internalAmp, parameter, controls[static_cast<size_t> (parameter)]);
-        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
-            naminAmpSimProcess (internalAmp, channel, buffer.getWritePointer (channel), numSamples, sampleRate);
-    }
-
     juce::String getPath() const
     {
         const juce::SpinLock::ScopedLockType guard (lock);
@@ -203,8 +185,8 @@ NAMplifiedAudioProcessor::NAMplifiedAudioProcessor()
 #endif
 {
     for (int slot = 0; slot < numAmpSlots; ++slot)
-        ampModels[slot] = std::make_unique<AmpModel>();
-    boostNAMModel = std::make_unique<AmpModel>();
+        namModels[slot] = std::make_unique<NAMModel>();
+    boostNAMModel = std::make_unique<NAMModel>();
     const auto& processorParameters = getParameters();
     midiParameterIds.reserve (static_cast<size_t> (processorParameters.size()));
     for (auto* parameter : processorParameters)
@@ -418,24 +400,6 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         addKnob (("amp" + number + "EqBass").toRawUTF8(), ("NAM " + number + " EQ Bass").toRawUTF8(), -12.0f, 12.0f, 0.0f);
         addKnob (("amp" + number + "EqMid").toRawUTF8(), ("NAM " + number + " EQ Mid").toRawUTF8(), -12.0f, 12.0f, 0.0f);
         addKnob (("amp" + number + "EqTreble").toRawUTF8(), ("NAM " + number + " EQ Treble").toRawUTF8(), -12.0f, 12.0f, 0.0f);
-        layout.add (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { ("amp" + number + "Source").toRawUTF8(), 1 },
-            ("Amp " + number + " Source").toRawUTF8(),
-            juce::StringArray { "NAM Capture", "Amp Sim" }, 0));
-        layout.add (std::make_unique<juce::AudioParameterChoice> (
-            juce::ParameterID { ("amp" + number + "Model").toRawUTF8(), 1 },
-            ("Amp " + number + " Model").toRawUTF8(),
-            juce::StringArray { "Fullerton Clean", "British Crunch", "Southwest Lead", "Essex Chime",
-                                "Tweed Blues", "Meridian High Gain", "Citrus Roar", "Citrus Terror",
-                                "Regent 800", "Solar Monolith", "Eclipse Drone", "Emerald Ratrod Deluxe" }, 0));
-        const char* ampControlNames[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
-                                        "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
-        for (int index = 0; index < 12; ++index)
-        {
-            const auto* controlName = ampControlNames[index];
-            const auto defaultValue = index == 6 ? 0.3f : index == 11 ? 0.0f : index == 8 ? 0.0f : 0.5f;
-            addKnob (("amp" + number + controlName).toRawUTF8(), ("Amp " + juce::String (controlName)).toRawUTF8(), 0.0f, 1.0f, defaultValue);
-        }
         addKnob (("amp" + juce::String (slot + 1) + "In").toRawUTF8(), "Amp Input", -24.0f, 24.0f, 0.0f);
         addKnob (("amp" + juce::String (slot + 1) + "Out").toRawUTF8(), "Amp Output", -24.0f, 24.0f, 0.0f);
     }
@@ -1189,7 +1153,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     pitchPhase = 0.0f;
     pitchCurrentSemitones = 0.0f;
     for (int slot = 0; slot < numAmpSlots; ++slot)
-        ampModels[slot]->prepare (sampleRate, samplesPerBlock);
+        namModels[slot]->prepare (sampleRate, samplesPerBlock);
     boostNAMModel->prepare (sampleRate, samplesPerBlock);
     for (auto& circuit : tubeScreamerCircuits)
         circuit.prepare (sampleRate);
@@ -1504,25 +1468,11 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto processAmpSlot = [&] (juce::AudioBuffer<float>& target, int slot)
     {
         const auto number = juce::String (slot + 1);
-        if (get (("amp" + number + "Source").toRawUTF8()) >= 0.5f)
-        {
-            std::array<float, 12> controls {};
-            const char* suffixes[] { "Gain", "Volume", "Bass", "Mid", "Treble", "Presence",
-                                     "Sag", "Master", "Bright", "Cut", "Tone", "Feedback" };
-            for (size_t index = 0; index < controls.size(); ++index)
-                controls[index] = get (("amp" + number + suffixes[index]).toRawUTF8(), 0.5f);
-            const auto model = juce::jlimit (0, 11, juce::roundToInt (get (("amp" + number + "Model").toRawUTF8())));
-            ampModels[slot]->processInternal (target, numChannels, numSamples, model, controls,
-                                              static_cast<float> (sampleRate));
-        }
-        else
-            ampModels[slot]->process (target, numChannels, numSamples);
+        namModels[slot]->process (target, numChannels, numSamples);
     };
     const auto processAmpToneEQ = [&] (juce::AudioBuffer<float>& target, int slot, bool pre)
     {
         const auto number = juce::String (slot + 1);
-        if (get (("amp" + number + "Source").toRawUTF8()) >= 0.5f)
-            return; // This shaping EQ belongs to the NAM capture path, not the amp-sim controls.
         const auto isPre = get (("amp" + number + "EqPosition").toRawUTF8(), 1.0f) < 0.5f;
         if (isPre != pre)
             return;
@@ -2008,11 +1958,11 @@ void NAMplifiedAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
         return;
     namFilePaths[slot] = file.getFullPathName();
     namDisplayNames[slot] = file.getFileName();
-    ampModels[slot]->setStatus ("Loading NAM capture…");
+    namModels[slot]->setStatus ("Loading NAM capture…");
     modelLoader.addJob ([this, slot, file]
     {
         juce::String error;
-        ampModels[slot]->create (file, modelSampleRate.load(), modelMaxBlockSize.load(), error);
+        namModels[slot]->create (file, modelSampleRate.load(), modelMaxBlockSize.load(), error);
     });
 }
 
@@ -2071,7 +2021,7 @@ juce::String NAMplifiedAudioProcessor::getNAMCaptureStatus (int slot) const
         return boostNAMModel->getStatus();
     if (slot < 0 || slot >= numAmpSlots)
         return "Invalid slot";
-    return ampModels[slot]->getStatus();
+    return namModels[slot]->getStatus();
 }
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
