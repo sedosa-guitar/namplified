@@ -415,6 +415,8 @@ private:
 
     void timerCallback() override
     {
+        if (isBoost)
+            updateBoostControls();
         for (auto* widget : controlWidgets)
             if (auto* slider = dynamic_cast<juce::Slider*> (widget))
                 slider->repaint();
@@ -426,13 +428,16 @@ private:
             return;
         const auto* modelParameter = audioProcessor.parameters.getRawParameterValue ("boostModel");
         const auto use808 = modelParameter != nullptr && modelParameter->load() >= 0.5f;
+        const auto* sourceParameter = audioProcessor.parameters.getRawParameterValue ("boostSource");
+        const auto useNAM = sourceParameter != nullptr && sourceParameter->load() >= 0.5f;
         int visibleCount = 0;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
         {
             const auto& id = controlIds[i];
-            const auto visible = id == "boostModel"
-                || (use808 ? (id == "boost808Drive" || id == "boost808Tone" || id == "boost808Level")
-                           : (id == "boostGain" || id == "boostBass" || id == "boostMid" || id == "boostTreble"));
+            const auto visible = useNAM ? (id == "boostNAMIn" || id == "boostNAMOut")
+                : (id == "boostModel"
+                   || (use808 ? (id == "boost808Drive" || id == "boost808Tone" || id == "boost808Level")
+                              : (id == "boostGain" || id == "boostBass" || id == "boostMid" || id == "boostTreble")));
             controlWidgets[i]->setVisible (visible);
             labels[i]->setVisible (visible);
             if (visible)
@@ -972,13 +977,17 @@ public:
                 toggles.push_back (std::move (toggle));
                 widgetValueLabels.push_back (nullptr);
             }
-            else if (stageName.startsWith ("NAM Profile") && control.id.endsWith ("Source"))
+            else if ((stageName.startsWith ("NAM Profile") && control.id.endsWith ("Source"))
+                     || (stageName == "Boost Pedal" && control.id == "boostSource"))
             {
-                auto sourceButton = std::make_unique<juce::TextButton> ("NAM CAPTURE");
+                auto sourceButton = std::make_unique<juce::TextButton> (
+                    stageName == "Boost Pedal" ? "BOOST" : "NAM CAPTURE");
                 sourceButton->setClickingTogglesState (false);
                 sourceButton->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (40, 45, 54));
                 sourceButton->setColour (juce::TextButton::textColourOffId, text);
-                sourceButton->setTooltip ("Click to switch this amp slot between a NAM capture and a built-in amp sim.");
+                sourceButton->setTooltip (stageName == "Boost Pedal"
+                    ? "Switch this block between the built-in boost effects and a NAM capture."
+                    : "Click to switch this amp slot between a NAM capture and a built-in amp sim.");
                 addAndMakeVisible (*sourceButton);
                 const auto parameterId = control.id;
                 sourceButton->onClick = [this, parameterId]
@@ -1448,6 +1457,14 @@ private:
         }
         if (stageName != "Boost Pedal")
             return true;
+        const auto* source = audioProcessor.parameters.getRawParameterValue ("boostSource");
+        const auto useNAM = source != nullptr && source->load() >= 0.5f;
+        if (controlIds[index] == "boostSource")
+            return true;
+        if (controlIds[index] == "boostNAMIn" || controlIds[index] == "boostNAMOut")
+            return useNAM;
+        if (useNAM)
+            return false;
         const auto* model = audioProcessor.parameters.getRawParameterValue ("boostModel");
         const auto use808 = model != nullptr && model->load() >= 0.5f;
         const auto& id = controlIds[index];
@@ -1471,14 +1488,18 @@ private:
                 const auto isSim = source != nullptr && source->load() >= 0.5f;
                 if (auto* sourceButton = dynamic_cast<juce::TextButton*> (controlWidgets[i]))
                 {
-                    sourceButton->setButtonText (isSim ? "AMP SIM" : "NAM CAPTURE");
+                    const auto isBoost = stageName == "Boost Pedal";
+                    sourceButton->setButtonText (isBoost ? (isSim ? "NAM CAPTURE" : "BOOST")
+                                                         : (isSim ? "AMP SIM" : "NAM CAPTURE"));
                     sourceButton->setColour (juce::TextButton::buttonColourId,
                                              isSim ? juce::Colour (0xff21473f) : juce::Colour::fromRGB (40, 45, 54));
                     sourceButton->setColour (juce::TextButton::textColourOffId,
                                              isSim ? knobAccent : text);
-                    sourceButton->setTooltip (isSim
-                        ? "Built-in algorithmic amp sim. Click to switch to a NAM capture."
-                        : "NAM capture profile. Click to switch to a built-in amp sim.");
+                    sourceButton->setTooltip (isBoost
+                        ? (isSim ? "NAM capture loaded in this boost slot. Click to switch to the built-in boost."
+                                 : "Built-in Clean Boost / 808 Drive. Click to switch to a NAM capture.")
+                        : (isSim ? "Built-in algorithmic amp sim. Click to switch to a NAM capture."
+                                 : "NAM capture profile. Click to switch to a built-in amp sim."));
                 }
             }
         }
@@ -1496,6 +1517,11 @@ private:
     {
         if (loadKind != FileKind::nam)
             return false;
+        if (stageName == "Boost Pedal")
+        {
+            const auto* source = audioProcessor.parameters.getRawParameterValue ("boostSource");
+            return source == nullptr || source->load() < 0.5f;
+        }
         const auto parameterId = "amp" + juce::String (slot + 1) + "Source";
         const auto* source = audioProcessor.parameters.getRawParameterValue (parameterId);
         return source != nullptr && source->load() >= 0.5f;
@@ -2475,12 +2501,16 @@ public:
                    { "compRatioMode", "Ratio", false, juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons In" } },
                    { "compTone", "Tone (dB)" }, { "compBlend", "Blend", true },
                    { "compVolume", "Output (dB)" }, { "compEQ", "EQ", true }});
-        addStage ("Boost Pedal", "boostOn", {{ "boostGain", "Post Volume (dB)" }}, FileKind::none, 0, mover (true, 2),
+        addStage ("Boost Pedal", "boostOn",
+                  {{ "boostSource", "Source" }, { "boostGain", "Post Volume (dB)" },
+                   { "boostNAMIn", "NAM Input (dB)" }, { "boostNAMOut", "NAM Output (dB)" }},
+                  FileKind::nam, TheLeadAudioProcessor::boostNAMSlot, mover (true, 2),
                   {{ "boostModel", "Model", false, juce::StringArray { "Clean Boost", "808 Drive" } },
                    { "boostGain", "Post Volume (dB)" }, { "boostBass", "Bass (dB)" },
                    { "boostMid", "Mid (dB)" }, { "boostTreble", "Treble (dB)" },
                    { "boost808Drive", "Drive (dB)" }, { "boost808Tone", "Tone (Hz)" },
-                   { "boost808Level", "Level (dB)" }});
+                   { "boost808Level", "Level (dB)" },
+                   { "boostNAMIn", "NAM Input (dB)" }, { "boostNAMOut", "NAM Output (dB)" }});
         addStage ("PreEQ", "preEqOn",
                   {{ "preLow", "Low (dB)" }, { "preMid", "Mid (dB)" }, { "preHigh", "High (dB)" }},
                   FileKind::none, 0, mover (true, 3),
