@@ -71,9 +71,11 @@ NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 
 
 This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Before using Browse TONE3000, register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI in the TONE3000 API settings for that key. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
 
-The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api).
+The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api). This README links to the [TONE3000 website](https://www.tone3000.com).
 
-TONE3000's API and terms can change. See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMinator is an independent project and is not endorsed by TONE3000.
+TONE3000 support confirmed that a free, open-source product with no paid features or upsell can use the free tier without a separate agreement or sign-off. The integration must use OAuth 2.0 with PKCE, keep the secret key out of distributed binaries, preserve creator and license details, follow the design requirements, and stay within the default 100 requests per minute. The free tier is limited to the `select_tone` and `load_tone` flows and the `favorited`, `downloaded`, `created`, `trending`, and `latest` endpoints. NAMinator downloads only the capture selected by the user and does not host or redistribute it. TONE3000 may revoke access if an integration stops meeting its guidelines.
+
+See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMinator is an independent project and is not endorsed by TONE3000.
 
 ## Screenshots
 
@@ -124,7 +126,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 > **Placeholder:** Release builds and verified installation steps are not published yet. These sections will be completed when distributable packages are available.
 
-> **Release reminder:** Before preparing installer files, contact TONE3000 support to confirm that the free-tier integration may use the tone metadata and model-list endpoints used by NAMinator.
+> **Release reminder:** Before preparing installer files, recheck the current TONE3000 free-tier terms, confirm the published build contains no secret key, and verify the required logo, attribution, creator, and license details.
 
 ### macOS standalone
 

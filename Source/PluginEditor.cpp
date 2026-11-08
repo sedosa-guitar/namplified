@@ -18,6 +18,61 @@ const auto knobAccent = juce::Colour (0xff70d9b6);
 const auto text = juce::Colour::fromRGB (235, 236, 239);
 const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
 
+namespace
+{
+juce::PropertiesFile& naminatorSettings()
+{
+    static const auto options = []
+    {
+        juce::PropertiesFile::Options result;
+        result.applicationName = "NAMinator";
+        result.filenameSuffix = "settings";
+        result.folderName = "NAMinator";
+        result.osxLibrarySubFolder = "Application Support";
+        return result;
+    }();
+    static juce::PropertiesFile settings (options);
+    return settings;
+}
+
+juce::File lastNAMDirectory()
+{
+    const juce::File directory (naminatorSettings().getValue ("lastNAMDirectory"));
+    return directory.isDirectory() ? directory : juce::File();
+}
+
+void rememberNAMDirectory (const juce::File& directory)
+{
+    if (! directory.isDirectory())
+        return;
+    auto& settings = naminatorSettings();
+    settings.setValue ("lastNAMDirectory", directory.getFullPathName());
+    settings.saveIfNeeded();
+}
+
+juce::String tone3000AttributionFor (const juce::File& capture)
+{
+    if (! capture.existsAsFile())
+        return {};
+    const auto sidecar = capture.getSiblingFile (capture.getFileNameWithoutExtension() + ".t3k.json");
+    if (! sidecar.existsAsFile())
+        return {};
+    const auto metadata = juce::JSON::parse (sidecar.loadFileAsString());
+    if (metadata.isVoid() || metadata.getProperty ("source", {}).toString() != "TONE3000")
+        return {};
+    juce::String attribution ("POWERED BY TONE3000");
+    const auto tone = metadata.getProperty ("tone", {}).toString();
+    const auto model = metadata.getProperty ("model", {}).toString();
+    const auto creator = metadata.getProperty ("creator", {}).toString();
+    const auto license = metadata.getProperty ("license", {}).toString();
+    if (tone.isNotEmpty()) attribution += " | " + tone;
+    if (model.isNotEmpty()) attribution += " | " + model;
+    if (creator.isNotEmpty()) attribution += " | " + creator;
+    if (license.isNotEmpty()) attribution += " | " + license;
+    return attribution;
+}
+}
+
 static juce::Typeface::Ptr getNAMinatorTypeface()
 {
     static const auto typeface = juce::Typeface::createSystemTypefaceFor (
@@ -76,7 +131,7 @@ public:
                                            juce::Rectangle<int> parentArea) override
     {
         constexpr int horizontalPadding = 14;
-        constexpr int verticalPadding = 10;
+        constexpr int verticalPadding = 16;
         const auto maxTextWidth = juce::jmax (120, juce::jmin (380, parentArea.getWidth() - horizontalPadding * 2));
         juce::AttributedString attributedText (tipText);
         attributedText.setFont (juce::Font (naminatorFontOptions (14.5f)));
@@ -100,17 +155,17 @@ public:
         g.setColour (juce::Colour (0xff465362));
         g.drawRoundedRectangle (bounds.reduced (0.75f), 8.5f, 1.5f);
         g.setColour (knobAccent);
-        g.fillRoundedRectangle (juce::Rectangle<float> (12.0f, 9.0f, 3.0f,
-                                                        juce::jmax (8.0f, static_cast<float> (height) - 18.0f)), 1.5f);
+        g.fillRoundedRectangle (juce::Rectangle<float> (12.0f, 10.0f, 3.0f,
+                                                        juce::jmax (8.0f, static_cast<float> (height) - 20.0f)), 1.5f);
         juce::AttributedString attributedText (tipText);
         attributedText.setFont (juce::Font (naminatorFontOptions (14.5f)));
         attributedText.setColour (text);
         juce::TextLayout layout;
         layout.createLayout (attributedText, juce::jmax (100.0f, static_cast<float> (width) - 30.0f),
-                             juce::jmax (30.0f, static_cast<float> (height) - 16.0f));
-        layout.draw (g, juce::Rectangle<float> (22.0f, 8.0f,
+                             juce::jmax (30.0f, static_cast<float> (height) - 20.0f));
+        layout.draw (g, juce::Rectangle<float> (22.0f, 10.0f,
                                                 juce::jmax (50.0f, static_cast<float> (width) - 30.0f),
-                                                juce::jmax (18.0f, static_cast<float> (height) - 16.0f)));
+                                                juce::jmax (18.0f, static_cast<float> (height) - 20.0f)));
     }
 
     void drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
@@ -941,9 +996,15 @@ public:
             loadButton.onClick = [this]
             {
                 const auto filter = loadKind == FileKind::nam ? "*.nam" : "*.wav;*.aif;*.aiff;*.flac;*.ogg";
+                auto initialDirectory = loadKind == FileKind::nam
+                    ? audioProcessor.getNAMCaptureFile (slot).getParentDirectory() : juce::File();
+                if (loadKind == FileKind::nam && ! initialDirectory.isDirectory())
+                    initialDirectory = lastNAMDirectory();
+                if (! initialDirectory.isDirectory())
+                    initialDirectory = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
                 fileChooser = std::make_unique<juce::FileChooser> (
                     loadKind == FileKind::nam ? "Choose a NAM capture" : "Choose an impulse response",
-                    juce::File {}, filter);
+                    initialDirectory, filter);
                 juce::Component::SafePointer<StageCard> safeThis (this);
                 fileChooser->launchAsync (
                     juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
@@ -957,6 +1018,7 @@ public:
                         if (safeThis->loadKind == FileKind::nam)
                         {
                             safeThis->tone3000Attribution.clear();
+                            rememberNAMDirectory (file.getParentDirectory());
                             safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
                         }
                         else
@@ -1434,6 +1496,7 @@ private:
                     return;
                 }
                 safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
+                rememberNAMDirectory (file.getParentDirectory());
                 safeThis->tone3000Attribution = "POWERED BY TONE3000 | " + model.toneTitle + " | " + model.name
                     + (model.creator.isNotEmpty() ? " | " + model.creator : "")
                     + (model.license.isNotEmpty() ? " | " + model.license : "");
@@ -1655,6 +1718,16 @@ private:
     void timerCallback() override
     {
         updateAmpCabDependency();
+        if (loadKind == FileKind::nam)
+        {
+            const auto currentFile = audioProcessor.getNAMCaptureFile (slot);
+            const auto currentPath = currentFile.getFullPathName();
+            if (currentPath != displayedNAMPath)
+            {
+                displayedNAMPath = currentPath;
+                tone3000Attribution = tone3000AttributionFor (currentFile);
+            }
+        }
         if (loadKind == FileKind::nam && loadButton.isVisible() == isUsingInternalAmp())
         {
             updateConditionalControlVisibility();
@@ -1728,6 +1801,7 @@ private:
     std::unique_ptr<tone3000::Client> tone3000Client;
     std::unique_ptr<juce::Drawable> tone3000Logo;
     juce::String tone3000Attribution;
+    juce::String displayedNAMPath;
 };
 
 static void drawAmpHeadIcon (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour colour);
@@ -3284,7 +3358,7 @@ void NAMinatorAudioProcessorEditor::showSavePresetPrompt()
 {
     auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
                                          juce::MessageBoxIconType::NoIcon);
-    const auto currentName = presetBox.getText().trim();
+    const auto currentName = selectedPresetName();
     alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "My Preset", "Preset name:");
     alert->addButton ("Save", 1);
     alert->addButton ("Cancel", 0);
@@ -3310,7 +3384,7 @@ void NAMinatorAudioProcessorEditor::showSavePresetPrompt()
 
 void NAMinatorAudioProcessorEditor::showDeletePresetPrompt()
 {
-    const auto name = presetBox.getText().trim();
+    const auto name = selectedPresetName();
     if (name.isEmpty()) return;
     auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your user presets?",
                                          juce::MessageBoxIconType::WarningIcon);
@@ -3320,7 +3394,13 @@ void NAMinatorAudioProcessorEditor::showDeletePresetPrompt()
     alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, name] (int result)
     {
         if (result != 1 || safeThis == nullptr) return;
-        safeThis->audioProcessor.deleteUserPreset (name);
+        if (! safeThis->audioProcessor.deleteUserPreset (name))
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                                     "Could not delete preset",
+                                                     "The preset file or its asset folder could not be removed.");
+            return;
+        }
         if (safeThis->audioProcessor.getSelectedUserPresetName() == name)
             safeThis->audioProcessor.setSelectedUserPresetName ({});
         safeThis->audioProcessor.capturePresetSnapshot();

@@ -58,7 +58,7 @@ FetchContent_MakeAvailable(chowdsp_wdf)
 
 juce_add_plugin(NAMinator
     COMPANY_NAME "NAMinator"
-    BUNDLE_ID "com.sedosa.NAMinator"
+    BUNDLE_ID "org.sedosa.NAMinator"
     PLUGIN_MANUFACTURER_CODE Manu
     PLUGIN_CODE Qopw
     PRODUCT_NAME "NAMinator"

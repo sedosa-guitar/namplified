@@ -5,6 +5,60 @@
 
 #include <array>
 #include <cmath>
+#include <limits>
+
+namespace
+{
+juce::File findNamedNAMPeer (const juce::File& file, int slot)
+{
+    if (! file.existsAsFile())
+        return file;
+
+    const auto genericName = "NAM" + juce::String (slot + 1);
+    if (! file.getFileNameWithoutExtension().equalsIgnoreCase (genericName)
+        && ! file.getFileNameWithoutExtension().equalsIgnoreCase (genericName + "_capture"))
+        return file;
+
+    const juce::SHA256 sourceHash (file);
+    juce::File bestMatch;
+    int bestRepeatedPrefixCount = std::numeric_limits<int>::max();
+    for (const auto& candidate : file.getParentDirectory().findChildFiles (
+             juce::File::findFiles, false, genericName + "_*.nam"))
+    {
+        if (candidate.getFileNameWithoutExtension().equalsIgnoreCase (genericName + "_capture"))
+            continue;
+        if (candidate.getSize() != file.getSize() || juce::SHA256 (candidate) != sourceHash)
+            continue;
+
+        auto remainder = candidate.getFileName();
+        int repeatedPrefixCount = 0;
+        const auto prefix = genericName + "_";
+        while (remainder.startsWithIgnoreCase (prefix))
+        {
+            ++repeatedPrefixCount;
+            remainder = remainder.substring (prefix.length());
+        }
+        if (repeatedPrefixCount < bestRepeatedPrefixCount)
+        {
+            bestMatch = candidate;
+            bestRepeatedPrefixCount = repeatedPrefixCount;
+        }
+    }
+    return bestMatch != juce::File() ? bestMatch : file;
+}
+
+juce::String displayNameForNAMFile (const juce::File& file, int slot)
+{
+    auto name = file.getFileName();
+    if (name.equalsIgnoreCase ("NAM" + juce::String (slot + 1) + ".nam")
+        || name.equalsIgnoreCase ("NAM" + juce::String (slot + 1) + "_capture.nam"))
+        return "NAM capture";
+    const auto prefix = "NAM" + juce::String (slot + 1) + "_";
+    if (name.startsWithIgnoreCase (prefix))
+        name = name.substring (prefix.length());
+    return name;
+}
+}
 
 struct NAMinatorAudioProcessor::AmpModel
 {
@@ -580,14 +634,22 @@ juce::File NAMinatorAudioProcessor::getUserPresetDirectory() const
     const auto appData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
     const auto presets = appData.getChildFile ("Application Support")
         .getChildFile ("NAMinator").getChildFile ("Presets");
+    presets.createDirectory();
     const juce::File legacyLocations[] {
         appData.getChildFile ("The Lead").getChildFile ("Presets"),
         appData.getChildFile ("NAMinator").getChildFile ("Presets")
     };
-    for (const auto& oldPresets : legacyLocations)
-        if (oldPresets != presets && oldPresets.isDirectory())
-            oldPresets.copyDirectoryTo (presets);
-    presets.createDirectory();
+    const auto migrationMarker = presets.getChildFile (".legacy-presets-migrated");
+    if (! migrationMarker.existsAsFile())
+    {
+        bool migrationSucceeded = true;
+        for (const auto& oldPresets : legacyLocations)
+            if (oldPresets != presets && oldPresets.isDirectory()
+                && ! oldPresets.copyDirectoryTo (presets))
+                migrationSucceeded = false;
+        if (migrationSucceeded)
+            migrationMarker.replaceWithText ("Legacy preset migration completed once.");
+    }
     return presets;
 }
 
@@ -623,18 +685,132 @@ bool NAMinatorAudioProcessor::saveUserPreset (const juce::String& name)
     if (xml == nullptr)
         return false;
     auto presetState = juce::ValueTree::fromXml (*xml);
+    presetState.setProperty ("selectedUserPreset", file.getFileNameWithoutExtension(), nullptr);
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
     if (! assetsFolder.createDirectory().wasOk())
         return false;
+
+    const auto bundleCaptureFamily = [&assetsFolder] (const juce::String& folderName,
+                                                       const juce::String& originalPath,
+                                                       int captureSlot)
+    {
+        if (originalPath.isEmpty())
+            return juce::String();
+        const juce::File selectedSource (originalPath);
+        if (! selectedSource.existsAsFile())
+            return originalPath;
+
+        const auto selectedCapture = captureSlot >= 0
+            ? findNamedNAMPeer (selectedSource, captureSlot) : selectedSource;
+        const auto sourceFolder = selectedSource.getParentDirectory();
+        auto sourceCaptures = sourceFolder.findChildFiles (juce::File::findFiles, false, "*.nam");
+        if (sourceCaptures.isEmpty())
+            sourceCaptures.add (selectedCapture);
+        sourceCaptures.sort();
+
+        auto stagingFolder = assetsFolder.getChildFile (folderName + "_staging");
+        if (stagingFolder.isDirectory() && ! stagingFolder.deleteRecursively())
+            return juce::String();
+        if (! stagingFolder.createDirectory().wasOk())
+            return juce::String();
+
+        juce::StringArray copiedHashes;
+        bool selectedWasCopied = false;
+        for (const auto& capture : sourceCaptures)
+        {
+            const auto captureName = capture.getFileName();
+            bool belongsToAnotherBlock = captureName.startsWithIgnoreCase ("BOOST_NAM");
+            if (captureSlot >= 0)
+            {
+                for (int otherSlot = 0; otherSlot < numAmpSlots; ++otherSlot)
+                {
+                    if (otherSlot == captureSlot)
+                        continue;
+                    const auto otherPrefix = "NAM" + juce::String (otherSlot + 1);
+                    if (captureName.startsWithIgnoreCase (otherPrefix + "_")
+                        || captureName.equalsIgnoreCase (otherPrefix + ".nam"))
+                        belongsToAnotherBlock = true;
+                }
+            }
+            if (belongsToAnotherBlock && capture != selectedSource && capture != selectedCapture)
+                continue;
+
+            const auto canonicalCapture = captureSlot >= 0
+                ? findNamedNAMPeer (capture, captureSlot) : capture;
+            const auto hash = juce::SHA256 (canonicalCapture).toHexString();
+            if (copiedHashes.contains (hash))
+            {
+                if (canonicalCapture == selectedCapture)
+                    selectedWasCopied = true;
+                continue;
+            }
+
+            const auto destination = stagingFolder.getChildFile (canonicalCapture.getFileName());
+            if (canonicalCapture != destination && ! canonicalCapture.copyFileTo (destination))
+            {
+                stagingFolder.deleteRecursively();
+                return juce::String();
+            }
+            copiedHashes.add (hash);
+            if (canonicalCapture == selectedCapture)
+                selectedWasCopied = true;
+
+            const auto sourceMetadata = canonicalCapture.getSiblingFile (
+                canonicalCapture.getFileNameWithoutExtension() + ".t3k.json");
+            if (sourceMetadata.existsAsFile()
+                && ! sourceMetadata.copyFileTo (destination.getSiblingFile (
+                       destination.getFileNameWithoutExtension() + ".t3k.json")))
+            {
+                stagingFolder.deleteRecursively();
+                return juce::String();
+            }
+        }
+
+        if (! selectedWasCopied)
+        {
+            const auto destination = stagingFolder.getChildFile (selectedCapture.getFileName());
+            if (! selectedCapture.copyFileTo (destination))
+            {
+                stagingFolder.deleteRecursively();
+                return juce::String();
+            }
+            const auto sourceMetadata = selectedCapture.getSiblingFile (
+                selectedCapture.getFileNameWithoutExtension() + ".t3k.json");
+            if (sourceMetadata.existsAsFile())
+                sourceMetadata.copyFileTo (destination.getSiblingFile (
+                    destination.getFileNameWithoutExtension() + ".t3k.json"));
+        }
+
+        const auto destinationFolder = assetsFolder.getChildFile (folderName);
+        if (destinationFolder.isDirectory() && ! destinationFolder.deleteRecursively())
+        {
+            stagingFolder.deleteRecursively();
+            return juce::String();
+        }
+        if (! stagingFolder.moveFileTo (destinationFolder))
+        {
+            if (! stagingFolder.copyDirectoryTo (destinationFolder))
+            {
+                stagingFolder.deleteRecursively();
+                return juce::String();
+            }
+            stagingFolder.deleteRecursively();
+        }
+
+        return juce::String ("@preset-assets/") + folderName + "/" + selectedCapture.getFileName();
+    };
 
     const auto bundleAsset = [&assetsFolder] (const juce::String& originalPath, const juce::String& assetName)
     {
         if (originalPath.isEmpty())
             return juce::String();
-        const juce::File source (originalPath);
+        juce::File source (originalPath);
         if (! source.existsAsFile())
             return originalPath;
-        auto bundledName = assetName + "_" + source.getFileName();
+        if (assetName.startsWith ("NAM") && assetName != "BOOST_NAM")
+            source = findNamedNAMPeer (source, assetName.substring (3).getIntValue() - 1);
+        auto bundledName = source.getFileName().startsWithIgnoreCase (assetName + "_")
+            ? source.getFileName() : assetName + "_" + source.getFileName();
         const auto sourceName = source.getFileNameWithoutExtension();
         if ((assetName.startsWith ("NAM") && (sourceName.equalsIgnoreCase ("NAM1")
                                                 || sourceName.equalsIgnoreCase ("NAM2")))
@@ -648,9 +824,22 @@ bool NAMinatorAudioProcessor::saveUserPreset (const juce::String& name)
             if (! source.copyFileTo (destination))
                 return juce::String();
         }
+        if (source.hasFileExtension ("nam"))
+        {
+            const auto sourceMetadata = source.getSiblingFile (source.getFileNameWithoutExtension() + ".t3k.json");
+            if (sourceMetadata.existsAsFile())
+            {
+                const auto destinationMetadata = destination.getSiblingFile (
+                    destination.getFileNameWithoutExtension() + ".t3k.json");
+                if (destinationMetadata.existsAsFile() && ! destinationMetadata.deleteFile())
+                    return juce::String();
+                if (! sourceMetadata.copyFileTo (destinationMetadata))
+                    return juce::String();
+            }
+        }
         return juce::String ("@preset-assets/") + destination.getFileName();
     };
-    const auto saveBundledPath = [&presetState, &bundleAsset] (const juce::String& property,
+    const auto saveBundledPath = [&presetState, &assetsFolder, &bundleAsset] (const juce::String& property,
                                                                const juce::String& assetName)
     {
         const auto storedPath = presetState.getProperty (property).toString();
@@ -660,14 +849,48 @@ bool NAMinatorAudioProcessor::saveUserPreset (const juce::String& name)
         if (bundledPath.isEmpty())
             return false;
         if (bundledPath.startsWith ("@preset-assets/"))
+        {
             presetState.setProperty (property, bundledPath, nullptr);
+            if (property.startsWith ("ampFile"))
+            {
+                const auto slot = property.substring (7).getIntValue() - 1;
+                const auto bundledFile = assetsFolder.getChildFile (
+                    bundledPath.fromFirstOccurrenceOf ("/", false, false));
+                if (slot >= 0 && slot < numAmpSlots)
+                    presetState.setProperty ("ampDisplayName" + juce::String (slot + 1),
+                                             displayNameForNAMFile (bundledFile, slot), nullptr);
+            }
+        }
         return true;
     };
     for (int slot = 0; slot < numAmpSlots; ++slot)
-        if (! saveBundledPath ("ampFile" + juce::String (slot + 1), "NAM" + juce::String (slot + 1)))
+    {
+        const auto property = "ampFile" + juce::String (slot + 1);
+        const auto sourcePath = presetState.getProperty (property).toString();
+        if (sourcePath.isNotEmpty())
+        {
+            const auto bundledPath = bundleCaptureFamily ("NAM" + juce::String (slot + 1), sourcePath, slot);
+            if (bundledPath.isEmpty())
+                return false;
+            if (bundledPath.startsWith ("@preset-assets/"))
+            {
+                presetState.setProperty (property, bundledPath, nullptr);
+                const auto bundledFile = assetsFolder.getChildFile (
+                    bundledPath.fromFirstOccurrenceOf ("/", false, false));
+                presetState.setProperty ("ampDisplayName" + juce::String (slot + 1),
+                                         displayNameForNAMFile (bundledFile, slot), nullptr);
+            }
+        }
+    }
+    const auto boostSourcePath = presetState.getProperty ("boostNAMFile").toString();
+    if (boostSourcePath.isNotEmpty())
+    {
+        const auto bundledBoostPath = bundleCaptureFamily ("BOOST_NAM", boostSourcePath, -1);
+        if (bundledBoostPath.isEmpty())
             return false;
-    if (! saveBundledPath ("boostNAMFile", "BOOST_NAM"))
-        return false;
+        if (bundledBoostPath.startsWith ("@preset-assets/"))
+            presetState.setProperty ("boostNAMFile", bundledBoostPath, nullptr);
+    }
     for (int slot = 0; slot < numIRSlots; ++slot)
         if (! saveBundledPath ("irFile" + juce::String (slot + 1), "IR" + juce::String (slot + 1)))
             return false;
@@ -677,7 +900,36 @@ bool NAMinatorAudioProcessor::saveUserPreset (const juce::String& name)
         return false;
     juce::MemoryBlock presetData;
     copyXmlToBinary (*bundledXml, presetData);
-    return file.replaceWithData (presetData.getData(), presetData.getSize());
+    if (! file.replaceWithData (presetData.getData(), presetData.getSize()))
+        return false;
+
+    const auto resolveBundledPath = [&assetsFolder, &presetState] (const juce::String& property)
+    {
+        const auto path = presetState.getProperty (property).toString();
+        if (! path.startsWith ("@preset-assets/"))
+            return juce::String();
+        return assetsFolder.getChildFile (path.fromFirstOccurrenceOf ("/", false, false)).getFullPathName();
+    };
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+    {
+        const auto path = resolveBundledPath ("ampFile" + juce::String (slot + 1));
+        if (path.isNotEmpty())
+        {
+            namFilePaths[slot] = path;
+            namDisplayNames[slot] = presetState.getProperty (
+                "ampDisplayName" + juce::String (slot + 1)).toString();
+        }
+    }
+    for (int slot = 0; slot < numIRSlots; ++slot)
+    {
+        const auto path = resolveBundledPath ("irFile" + juce::String (slot + 1));
+        if (path.isNotEmpty())
+            irFilePaths[slot] = path;
+    }
+    const auto resolvedBoostPath = resolveBundledPath ("boostNAMFile");
+    if (resolvedBoostPath.isNotEmpty())
+        boostNAMFilePath = resolvedBoostPath;
+    return true;
 }
 
 bool NAMinatorAudioProcessor::loadUserPreset (const juce::String& name)
@@ -1484,11 +1736,24 @@ void NAMinatorAudioProcessor::setStateInformation (const void* data, int sizeInB
         for (int slot = 0; slot < numAmpSlots; ++slot)
         {
             namFilePaths[slot] = state.getProperty ("ampFile" + juce::String (slot + 1)).toString();
-            const juce::File file (namFilePaths[slot]);
+            juce::File file (namFilePaths[slot]);
+            file = findNamedNAMPeer (file, slot);
+            namFilePaths[slot] = file.getFullPathName();
             if (file.existsAsFile())
                 loadNAMCapture (slot, file);
-            namDisplayNames[slot] = state.getProperty ("ampDisplayName" + juce::String (slot + 1),
-                                                       file.getFileName()).toString();
+            auto displayName = state.getProperty ("ampDisplayName" + juce::String (slot + 1),
+                                                  file.getFileName()).toString().trim();
+            const auto slotPrefix = "NAM" + juce::String (slot + 1) + "_";
+            const auto isGenericName = [&displayName, slot]
+            {
+                return displayName.isEmpty() || displayName.equalsIgnoreCase ("NAM capture")
+                    || displayName.equalsIgnoreCase ("NAM" + juce::String (slot + 1) + ".nam")
+                    || displayName.equalsIgnoreCase ("NAM" + juce::String (slot + 1) + "_capture.nam");
+            };
+            if ((isGenericName() || displayName.equalsIgnoreCase (file.getFileName()))
+                && file.getFileName().startsWithIgnoreCase (slotPrefix))
+                displayName = displayNameForNAMFile (file, slot);
+            namDisplayNames[slot] = displayName;
         }
         boostNAMFilePath = state.getProperty ("boostNAMFile").toString();
         const juce::File boostNAMFile (boostNAMFilePath);
@@ -1592,6 +1857,15 @@ juce::String NAMinatorAudioProcessor::getNAMCaptureName (int slot) const
         || name.equalsIgnoreCase ("NAM1_capture.nam") || name.equalsIgnoreCase ("NAM2_capture.nam"))
         return "NAM capture";
     return name;
+}
+
+juce::File NAMinatorAudioProcessor::getNAMCaptureFile (int slot) const
+{
+    if (slot == boostNAMSlot)
+        return juce::File (boostNAMFilePath);
+    if (slot < 0 || slot >= numAmpSlots)
+        return {};
+    return juce::File (namFilePaths[slot]);
 }
 
 juce::String NAMinatorAudioProcessor::getNAMCaptureStatus (int slot) const

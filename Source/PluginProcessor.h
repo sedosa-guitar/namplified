@@ -51,6 +51,7 @@ public:
     bool cycleNAMCapture (int slot, int direction);
     juce::String getImpulseResponseName (int slot) const;
     juce::String getNAMCaptureName (int slot) const;
+    juce::File getNAMCaptureFile (int slot) const;
     juce::String getNAMCaptureStatus (int slot) const;
     std::array<int, numPreFxStages> getPreFxOrder() const;
     void setPreFxOrder (const std::array<int, numPreFxStages>& order);
