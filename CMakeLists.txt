@@ -77,6 +77,8 @@ juce_add_plugin(NAMinator
 # input devices. JUCE's generated standalone plist does not currently include
 # this key, so add it to the built bundle after linking.
 if (APPLE)
+    target_compile_definitions(NAMinator_Standalone PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
+    target_sources(NAMinator_Standalone PRIVATE Source/NAMinatorStandaloneApp.cpp)
     add_custom_command(TARGET NAMinator_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMinator_Standalone>/Contents/Info.plist"
