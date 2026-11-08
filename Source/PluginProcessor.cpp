@@ -346,6 +346,8 @@ NAMinatorAudioProcessor::IRParameters::ParameterLayout NAMinatorAudioProcessor::
         juce::ParameterID { "delayType", 1 }, "Delay Character",
         juce::StringArray { "Digital", "Analog" }, 0));
     addFrequency ("delayTone", "Delay Tone", 500.0f, 12000.0f, 4500.0f);
+    addFrequency ("delayHighPass", "Delay High-Pass", 20.0f, 1000.0f, 100.0f);
+    addFrequency ("delayLowPass", "Delay Low-Pass", 1000.0f, 20000.0f, 8000.0f);
     addKnob ("delayDuck", "Delay Ducking", 0.0f, 1.0f, 0.0f);
     addKnob ("delayDuckThreshold", "Delay Duck Threshold", -48.0f, 0.0f, -30.0f);
     addKnob ("delayDuckRelease", "Delay Duck Release", 20.0f, 1000.0f, 250.0f);
@@ -358,6 +360,8 @@ NAMinatorAudioProcessor::IRParameters::ParameterLayout NAMinatorAudioProcessor::
     addKnob ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.45f);
     addKnob ("reverbPreDelay", "Reverb Pre-Delay", 0.0f, 100.0f, 0.0f);
     addKnob ("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.8f);
+    addFrequency ("reverbHighPass", "Reverb High-Pass", 20.0f, 1000.0f, 120.0f);
+    addFrequency ("reverbLowPass", "Reverb Low-Pass", 1000.0f, 20000.0f, 10000.0f);
     addToggle ("chorusOn", "Chorus");
     addKnob ("chorusRate", "Chorus Rate", 0.1f, 5.0f, 0.8f);
     addKnob ("chorusDepth", "Chorus Depth", 0.0f, 1.0f, 0.35f);
@@ -444,6 +448,25 @@ void NAMinatorAudioProcessor::setEqCoefficients (BiquadState& filter, int band, 
         }
     }
     filter.set (b0, b1, b2, a0, a1, a2);
+}
+
+void NAMinatorAudioProcessor::setCutFilterCoefficients (BiquadState& filter, bool highPass,
+                                                        float frequency, double sampleRate)
+{
+    const auto sr = static_cast<float> (juce::jmax (sampleRate, 1.0));
+    const auto f = juce::jlimit (20.0f, sr * 0.45f, frequency);
+    const auto omega = juce::MathConstants<float>::twoPi * f / sr;
+    const auto cosine = std::cos (omega);
+    const auto alpha = std::sin (omega) / (2.0f * 0.70710678f);
+    const auto inverseA0 = 1.0f / (1.0f + alpha);
+    if (highPass)
+        filter.set ((1.0f + cosine) * 0.5f * inverseA0, -(1.0f + cosine) * inverseA0,
+                    (1.0f + cosine) * 0.5f * inverseA0, 1.0f,
+                    -2.0f * cosine * inverseA0, (1.0f - alpha) * inverseA0);
+    else
+        filter.set ((1.0f - cosine) * 0.5f * inverseA0, (1.0f - cosine) * inverseA0,
+                    (1.0f - cosine) * 0.5f * inverseA0, 1.0f,
+                    -2.0f * cosine * inverseA0, (1.0f - alpha) * inverseA0);
 }
 
 void NAMinatorAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples,
@@ -1069,6 +1092,9 @@ void NAMinatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
         delayLine.reset();
     }
     analogDelayToneState.fill (0.0f);
+    analogDelayToneLowState.fill (0.0f);
+    analogDelayWowPhase.fill (0.0f);
+    analogDelayFlutterPhase.fill (0.0f);
     for (auto& predelayLine : reverbPreDelayLines)
     {
         predelayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 0.15) + 2);
@@ -1082,9 +1108,7 @@ void NAMinatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBl
     outputSafetyLimiter.setThreshold (0.0f);
     outputSafetyLimiter.setRelease (80.0f);
     outputSafetyLimiter.reset();
-    juce::Reverb::Parameters reverbParameters;
-    reverbParameters.roomSize = 0.45f;
-    reverb.setParameters (reverbParameters);
+    reverb.prepare (sampleRate);
 }
 
 void NAMinatorAudioProcessor::releaseResources() {}
@@ -1489,15 +1513,49 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             const auto mode = juce::jlimit (0, 2, juce::roundToInt (get ("delayMode", 1.0f)));
             const auto analog = get ("delayType", 0.0f) >= 0.5f;
             const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
+            const auto highPass = get ("delayHighPass", 100.0f);
+            const auto lowPass = juce::jmax (get ("delayLowPass", 8000.0f), highPass * 1.1f);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                setCutFilterCoefficients (delayHighPassFilters[static_cast<size_t> (channel)], true,
+                                          highPass, sampleRate);
+                setCutFilterCoefficients (delayLowPassFilters[static_cast<size_t> (channel)], false,
+                                          lowPass, sampleRate);
+            }
             const auto toneCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * tone
                                                            / static_cast<float> (sampleRate));
+            const auto secondToneCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * tone * 0.68f
+                                                                  / static_cast<float> (sampleRate));
             const auto shapeRepeat = [&] (int channel, float sample)
             {
                 if (! analog)
-                    return sample;
-                auto& state = analogDelayToneState[static_cast<size_t> (channel)];
-                state += toneCoefficient * (sample - state);
-                return std::tanh (state * 1.12f) / std::tanh (1.12f);
+                    return delayLowPassFilters[static_cast<size_t> (channel)].process (
+                        delayHighPassFilters[static_cast<size_t> (channel)].process (sample));
+                const auto index = static_cast<size_t> (channel);
+                auto shaped = delayHighPassFilters[index].process (sample);
+                shaped = delayLowPassFilters[index].process (shaped);
+                analogDelayToneState[index] += toneCoefficient * (shaped - analogDelayToneState[index]);
+                analogDelayToneLowState[index] += secondToneCoefficient
+                    * (analogDelayToneState[index] - analogDelayToneLowState[index]);
+                return std::tanh (analogDelayToneLowState[index] * 1.35f) / std::tanh (1.35f);
+            };
+            const auto modulatedDelayFor = [this, delaySamples, analog, sampleRate] (int channel)
+            {
+                if (! analog)
+                    return delaySamples;
+                const auto index = static_cast<size_t> (channel);
+                auto& wow = analogDelayWowPhase[index];
+                auto& flutter = analogDelayFlutterPhase[index];
+                wow += 0.27f / static_cast<float> (sampleRate);
+                flutter += 5.1f / static_cast<float> (sampleRate);
+                if (wow >= 1.0f) wow -= 1.0f;
+                if (flutter >= 1.0f) flutter -= 1.0f;
+                const auto wowSamples = std::sin (juce::MathConstants<float>::twoPi * wow)
+                                      * static_cast<float> (sampleRate) * 0.00032f;
+                const auto flutterSamples = std::sin (juce::MathConstants<float>::twoPi * flutter + 0.8f)
+                                          * static_cast<float> (sampleRate) * 0.000035f;
+                return juce::jlimit (1.0f, static_cast<float> (sampleRate * 1.2),
+                                     delaySamples + wowSamples + flutterSamples);
             };
             const auto duckAmount = juce::jlimit (0.0f, 1.0f, get ("delayDuck", 0.0f));
             const auto duckThreshold = get ("delayDuckThreshold", -30.0f);
@@ -1524,7 +1582,7 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                 if (mode == 0) // Mono repeats sit in the centre of a stereo output.
                 {
                     auto& line = delayLines[0];
-                    const auto wet = shapeRepeat (0, line.popSample (0, delaySamples));
+                    const auto wet = shapeRepeat (0, line.popSample (0, modulatedDelayFor (0)));
                     line.pushSample (0, monoInput + wet * feedback);
                     const auto outputWet = wet * duckGain * mix;
                     left[i] = dryLeft * (1.0f - mix) + outputWet;
@@ -1535,8 +1593,8 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                 {
                     auto& leftLine = delayLines[0];
                     auto& rightLine = delayLines[1];
-                    const auto wetLeft = shapeRepeat (0, leftLine.popSample (0, delaySamples));
-                    const auto wetRight = shapeRepeat (1, rightLine.popSample (0, delaySamples));
+                    const auto wetLeft = shapeRepeat (0, leftLine.popSample (0, modulatedDelayFor (0)));
+                    const auto wetRight = shapeRepeat (1, rightLine.popSample (0, modulatedDelayFor (1)));
                     leftLine.pushSample (0, monoInput + wetRight * feedback);
                     rightLine.pushSample (0, wetLeft * feedback);
                     if (numChannels > 1)
@@ -1549,12 +1607,12 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                 }
                 else // Stereo keeps independent repeats on each channel.
                 {
-                    const auto wetLeft = shapeRepeat (0, delayLines[0].popSample (0, delaySamples));
+                    const auto wetLeft = shapeRepeat (0, delayLines[0].popSample (0, modulatedDelayFor (0)));
                     delayLines[0].pushSample (0, dryLeft + wetLeft * feedback);
                     left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
                     if (numChannels > 1)
                     {
-                        const auto wetRight = shapeRepeat (1, delayLines[1].popSample (0, delaySamples));
+                        const auto wetRight = shapeRepeat (1, delayLines[1].popSample (0, modulatedDelayFor (1)));
                         delayLines[1].pushSample (0, dryRight + wetRight * feedback);
                         right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
                     }
@@ -1567,33 +1625,21 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
             const auto size = juce::jlimit (0.0f, 1.0f, get ("reverbSize", 0.45f));
             const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
             const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
+            const auto highPass = get ("reverbHighPass", 120.0f);
+            const auto lowPass = juce::jmax (get ("reverbLowPass", 10000.0f), highPass * 1.1f);
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                setCutFilterCoefficients (reverbHighPassFilters[static_cast<size_t> (channel)], true,
+                                          highPass, sampleRate);
+                setCutFilterCoefficients (reverbLowPassFilters[static_cast<size_t> (channel)], false,
+                                          lowPass, sampleRate);
+            }
             const auto userPredelayMs = juce::jlimit (0.0f, 100.0f, get ("reverbPreDelay", 0.0f));
-            float roomSize = size;
-            float modeDamping = damping;
-            float modeWidth = width;
             float modePredelayMs = userPredelayMs;
-            if (mode == 1) // Plate: denser, brighter response with a short pre-delay.
-            {
-                roomSize = 0.55f + 0.4f * size;
-                modeDamping = damping * 0.55f;
-                modeWidth = juce::jmax (0.9f, width);
+            if (mode == 1)
                 modePredelayMs += 12.0f;
-            }
-            else if (mode == 2) // Cloud: very long, wide, diffuse algorithmic tail.
-            {
-                roomSize = 0.78f + 0.21f * size;
-                modeDamping = 0.2f + 0.45f * damping;
-                modeWidth = 1.0f;
+            else if (mode == 2)
                 modePredelayMs += 35.0f;
-            }
-
-            auto reverbParameters = reverb.getParameters();
-            reverbParameters.roomSize = roomSize;
-            reverbParameters.damping = modeDamping;
-            reverbParameters.width = modeWidth;
-            reverbParameters.wetLevel = 1.0f;
-            reverbParameters.dryLevel = 0.0f;
-            reverb.setParameters (reverbParameters);
             const auto predelaySamples = static_cast<float> (juce::jlimit (1.0, sampleRate * 0.15,
                 static_cast<double> (modePredelayMs) * sampleRate / 1000.0));
             for (int channel = 0; channel < numChannels; ++channel)
@@ -1608,10 +1654,17 @@ void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, ju
                     wet[i] = delayedInput;
                 }
             }
-            if (numChannels >= 2)
-                reverb.processStereo (reverbWorkBuffer.getWritePointer (0), reverbWorkBuffer.getWritePointer (1), numSamples);
-            else
-                reverb.processMono (reverbWorkBuffer.getWritePointer (0), numSamples);
+            reverb.process (reverbWorkBuffer.getWritePointer (0),
+                            numChannels >= 2 ? reverbWorkBuffer.getWritePointer (1) : nullptr,
+                            numSamples, mode, size, damping, width);
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                auto* wet = reverbWorkBuffer.getWritePointer (channel);
+                auto& highPassFilter = reverbHighPassFilters[static_cast<size_t> (channel)];
+                auto& lowPassFilter = reverbLowPassFilters[static_cast<size_t> (channel)];
+                for (int sample = 0; sample < numSamples; ++sample)
+                    wet[sample] = lowPassFilter.process (highPassFilter.process (wet[sample]));
+            }
             const auto mix = juce::jlimit (0.0f, 1.0f, get ("reverbMix", 0.2f));
             for (int channel = 0; channel < numChannels; ++channel)
             {

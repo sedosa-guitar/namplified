@@ -99,6 +99,7 @@ target_sources(NAMinator PRIVATE
     Source/PluginEditor.cpp
     Source/Tone3000Client.cpp
     Source/CleanBoost.h
+    Source/AlgorithmicReverb.h
     Source/AmpSimBridge.h
     Source/Tone3000Client.h
     Source/Tone3000Config.h

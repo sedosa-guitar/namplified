@@ -13,6 +13,7 @@
 #include <unordered_map>
 #include <vector>
 #include "CleanBoost.h"
+#include "AlgorithmicReverb.h"
 
 //==============================================================================
 /**
@@ -111,6 +112,7 @@ private:
     void processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot);
     void setEqCoefficients (BiquadState& filter, int band, float frequency, float gainDb,
                             double sampleRate, float q = 1.0f);
+    void setCutFilterCoefficients (BiquadState& filter, bool highPass, float frequency, double sampleRate);
     struct AmpModel;
     std::unique_ptr<AmpModel> ampModels[numAmpSlots];
     std::unique_ptr<AmpModel> boostNAMModel;
@@ -139,6 +141,9 @@ private:
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
     std::array<float, 2> analogDelayToneState {};
+    std::array<float, 2> analogDelayToneLowState {};
+    std::array<float, 2> analogDelayWowPhase {};
+    std::array<float, 2> analogDelayFlutterPhase {};
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     std::array<std::vector<float>, 2> pitchBuffers;
     int pitchBufferSize = 0, pitchWritePosition = 0;
@@ -154,6 +159,8 @@ private:
     std::array<BiquadState, 2> compressorToneFilters {};
     std::array<BiquadState, 2> compressorLowEqFilters {};
     std::array<BiquadState, 2> compressorBrightFilters {};
+    std::array<BiquadState, 2> delayHighPassFilters {}, delayLowPassFilters {};
+    std::array<BiquadState, 2> reverbHighPassFilters {}, reverbLowPassFilters {};
     std::array<float, 2> compressorBrightMix {};
     float delayDuckEnvelope = 0.0f;
     std::array<float, 2> preLowState {};
@@ -165,7 +172,7 @@ private:
     juce::AudioBuffer<float> reverbWorkBuffer;
     juce::dsp::Chorus<float> chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
-    juce::Reverb reverb;
+    AlgorithmicReverb reverb;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessor)

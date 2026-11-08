@@ -2671,6 +2671,7 @@ public:
                   {{ "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
                    { "delayMode", "Routing", false, juce::StringArray { "Mono", "Stereo", "Ping Pong" } },
                    { "delayTone", "Tone (Hz)" },
+                   { "delayHighPass", "High-Pass (Hz)" }, { "delayLowPass", "Low-Pass (Hz)" },
                    { "delayDuck", "Ducking", true }, { "delayDuckThreshold", "Duck Threshold (dB)" },
                    { "delayDuckRelease", "Duck Release (ms)" }});
         addStage ("Reverb", "reverbOn", {{ "reverbSize", "Size", true }, { "reverbMix", "Mix", true }},
@@ -2678,6 +2679,7 @@ public:
                   {{ "reverbMode", "Algorithm", false, juce::StringArray { "Room", "Plate", "Cloud" } },
                    { "reverbSize", "Size / Decay", true }, { "reverbDamping", "Damping", true },
                    { "reverbPreDelay", "Pre-Delay (ms)" }, { "reverbWidth", "Width", true },
+                   { "reverbHighPass", "High-Pass (Hz)" }, { "reverbLowPass", "Low-Pass (Hz)" },
                    { "reverbMix", "Mix", true }});
         addStage ("Chorus", "chorusOn",
                   {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true }},
