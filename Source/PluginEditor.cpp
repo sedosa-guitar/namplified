@@ -358,6 +358,7 @@ public:
             if (control.toggle)
             {
                 auto toggle = std::make_unique<juce::ToggleButton>();
+                toggle->setName (control.id);
                 toggle->setTooltip (control.label);
                 toggle->setColour (juce::ToggleButton::textColourId, text);
                 addAndMakeVisible (*toggle);
@@ -462,10 +463,25 @@ public:
             updateBoostControls();
         else
             setSize (430, 48 + static_cast<int> (controlWidgets.size()) * 46);
+        addMouseListener (this, true);
         startTimerHz (20);
     }
 
     void paint (juce::Graphics& g) override { g.fillAll (background); }
+    void mouseDown (const juce::MouseEvent& event) override
+    {
+        if (! audioProcessor.isMidiLearnArmed())
+            return;
+        auto* component = event.originalComponent;
+        while (component != nullptr && component != this)
+        {
+            const auto id = component->getName();
+            if (id.isNotEmpty() && audioProcessor.parameters.getParameter (id) != nullptr
+                && audioProcessor.setMidiLearnTarget (id))
+                return;
+            component = component->getParentComponent();
+        }
+    }
     void resized() override
     {
         auto area = getLocalBounds().reduced (16);
@@ -926,6 +942,7 @@ public:
         if (enableParameterId.isNotEmpty())
         {
             hasEnableControl = true;
+            enableButton.setName (enableParameterId);
             enableButton.setButtonText ("ENABLED");
             enableButton.setColour (juce::ToggleButton::textColourId, secondaryText);
             addAndMakeVisible (enableButton);
@@ -1075,6 +1092,7 @@ public:
             if (control.toggle)
             {
                 auto toggle = std::make_unique<juce::ToggleButton>();
+                toggle->setName (control.id);
                 toggle->setButtonText (juce::String (control.label).replace ("(dB)", "").trim().toUpperCase());
                 toggle->setColour (juce::ToggleButton::textColourId, text);
                 addAndMakeVisible (*toggle);
@@ -1090,6 +1108,7 @@ public:
             {
                 auto sourceButton = std::make_unique<juce::TextButton> (
                     stageName == "Boost Pedal" ? "BOOST" : "NAM CAPTURE");
+                sourceButton->setName (control.id);
                 sourceButton->setClickingTogglesState (false);
                 sourceButton->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (40, 45, 54));
                 sourceButton->setColour (juce::TextButton::textColourOffId, text);
@@ -3095,6 +3114,27 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
     addAndMakeVisible (deletePresetButton);
     addAndMakeVisible (resetChainButton);
     addAndMakeVisible (aboutButton);
+    midiLearnButton.setButtonText ("MIDI LEARN");
+    midiLearnButton.setTooltip ("Click MIDI Learn, then a control, then move a hardware MIDI CC knob.");
+    midiLearnButton.onClick = [this]
+    {
+        if (midiLearnArmed)
+        {
+            audioProcessor.cancelMidiLearn();
+            midiLearnArmed = midiTargetArmed = false;
+            midiLearnButton.setButtonText ("MIDI LEARN");
+            midiLearnButton.setTooltip ("Click MIDI Learn, then a control, then move a hardware MIDI CC knob.");
+        }
+        else
+        {
+            midiLearnArmed = true;
+            midiTargetArmed = false;
+            audioProcessor.armMidiLearn();
+            midiLearnButton.setButtonText ("CLICK CONTROL");
+            midiLearnButton.setTooltip ("Now click the parameter you want to control, then send a MIDI CC.");
+        }
+    };
+    addAndMakeVisible (midiLearnButton);
     refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     presetBox.onChange = [this]
     {
@@ -3124,6 +3164,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
 
     ampRoutingBox.addItem ("SERIES", 1);
     ampRoutingBox.addItem ("PARALLEL BLEND", 2);
+    ampRoutingBox.setName ("ampRouting");
     ampRoutingBox.setTooltip (
         "Series: NAM captures feed one another, e.g. Boost capture > OD capture > Amp capture.\n"
         "Parallel Blend: NAM profiles run side by side and blend into the shared Cab IR section.");
@@ -3134,6 +3175,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
 
     parallelIRBox.addItem ("PAIRED IRs", 1);
     parallelIRBox.addItem ("SHARED IR 1", 2);
+    parallelIRBox.setName ("parallelIRMode");
     parallelIRBox.setTooltip ("Paired IRs: Amp 1 to IR 1 and Amp 2 to IR 2. Shared IR 1: blend both amp outputs, then process them through IR 1.");
     addAndMakeVisible (parallelIRBox);
     parallelIRAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
@@ -3164,6 +3206,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
 
     updateRoutingDisplay();
     addAndMakeVisible (*chainControls);
+    addMouseListener (this, true);
 
 }
 
@@ -3194,6 +3237,9 @@ void NAMinatorAudioProcessorEditor::resized()
     auto aboutArea = top.removeFromRight (76);
     top.removeFromRight (8);
     aboutButton.setBounds (aboutArea.reduced (0, 4));
+    auto midiArea = top.removeFromRight (108);
+    top.removeFromRight (8);
+    midiLearnButton.setBounds (midiArea.reduced (0, 4));
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 920;
     const auto presetWidth = compactHeader ? 145 : 165;
@@ -3255,6 +3301,7 @@ void NAMinatorAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     deletePresetButton.setVisible (showChrome);
     resetChainButton.setVisible (showChrome);
     aboutButton.setVisible (showChrome);
+    midiLearnButton.setVisible (showChrome);
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
@@ -3299,6 +3346,22 @@ juce::String NAMinatorAudioProcessorEditor::selectedPresetName() const
 void NAMinatorAudioProcessorEditor::timerCallback()
 {
     updateMasterVolumeValueLabel();
+    if (midiLearnArmed && audioProcessor.hasMidiLearnTarget())
+    {
+        midiTargetArmed = true;
+        midiLearnButton.setButtonText ("SEND MIDI CC");
+    }
+    int learnedCC = -1;
+    juce::String learnedParameter;
+    if (audioProcessor.takeMidiLearnResult (learnedCC, learnedParameter))
+    {
+        midiLearnArmed = midiTargetArmed = false;
+        audioProcessor.saveMidiMappings();
+        midiLearnButton.setButtonText ("MIDI LEARN");
+        midiLearnButton.setTooltip ("CC " + juce::String (learnedCC) + " now controls " + learnedParameter
+                                    + ". Click to learn another mapping. "
+                                    + juce::String (audioProcessor.getMidiMappingCount()) + " mappings saved.");
+    }
     const auto* routingParameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
     const auto* irModeParameter = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto parallel = routingParameter != nullptr && routingParameter->load() >= 0.5f;
@@ -3325,6 +3388,26 @@ void NAMinatorAudioProcessorEditor::timerCallback()
             self (self, *child);
     };
     repaintChildren (repaintChildren, *this);
+}
+
+void NAMinatorAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
+{
+    if (! midiLearnArmed || midiTargetArmed)
+        return;
+    auto* component = event.originalComponent;
+    while (component != nullptr && component != this)
+    {
+        const auto id = component->getName();
+        if (id.isNotEmpty() && audioProcessor.parameters.getParameter (id) != nullptr
+            && audioProcessor.setMidiLearnTarget (id))
+        {
+            midiTargetArmed = true;
+            midiLearnButton.setButtonText ("SEND MIDI CC");
+            midiLearnButton.setTooltip ("Move the MIDI controller now to assign it to " + id + ".");
+            return;
+        }
+        component = component->getParentComponent();
+    }
 }
 
 void NAMinatorAudioProcessorEditor::updateMasterVolumeValueLabel()

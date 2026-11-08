@@ -17,6 +17,7 @@ NAMinator is a JUCE-based audio effect for shaping a guitar sound from input to 
 - **Post-amp blocks:** Delay, Reverb, Chorus, and nine-band Post EQ. Reorder and enable them individually.
 - **Output section:** output trim and a signal meter. Input and output meters show signal level and briefly indicate clipping.
 - **Presets:** save, recall, and delete user presets; reset the chain to its default setup. Saving copies referenced NAM captures and IRs into a matching `_Assets` folder beside the preset, so both can be backed up or moved together. Unsaved parameter and capture changes are indicated in the interface.
+- **MIDI CC Learn:** assign incoming MIDI CC messages to parameters and switches by selecting MIDI Learn, clicking a control, then moving a controller. Mappings are shared across presets and saved in the user's application data folder.
 
 The default chain starts with Input → Noise Gate → Amp 1 → IR 1 → Reverb → Output. Optional blocks can be enabled as needed; the chain editor presents the available stages and lets you reorder movable blocks inside their sections.
 
@@ -60,6 +61,10 @@ Input trim → Pitch → Pre-amp blocks → Amp 1 / Amp 2 → Cabinet IR 1 / IR 
 ```
 
 The exact route depends on which blocks are enabled and whether the amp section is set to Series or Parallel Blend. In parallel mode, the amp and cabinet paths are drawn separately in the chain view.
+
+## MIDI control
+
+NAMinator accepts MIDI input. In the standalone app, choose a MIDI input device in **Options → Audio/MIDI Settings**; in a DAW, enable the track's MIDI input for NAMinator. Click **MIDI Learn**, click a slider, knob, selector, or block enable switch, and send a MIDI CC from the controller. The assigned CC controls that parameter across presets. MIDI assignments are stored separately from presets on the current computer.
 
 ## NAM compatibility
 

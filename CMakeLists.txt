@@ -65,7 +65,7 @@ juce_add_plugin(NAMinator
     DESCRIPTION "NAMinator guitar signal-chain plugin"
     ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMinatorAppIcon.png"
     IS_SYNTH FALSE
-    NEEDS_MIDI_INPUT FALSE
+    NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
     IS_MIDI_EFFECT FALSE
     EDITOR_WANTS_KEYBOARD_FOCUS FALSE

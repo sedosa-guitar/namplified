@@ -205,6 +205,119 @@ NAMinatorAudioProcessor::NAMinatorAudioProcessor()
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot] = std::make_unique<AmpModel>();
     boostNAMModel = std::make_unique<AmpModel>();
+    const auto& processorParameters = getParameters();
+    midiParameterIds.reserve (static_cast<size_t> (processorParameters.size()));
+    for (auto* parameter : processorParameters)
+        if (const auto* withId = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter))
+            midiParameterIds.push_back (withId->paramID);
+    for (auto& mapping : midiCCParameterIndices)
+        mapping.store (-1, std::memory_order_relaxed);
+    loadMidiMappings();
+}
+
+juce::File NAMinatorAudioProcessor::getMidiMappingsFile() const
+{
+    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+        .getChildFile ("NAMinator").getChildFile ("MidiMappings.xml");
+}
+
+int NAMinatorAudioProcessor::findMidiParameterIndex (const juce::String& parameterId) const
+{
+    for (size_t i = 0; i < midiParameterIds.size(); ++i)
+        if (midiParameterIds[i] == parameterId)
+            return static_cast<int> (i);
+    return -1;
+}
+
+void NAMinatorAudioProcessor::loadMidiMappings()
+{
+    const auto file = getMidiMappingsFile();
+    if (! file.existsAsFile())
+        return;
+    const auto xml = juce::XmlDocument::parse (file);
+    if (xml == nullptr)
+        return;
+    const auto state = juce::ValueTree::fromXml (*xml);
+    if (! state.isValid())
+        return;
+    for (const auto entry : state)
+    {
+        const auto cc = static_cast<int> (entry.getProperty ("cc", -1));
+        const auto index = findMidiParameterIndex (entry.getProperty ("parameter").toString());
+        if (juce::isPositiveAndBelow (cc, 128) && index >= 0)
+            midiCCParameterIndices[static_cast<size_t> (cc)].store (index, std::memory_order_relaxed);
+    }
+}
+
+bool NAMinatorAudioProcessor::saveMidiMappings() const
+{
+    juce::ValueTree state ("MidiMappings");
+    for (int cc = 0; cc < 128; ++cc)
+    {
+        const auto index = midiCCParameterIndices[static_cast<size_t> (cc)].load (std::memory_order_relaxed);
+        if (! juce::isPositiveAndBelow (index, static_cast<int> (midiParameterIds.size())))
+            continue;
+        juce::ValueTree entry ("Mapping");
+        entry.setProperty ("cc", cc, nullptr);
+        entry.setProperty ("parameter", midiParameterIds[static_cast<size_t> (index)], nullptr);
+        state.addChild (entry, -1, nullptr);
+    }
+    const auto file = getMidiMappingsFile();
+    file.getParentDirectory().createDirectory();
+    return state.createXml()->writeTo (file);
+}
+
+bool NAMinatorAudioProcessor::setMidiLearnTarget (const juce::String& parameterId)
+{
+    const auto index = findMidiParameterIndex (parameterId);
+    if (index < 0)
+        return false;
+    learnedMidiCC.store (-1, std::memory_order_relaxed);
+    midiLearnTargetIndex.store (index, std::memory_order_release);
+    return true;
+}
+
+void NAMinatorAudioProcessor::armMidiLearn() noexcept
+{
+    midiLearnTargetIndex.store (-1, std::memory_order_release);
+    learnedMidiCC.store (-1, std::memory_order_relaxed);
+    midiLearningArmed.store (true, std::memory_order_release);
+}
+
+bool NAMinatorAudioProcessor::isMidiLearnArmed() const noexcept
+{
+    return midiLearningArmed.load (std::memory_order_acquire);
+}
+
+bool NAMinatorAudioProcessor::hasMidiLearnTarget() const noexcept
+{
+    return midiLearnTargetIndex.load (std::memory_order_acquire) >= 0;
+}
+
+void NAMinatorAudioProcessor::cancelMidiLearn() noexcept
+{
+    midiLearnTargetIndex.store (-1, std::memory_order_release);
+    midiLearningArmed.store (false, std::memory_order_release);
+}
+
+bool NAMinatorAudioProcessor::takeMidiLearnResult (int& controller, juce::String& parameterId)
+{
+    controller = learnedMidiCC.exchange (-1, std::memory_order_acq_rel);
+    if (! juce::isPositiveAndBelow (controller, 128))
+        return false;
+    const auto index = learnedMidiParameterIndex.load (std::memory_order_acquire);
+    if (! juce::isPositiveAndBelow (index, static_cast<int> (midiParameterIds.size())))
+        return false;
+    parameterId = midiParameterIds[static_cast<size_t> (index)];
+    return true;
+}
+
+int NAMinatorAudioProcessor::getMidiMappingCount() const noexcept
+{
+    int count = 0;
+    for (const auto& mapping : midiCCParameterIndices)
+        count += mapping.load (std::memory_order_relaxed) >= 0 ? 1 : 0;
+    return count;
 }
 
 NAMinatorAudioProcessor::IRParameters::ParameterLayout NAMinatorAudioProcessor::createParameterLayout()
@@ -1135,7 +1248,29 @@ bool NAMinatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts
 void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
-    juce::ignoreUnused (midiMessages);
+    for (const auto metadata : midiMessages)
+    {
+        const auto message = metadata.getMessage();
+        if (! message.isController())
+            continue;
+        const auto cc = message.getControllerNumber();
+        const auto target = midiLearnTargetIndex.exchange (-1, std::memory_order_acq_rel);
+        if (target >= 0 && juce::isPositiveAndBelow (target, static_cast<int> (midiParameterIds.size())))
+        {
+            for (auto& mapping : midiCCParameterIndices)
+                if (mapping.load (std::memory_order_relaxed) == target)
+                    mapping.store (-1, std::memory_order_relaxed);
+            midiCCParameterIndices[static_cast<size_t> (cc)].store (target, std::memory_order_relaxed);
+            learnedMidiParameterIndex.store (target, std::memory_order_release);
+            learnedMidiCC.store (cc, std::memory_order_release);
+            midiLearningArmed.store (false, std::memory_order_release);
+            continue;
+        }
+        const auto index = midiCCParameterIndices[static_cast<size_t> (cc)].load (std::memory_order_relaxed);
+        if (juce::isPositiveAndBelow (index, static_cast<int> (midiParameterIds.size())))
+            if (auto* parameter = parameters.getParameter (midiParameterIds[static_cast<size_t> (index)]))
+                parameter->setValueNotifyingHost (static_cast<float> (message.getControllerValue()) / 127.0f);
+    }
 
     const auto numSamples = buffer.getNumSamples();
     const auto numChannels = juce::jmin (getTotalNumOutputChannels(), buffer.getNumChannels());
