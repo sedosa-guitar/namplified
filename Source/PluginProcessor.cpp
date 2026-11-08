@@ -6,7 +6,7 @@
 #include <array>
 #include <cmath>
 
-struct TheLeadAudioProcessor::AmpModel
+struct NAMinatorAudioProcessor::AmpModel
 {
     mutable juce::SpinLock lock;
     std::unique_ptr<nam::DSP> models[2];
@@ -133,7 +133,7 @@ struct TheLeadAudioProcessor::AmpModel
     }
 };
 
-TheLeadAudioProcessor::TheLeadAudioProcessor()
+NAMinatorAudioProcessor::NAMinatorAudioProcessor()
 #ifndef JucePlugin_PreferredChannelConfigurations
     : AudioProcessor (BusesProperties()
                     #if ! JucePlugin_IsMidiEffect
@@ -153,7 +153,7 @@ TheLeadAudioProcessor::TheLeadAudioProcessor()
     boostNAMModel = std::make_unique<AmpModel>();
 }
 
-TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::createParameterLayout()
+NAMinatorAudioProcessor::IRParameters::ParameterLayout NAMinatorAudioProcessor::createParameterLayout()
 {
     IRParameters::ParameterLayout layout;
     const auto addToggle = [&layout] (const char* id, const char* name, bool initial = false)
@@ -332,9 +332,9 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     return layout;
 }
 
-TheLeadAudioProcessor::~TheLeadAudioProcessor() = default;
+NAMinatorAudioProcessor::~NAMinatorAudioProcessor() = default;
 
-void TheLeadAudioProcessor::BiquadState::set (float nb0, float nb1, float nb2,
+void NAMinatorAudioProcessor::BiquadState::set (float nb0, float nb1, float nb2,
                                                float na0, float na1, float na2)
 {
     const auto normaliser = na0 != 0.0f ? 1.0f / na0 : 1.0f;
@@ -342,7 +342,7 @@ void TheLeadAudioProcessor::BiquadState::set (float nb0, float nb1, float nb2,
     a1 = na1 * normaliser; a2 = na2 * normaliser;
 }
 
-float TheLeadAudioProcessor::BiquadState::process (float input)
+float NAMinatorAudioProcessor::BiquadState::process (float input)
 {
     const auto output = b0 * input + z1;
     z1 = b1 * input - a1 * output + z2;
@@ -350,7 +350,7 @@ float TheLeadAudioProcessor::BiquadState::process (float input)
     return output;
 }
 
-void TheLeadAudioProcessor::setEqCoefficients (BiquadState& filter, int band, float frequency,
+void NAMinatorAudioProcessor::setEqCoefficients (BiquadState& filter, int band, float frequency,
                                                float gainDb, double sampleRate, float q)
 {
     const auto sr = static_cast<float> (juce::jmax (sampleRate, 1.0));
@@ -392,7 +392,7 @@ void TheLeadAudioProcessor::setEqCoefficients (BiquadState& filter, int band, fl
     filter.set (b0, b1, b2, a0, a1, a2);
 }
 
-void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples,
+void NAMinatorAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples,
                                                const juce::String& prefix, bool pre)
 {
     const auto sampleRate = juce::jmax (1.0, modelSampleRate.load());
@@ -446,7 +446,7 @@ void TheLeadAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffer, 
         processFilters (postEqFilters, postBandCount, false);
 }
 
-void TheLeadAudioProcessor::processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot)
+void NAMinatorAudioProcessor::processIRShapeEqualizer (juce::AudioBuffer<float>& buffer, int channels, int samples, int slot)
 {
     const auto sampleRate = juce::jmax (1.0, modelSampleRate.load());
     constexpr const char* bands[] { "Low", "Mid", "High" };
@@ -471,8 +471,8 @@ void TheLeadAudioProcessor::processIRShapeEqualizer (juce::AudioBuffer<float>& b
     }
 }
 
-const juce::String TheLeadAudioProcessor::getName() const { return JucePlugin_Name; }
-std::array<int, TheLeadAudioProcessor::numPreFxStages> TheLeadAudioProcessor::getPreFxOrder() const
+const juce::String NAMinatorAudioProcessor::getName() const { return JucePlugin_Name; }
+std::array<int, NAMinatorAudioProcessor::numPreFxStages> NAMinatorAudioProcessor::getPreFxOrder() const
 {
     std::array<int, numPreFxStages> order {};
     for (size_t i = 0; i < order.size(); ++i)
@@ -480,7 +480,7 @@ std::array<int, TheLeadAudioProcessor::numPreFxStages> TheLeadAudioProcessor::ge
     return order;
 }
 
-void TheLeadAudioProcessor::setPreFxOrder (const std::array<int, numPreFxStages>& order)
+void NAMinatorAudioProcessor::setPreFxOrder (const std::array<int, numPreFxStages>& order)
 {
     std::array<bool, numPreFxStages> seen {};
     for (const auto stage : order)
@@ -493,14 +493,14 @@ void TheLeadAudioProcessor::setPreFxOrder (const std::array<int, numPreFxStages>
         preFxOrder[i].store (order[i]);
 }
 
-std::array<int, TheLeadAudioProcessor::numAmpSlots> TheLeadAudioProcessor::getAmpSlotOrder() const
+std::array<int, NAMinatorAudioProcessor::numAmpSlots> NAMinatorAudioProcessor::getAmpSlotOrder() const
 {
     std::array<int, numAmpSlots> order {};
     for (size_t i = 0; i < order.size(); ++i) order[i] = ampSlotOrder[i].load();
     return order;
 }
 
-void TheLeadAudioProcessor::setAmpSlotOrder (const std::array<int, numAmpSlots>& order)
+void NAMinatorAudioProcessor::setAmpSlotOrder (const std::array<int, numAmpSlots>& order)
 {
     std::array<bool, numAmpSlots> seen {};
     for (const auto slot : order)
@@ -511,14 +511,14 @@ void TheLeadAudioProcessor::setAmpSlotOrder (const std::array<int, numAmpSlots>&
     for (size_t i = 0; i < order.size(); ++i) ampSlotOrder[i].store (order[i]);
 }
 
-std::array<int, TheLeadAudioProcessor::numIRSlots> TheLeadAudioProcessor::getIRSlotOrder() const
+std::array<int, NAMinatorAudioProcessor::numIRSlots> NAMinatorAudioProcessor::getIRSlotOrder() const
 {
     std::array<int, numIRSlots> order {};
     for (size_t i = 0; i < order.size(); ++i) order[i] = irSlotOrder[i].load();
     return order;
 }
 
-void TheLeadAudioProcessor::setIRSlotOrder (const std::array<int, numIRSlots>& order)
+void NAMinatorAudioProcessor::setIRSlotOrder (const std::array<int, numIRSlots>& order)
 {
     std::array<bool, numIRSlots> seen {};
     for (const auto slot : order)
@@ -529,7 +529,7 @@ void TheLeadAudioProcessor::setIRSlotOrder (const std::array<int, numIRSlots>& o
     for (size_t i = 0; i < order.size(); ++i) irSlotOrder[i].store (order[i]);
 }
 
-std::array<int, TheLeadAudioProcessor::numPostFxStages> TheLeadAudioProcessor::getPostFxOrder() const
+std::array<int, NAMinatorAudioProcessor::numPostFxStages> NAMinatorAudioProcessor::getPostFxOrder() const
 {
     std::array<int, numPostFxStages> order {};
     for (size_t i = 0; i < order.size(); ++i)
@@ -537,7 +537,7 @@ std::array<int, TheLeadAudioProcessor::numPostFxStages> TheLeadAudioProcessor::g
     return order;
 }
 
-void TheLeadAudioProcessor::setPostFxOrder (const std::array<int, numPostFxStages>& order)
+void NAMinatorAudioProcessor::setPostFxOrder (const std::array<int, numPostFxStages>& order)
 {
     std::array<bool, numPostFxStages> seen {};
     for (const auto stage : order)
@@ -550,7 +550,7 @@ void TheLeadAudioProcessor::setPostFxOrder (const std::array<int, numPostFxStage
         postFxOrder[i].store (order[i]);
 }
 
-void TheLeadAudioProcessor::resetToDefaults()
+void NAMinatorAudioProcessor::resetToDefaults()
 {
     for (auto* parameter : getParameters())
         if (auto* ranged = dynamic_cast<juce::RangedAudioParameter*> (parameter))
@@ -562,26 +562,36 @@ void TheLeadAudioProcessor::resetToDefaults()
     setPostFxOrder ({ 0, 1, 2, 3 });
 }
 
-bool TheLeadAudioProcessor::acceptsMidi() const { return JucePlugin_WantsMidiInput != 0; }
-bool TheLeadAudioProcessor::producesMidi() const { return JucePlugin_ProducesMidiOutput != 0; }
-bool TheLeadAudioProcessor::isMidiEffect() const { return JucePlugin_IsMidiEffect != 0; }
-double TheLeadAudioProcessor::getTailLengthSeconds() const { return 10.0; }
-int TheLeadAudioProcessor::getNumPrograms() { return 1; }
-int TheLeadAudioProcessor::getCurrentProgram() { return 0; }
-void TheLeadAudioProcessor::setCurrentProgram (int index) { juce::ignoreUnused (index); }
-const juce::String TheLeadAudioProcessor::getProgramName (int index) { juce::ignoreUnused (index); return {}; }
-void TheLeadAudioProcessor::changeProgramName (int index, const juce::String& newName)
+bool NAMinatorAudioProcessor::acceptsMidi() const { return JucePlugin_WantsMidiInput != 0; }
+bool NAMinatorAudioProcessor::producesMidi() const { return JucePlugin_ProducesMidiOutput != 0; }
+bool NAMinatorAudioProcessor::isMidiEffect() const { return JucePlugin_IsMidiEffect != 0; }
+double NAMinatorAudioProcessor::getTailLengthSeconds() const { return 10.0; }
+int NAMinatorAudioProcessor::getNumPrograms() { return 1; }
+int NAMinatorAudioProcessor::getCurrentProgram() { return 0; }
+void NAMinatorAudioProcessor::setCurrentProgram (int index) { juce::ignoreUnused (index); }
+const juce::String NAMinatorAudioProcessor::getProgramName (int index) { juce::ignoreUnused (index); return {}; }
+void NAMinatorAudioProcessor::changeProgramName (int index, const juce::String& newName)
 {
     juce::ignoreUnused (index, newName);
 }
 
-juce::File TheLeadAudioProcessor::getUserPresetDirectory() const
+juce::File NAMinatorAudioProcessor::getUserPresetDirectory() const
 {
-    return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-        .getChildFile ("The Lead").getChildFile ("Presets");
+    const auto appData = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory);
+    const auto presets = appData.getChildFile ("Application Support")
+        .getChildFile ("NAMinator").getChildFile ("Presets");
+    const juce::File legacyLocations[] {
+        appData.getChildFile ("The Lead").getChildFile ("Presets"),
+        appData.getChildFile ("NAMinator").getChildFile ("Presets")
+    };
+    for (const auto& oldPresets : legacyLocations)
+        if (oldPresets != presets && oldPresets.isDirectory())
+            oldPresets.copyDirectoryTo (presets);
+    presets.createDirectory();
+    return presets;
 }
 
-juce::File TheLeadAudioProcessor::getUserPresetFile (const juce::String& name) const
+juce::File NAMinatorAudioProcessor::getUserPresetFile (const juce::String& name) const
 {
     auto safeName = name.trim().retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-().");
     while (safeName.startsWith (".")) safeName = safeName.substring (1);
@@ -590,7 +600,7 @@ juce::File TheLeadAudioProcessor::getUserPresetFile (const juce::String& name) c
     return getUserPresetDirectory().getChildFile (safeName).withFileExtension (".tlpreset");
 }
 
-juce::StringArray TheLeadAudioProcessor::getUserPresetNames() const
+juce::StringArray NAMinatorAudioProcessor::getUserPresetNames() const
 {
     juce::StringArray names;
     const auto folder = getUserPresetDirectory();
@@ -601,45 +611,130 @@ juce::StringArray TheLeadAudioProcessor::getUserPresetNames() const
     return names;
 }
 
-bool TheLeadAudioProcessor::saveUserPreset (const juce::String& name)
+bool NAMinatorAudioProcessor::saveUserPreset (const juce::String& name)
 {
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! getUserPresetDirectory().createDirectory().wasOk())
         return false;
-    juce::MemoryBlock state;
-    getStateInformation (state);
-    return file.replaceWithData (state.getData(), state.getSize());
+
+    juce::MemoryBlock savedState;
+    getStateInformation (savedState);
+    auto xml = getXmlFromBinary (savedState.getData(), static_cast<int> (savedState.getSize()));
+    if (xml == nullptr)
+        return false;
+    auto presetState = juce::ValueTree::fromXml (*xml);
+    const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
+    if (! assetsFolder.createDirectory().wasOk())
+        return false;
+
+    const auto bundleAsset = [&assetsFolder] (const juce::String& originalPath, const juce::String& assetName)
+    {
+        if (originalPath.isEmpty())
+            return juce::String();
+        const juce::File source (originalPath);
+        if (! source.existsAsFile())
+            return originalPath;
+        auto bundledName = assetName + "_" + source.getFileName();
+        const auto sourceName = source.getFileNameWithoutExtension();
+        if ((assetName.startsWith ("NAM") && (sourceName.equalsIgnoreCase ("NAM1")
+                                                || sourceName.equalsIgnoreCase ("NAM2")))
+            || (assetName == "BOOST_NAM" && sourceName.equalsIgnoreCase ("BOOST_NAM")))
+            bundledName = assetName + "_capture.nam";
+        const auto destination = assetsFolder.getChildFile (bundledName);
+        if (source != destination)
+        {
+            if (destination.existsAsFile() && ! destination.deleteFile())
+                return juce::String();
+            if (! source.copyFileTo (destination))
+                return juce::String();
+        }
+        return juce::String ("@preset-assets/") + destination.getFileName();
+    };
+    const auto saveBundledPath = [&presetState, &bundleAsset] (const juce::String& property,
+                                                               const juce::String& assetName)
+    {
+        const auto storedPath = presetState.getProperty (property).toString();
+        if (storedPath.isEmpty())
+            return true;
+        const auto bundledPath = bundleAsset (storedPath, assetName);
+        if (bundledPath.isEmpty())
+            return false;
+        if (bundledPath.startsWith ("@preset-assets/"))
+            presetState.setProperty (property, bundledPath, nullptr);
+        return true;
+    };
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+        if (! saveBundledPath ("ampFile" + juce::String (slot + 1), "NAM" + juce::String (slot + 1)))
+            return false;
+    if (! saveBundledPath ("boostNAMFile", "BOOST_NAM"))
+        return false;
+    for (int slot = 0; slot < numIRSlots; ++slot)
+        if (! saveBundledPath ("irFile" + juce::String (slot + 1), "IR" + juce::String (slot + 1)))
+            return false;
+
+    auto bundledXml = presetState.createXml();
+    if (bundledXml == nullptr)
+        return false;
+    juce::MemoryBlock presetData;
+    copyXmlToBinary (*bundledXml, presetData);
+    return file.replaceWithData (presetData.getData(), presetData.getSize());
 }
 
-bool TheLeadAudioProcessor::loadUserPreset (const juce::String& name)
+bool NAMinatorAudioProcessor::loadUserPreset (const juce::String& name)
 {
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! file.existsAsFile()) return false;
     juce::MemoryBlock state;
     if (! file.loadFileAsData (state)) return false;
-    setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+    auto xml = getXmlFromBinary (state.getData(), static_cast<int> (state.getSize()));
+    if (xml == nullptr)
+        return false;
+    auto presetState = juce::ValueTree::fromXml (*xml);
+    const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
+    for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2" })
+    {
+        const auto storedPath = presetState.getProperty (property).toString();
+        if (! storedPath.startsWith ("@preset-assets/"))
+            continue;
+        const auto assetFile = assetsFolder.getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false));
+        if (! assetFile.existsAsFile())
+            return false;
+        presetState.setProperty (property, assetFile.getFullPathName(), nullptr);
+    }
+    auto resolvedXml = presetState.createXml();
+    if (resolvedXml == nullptr)
+        return false;
+    juce::MemoryBlock resolvedState;
+    copyXmlToBinary (*resolvedXml, resolvedState);
+    setStateInformation (resolvedState.getData(), static_cast<int> (resolvedState.getSize()));
     return true;
 }
 
-bool TheLeadAudioProcessor::deleteUserPreset (const juce::String& name)
+bool NAMinatorAudioProcessor::deleteUserPreset (const juce::String& name)
 {
     const auto file = getUserPresetFile (name);
-    return file != juce::File() && file.existsAsFile() && file.deleteFile();
+    if (file == juce::File() || ! file.existsAsFile() || ! file.deleteFile())
+        return false;
+    const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
+    if (assetsFolder.isDirectory())
+        assetsFolder.deleteRecursively();
+    return true;
 }
 
-juce::String TheLeadAudioProcessor::getSelectedUserPresetName() const
+juce::String NAMinatorAudioProcessor::getSelectedUserPresetName() const
 {
     return parameters.state.getProperty ("selectedUserPreset").toString();
 }
 
-void TheLeadAudioProcessor::setSelectedUserPresetName (const juce::String& name)
+void NAMinatorAudioProcessor::setSelectedUserPresetName (const juce::String& name)
 {
     parameters.state.setProperty ("selectedUserPreset", name, nullptr);
 }
 
-void TheLeadAudioProcessor::capturePresetSnapshot()
+void NAMinatorAudioProcessor::capturePresetSnapshot()
 {
     presetSnapshot.clear();
+    presetFileSnapshot.clear();
     for (auto* parameter : getParameters())
     {
         const auto* parameterWithID = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter);
@@ -648,9 +743,14 @@ void TheLeadAudioProcessor::capturePresetSnapshot()
         if (const auto* rawValue = parameters.getRawParameterValue (parameterWithID->paramID))
             presetSnapshot.emplace (parameterWithID->paramID.toStdString(), rawValue->load());
     }
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+        presetFileSnapshot.emplace ("amp" + std::to_string (slot), namFilePaths[slot]);
+    presetFileSnapshot.emplace ("boostNAM", boostNAMFilePath);
+    for (int slot = 0; slot < numIRSlots; ++slot)
+        presetFileSnapshot.emplace ("ir" + std::to_string (slot), irFilePaths[slot]);
 }
 
-bool TheLeadAudioProcessor::isParameterModified (const juce::String& parameterId) const
+bool NAMinatorAudioProcessor::isParameterModified (const juce::String& parameterId) const
 {
     const auto baseline = presetSnapshot.find (parameterId.toStdString());
     const auto* current = parameters.getRawParameterValue (parameterId);
@@ -658,16 +758,28 @@ bool TheLeadAudioProcessor::isParameterModified (const juce::String& parameterId
         && std::abs (current->load() - baseline->second) > 0.0001f;
 }
 
-bool TheLeadAudioProcessor::hasUnsavedParameterChanges() const
+bool NAMinatorAudioProcessor::hasUnsavedParameterChanges() const
 {
     for (const auto& [parameterId, baseline] : presetSnapshot)
         if (const auto* current = parameters.getRawParameterValue (parameterId); current != nullptr
             && std::abs (current->load() - baseline) > 0.0001f)
             return true;
+    for (const auto& [assetId, baseline] : presetFileSnapshot)
+    {
+        juce::String current;
+        if (assetId == "boostNAM")
+            current = boostNAMFilePath;
+        else if (assetId == "amp0") current = namFilePaths[0];
+        else if (assetId == "amp1") current = namFilePaths[1];
+        else if (assetId == "ir0") current = irFilePaths[0];
+        else if (assetId == "ir1") current = irFilePaths[1];
+        if (current != baseline)
+            return true;
+    }
     return false;
 }
 
-void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+void NAMinatorAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     const auto channels = static_cast<juce::uint32> (juce::jmax (1, getTotalNumOutputChannels()));
     const juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), channels };
@@ -723,10 +835,10 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     reverb.setParameters (reverbParameters);
 }
 
-void TheLeadAudioProcessor::releaseResources() {}
+void NAMinatorAudioProcessor::releaseResources() {}
 
 #ifndef JucePlugin_PreferredChannelConfigurations
-bool TheLeadAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool NAMinatorAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
   #if JucePlugin_IsMidiEffect
     juce::ignoreUnused (layouts);
@@ -744,7 +856,7 @@ bool TheLeadAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 }
 #endif
 
-void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+void NAMinatorAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
     juce::ignoreUnused (midiMessages);
@@ -1284,17 +1396,20 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                       std::memory_order_relaxed);
 }
 
-bool TheLeadAudioProcessor::hasEditor() const { return true; }
-juce::AudioProcessorEditor* TheLeadAudioProcessor::createEditor() { return new TheLeadAudioProcessorEditor (*this); }
+bool NAMinatorAudioProcessor::hasEditor() const { return true; }
+juce::AudioProcessorEditor* NAMinatorAudioProcessor::createEditor() { return new NAMinatorAudioProcessorEditor (*this); }
 
-void TheLeadAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+void NAMinatorAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     for (int slot = 0; slot < numIRSlots; ++slot)
         state.setProperty ("irFile" + juce::String (slot + 1), irFilePaths[slot], nullptr);
     for (int slot = 0; slot < numAmpSlots; ++slot)
         state.setProperty ("ampFile" + juce::String (slot + 1), namFilePaths[slot], nullptr);
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+        state.setProperty ("ampDisplayName" + juce::String (slot + 1), namDisplayNames[slot], nullptr);
     state.setProperty ("boostNAMFile", boostNAMFilePath, nullptr);
+    state.setProperty ("boostNAMDisplayName", boostNAMDisplayName, nullptr);
     const auto preOrder = getPreFxOrder();
     for (size_t i = 0; i < preOrder.size(); ++i)
         state.setProperty ("preFxOrder" + juce::String (static_cast<int> (i)), preOrder[i], nullptr);
@@ -1311,7 +1426,7 @@ void TheLeadAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         copyXmlToBinary (*xml, destData);
 }
 
-void TheLeadAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+void NAMinatorAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
     {
@@ -1372,15 +1487,18 @@ void TheLeadAudioProcessor::setStateInformation (const void* data, int sizeInByt
             const juce::File file (namFilePaths[slot]);
             if (file.existsAsFile())
                 loadNAMCapture (slot, file);
+            namDisplayNames[slot] = state.getProperty ("ampDisplayName" + juce::String (slot + 1),
+                                                       file.getFileName()).toString();
         }
         boostNAMFilePath = state.getProperty ("boostNAMFile").toString();
         const juce::File boostNAMFile (boostNAMFilePath);
         if (boostNAMFile.existsAsFile())
             loadNAMCapture (boostNAMSlot, boostNAMFile);
+        boostNAMDisplayName = state.getProperty ("boostNAMDisplayName", boostNAMFile.getFileName()).toString();
     }
 }
 
-void TheLeadAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
+void NAMinatorAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
 {
     if (slot < 0 || slot >= numIRSlots || ! file.existsAsFile())
         return;
@@ -1391,14 +1509,14 @@ void TheLeadAudioProcessor::loadImpulseResponse (int slot, const juce::File& fil
     irLoaded[slot].store (true);
 }
 
-juce::String TheLeadAudioProcessor::getImpulseResponseName (int slot) const
+juce::String NAMinatorAudioProcessor::getImpulseResponseName (int slot) const
 {
     if (slot < 0 || slot >= numIRSlots || irFilePaths[slot].isEmpty())
         return "No IR loaded";
     return juce::File (irFilePaths[slot]).getFileName();
 }
 
-bool TheLeadAudioProcessor::isImpulseResponseActive (int slot) const
+bool NAMinatorAudioProcessor::isImpulseResponseActive (int slot) const
 {
     if (slot < 0 || slot >= numIRSlots || ! irLoaded[slot].load (std::memory_order_relaxed))
         return false;
@@ -1408,13 +1526,14 @@ bool TheLeadAudioProcessor::isImpulseResponseActive (int slot) const
     return enabledParameter != nullptr && enabledParameter->load (std::memory_order_relaxed) >= 0.5f;
 }
 
-void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
+void NAMinatorAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
 {
     if (slot == boostNAMSlot)
     {
         if (! file.existsAsFile())
             return;
         boostNAMFilePath = file.getFullPathName();
+        boostNAMDisplayName = file.getFileName();
         boostNAMModel->setStatus ("Loading NAM capture…");
         modelLoader.addJob ([this, file]
         {
@@ -1426,6 +1545,7 @@ void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
     if (slot < 0 || slot >= numAmpSlots || ! file.existsAsFile())
         return;
     namFilePaths[slot] = file.getFullPathName();
+    namDisplayNames[slot] = file.getFileName();
     ampModels[slot]->setStatus ("Loading NAM capture…");
     modelLoader.addJob ([this, slot, file]
     {
@@ -1434,16 +1554,47 @@ void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
     });
 }
 
-juce::String TheLeadAudioProcessor::getNAMCaptureName (int slot) const
+bool NAMinatorAudioProcessor::cycleNAMCapture (int slot, int direction)
 {
-    if (slot == boostNAMSlot)
-        return boostNAMFilePath.isEmpty() ? "No NAM capture loaded" : juce::File (boostNAMFilePath).getFileName();
-    if (slot < 0 || slot >= numAmpSlots || namFilePaths[slot].isEmpty())
-        return "No NAM capture loaded";
-    return juce::File (namFilePaths[slot]).getFileName();
+    const auto currentPath = slot == boostNAMSlot ? boostNAMFilePath
+        : (slot >= 0 && slot < numAmpSlots ? namFilePaths[slot] : juce::String());
+    const juce::File currentFile (currentPath);
+    if (! currentFile.existsAsFile() || direction == 0)
+        return false;
+    auto captures = currentFile.getParentDirectory().findChildFiles (juce::File::findFiles, false, "*.nam");
+    captures.sort();
+    if (captures.size() < 2)
+        return false;
+    auto currentIndex = captures.indexOf (currentFile);
+    if (currentIndex < 0)
+        return false;
+    const auto step = direction > 0 ? 1 : -1;
+    currentIndex = (currentIndex + step + captures.size()) % captures.size();
+    loadNAMCapture (slot, captures.getReference (currentIndex));
+    return true;
 }
 
-juce::String TheLeadAudioProcessor::getNAMCaptureStatus (int slot) const
+juce::String NAMinatorAudioProcessor::getNAMCaptureName (int slot) const
+{
+    if (slot == boostNAMSlot)
+    {
+        if (boostNAMFilePath.isEmpty())
+            return "No NAM capture loaded";
+        const auto name = boostNAMDisplayName.isNotEmpty() ? boostNAMDisplayName
+                                                            : juce::File (boostNAMFilePath).getFileName();
+        return name.equalsIgnoreCase ("BOOST_NAM.nam") ? "NAM capture" : name;
+    }
+    if (slot < 0 || slot >= numAmpSlots || namFilePaths[slot].isEmpty())
+        return "No NAM capture loaded";
+    const auto name = namDisplayNames[slot].isNotEmpty() ? namDisplayNames[slot]
+                                                          : juce::File (namFilePaths[slot]).getFileName();
+    if (name.equalsIgnoreCase ("NAM1.nam") || name.equalsIgnoreCase ("NAM2.nam")
+        || name.equalsIgnoreCase ("NAM1_capture.nam") || name.equalsIgnoreCase ("NAM2_capture.nam"))
+        return "NAM capture";
+    return name;
+}
+
+juce::String NAMinatorAudioProcessor::getNAMCaptureStatus (int slot) const
 {
     if (slot == boostNAMSlot)
         return boostNAMModel->getStatus();
@@ -1454,5 +1605,5 @@ juce::String TheLeadAudioProcessor::getNAMCaptureStatus (int slot) const
 
 juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
-    return new TheLeadAudioProcessor();
+    return new NAMinatorAudioProcessor();
 }

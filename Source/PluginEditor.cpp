@@ -18,7 +18,7 @@ const auto knobAccent = juce::Colour (0xff70d9b6);
 const auto text = juce::Colour::fromRGB (235, 236, 239);
 const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
 
-static juce::Typeface::Ptr getLeadTypeface()
+static juce::Typeface::Ptr getNAMinatorTypeface()
 {
     static const auto typeface = juce::Typeface::createSystemTypefaceFor (
         BinaryData::InterVariable_ttf, static_cast<size_t> (BinaryData::InterVariable_ttfSize));
@@ -32,19 +32,19 @@ static juce::Typeface::Ptr getBrandTypeface()
     return typeface;
 }
 
-static juce::FontOptions leadFontOptions (float height, int style = juce::Font::plain)
+static juce::FontOptions naminatorFontOptions (float height, int style = juce::Font::plain)
 {
     const auto weight = (style & juce::Font::bold) != 0 ? 650.0f : 450.0f;
-    return juce::FontOptions().withTypeface (getLeadTypeface())
+    return juce::FontOptions().withTypeface (getNAMinatorTypeface())
         .withHeight (height)
         .withVariableSetting ({ juce::FontFeatureTag ("wght"), weight });
 }
 
-class LeadLookAndFeel final : public juce::LookAndFeel_V4
+class NAMinatorLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
-    explicit LeadLookAndFeel (TheLeadAudioProcessor& processorToUse)
-        : processor (processorToUse), interTypeface (getLeadTypeface())
+    explicit NAMinatorLookAndFeel (NAMinatorAudioProcessor& processorToUse)
+        : processor (processorToUse), interTypeface (getNAMinatorTypeface())
     {
         if (interTypeface != nullptr)
             setDefaultSansSerifTypeface (interTypeface);
@@ -58,17 +58,17 @@ public:
 
     juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
     {
-        return juce::Font (leadFontOptions (juce::jlimit (16.0f, 20.0f, buttonHeight * 0.50f)));
+        return juce::Font (naminatorFontOptions (juce::jlimit (16.0f, 20.0f, buttonHeight * 0.50f)));
     }
 
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
-        return juce::Font (leadFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
+        return juce::Font (naminatorFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
     }
 
     juce::Font getPopupMenuFont() override
     {
-        return juce::Font (leadFontOptions (16.0f));
+        return juce::Font (naminatorFontOptions (16.0f));
     }
 
     juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
@@ -79,7 +79,7 @@ public:
         constexpr int verticalPadding = 10;
         const auto maxTextWidth = juce::jmax (120, juce::jmin (380, parentArea.getWidth() - horizontalPadding * 2));
         juce::AttributedString attributedText (tipText);
-        attributedText.setFont (juce::Font (leadFontOptions (14.5f)));
+        attributedText.setFont (juce::Font (naminatorFontOptions (14.5f)));
         juce::TextLayout layout;
         layout.createLayout (attributedText, static_cast<float> (maxTextWidth),
                              static_cast<float> (parentArea.getHeight()));
@@ -103,7 +103,7 @@ public:
         g.fillRoundedRectangle (juce::Rectangle<float> (12.0f, 9.0f, 3.0f,
                                                         juce::jmax (8.0f, static_cast<float> (height) - 18.0f)), 1.5f);
         juce::AttributedString attributedText (tipText);
-        attributedText.setFont (juce::Font (leadFontOptions (14.5f)));
+        attributedText.setFont (juce::Font (naminatorFontOptions (14.5f)));
         attributedText.setColour (text);
         juce::TextLayout layout;
         layout.createLayout (attributedText, juce::jmax (100.0f, static_cast<float> (width) - 30.0f),
@@ -166,7 +166,7 @@ public:
     }
 
 private:
-    TheLeadAudioProcessor& processor;
+    NAMinatorAudioProcessor& processor;
     juce::Typeface::Ptr interTypeface;
 };
 
@@ -264,7 +264,7 @@ static void drawBoostPedalIcon (juce::Graphics& g, juce::Rectangle<float> r, juc
 class ParameterDetailPanel final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
-    ParameterDetailPanel (TheLeadAudioProcessor& processor, LeadLookAndFeel& lookAndFeelToUse,
+    ParameterDetailPanel (NAMinatorAudioProcessor& processor, NAMinatorLookAndFeel& lookAndFeelToUse,
                           juce::String title, const std::vector<ParameterControl>& controls)
         : audioProcessor (processor), lookAndFeel (lookAndFeelToUse),
           isPostEq (title == "Post EQ"),
@@ -273,7 +273,7 @@ public:
           titleNumber (isIRShapeEq ? title.fromLastOccurrenceOf (" ", false, false) : juce::String())
     {
         heading.setText ((getVisibleStageName (title) + " · Detailed controls").toUpperCase(), juce::dontSendNotification);
-        heading.setFont (leadFontOptions (20.0f, juce::Font::bold));
+        heading.setFont (naminatorFontOptions (20.0f, juce::Font::bold));
         heading.setColour (juce::Label::textColourId, text);
         addAndMakeVisible (heading);
         for (const auto& control : controls)
@@ -457,8 +457,8 @@ private:
                 parameter->setValueNotifyingHost (parameter->getDefaultValue());
     }
 
-    TheLeadAudioProcessor& audioProcessor;
-    LeadLookAndFeel& lookAndFeel;
+    NAMinatorAudioProcessor& audioProcessor;
+    NAMinatorLookAndFeel& lookAndFeel;
     bool isPostEq = false;
     bool isIRShapeEq = false;
     bool isBoost = false;
@@ -499,7 +499,7 @@ public:
         g.setColour (accent);
         g.strokePath (curve, juce::PathStrokeType (2.2f));
         g.setColour (juce::Colour::fromRGB (235, 236, 239));
-        g.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        g.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
         g.drawText (getButtonText(), getLocalBounds().removeFromBottom (16), juce::Justification::centred);
     }
 };
@@ -507,7 +507,7 @@ public:
 class GraphicEqEditor final : public juce::Component, private juce::Timer
 {
 public:
-    explicit GraphicEqEditor (TheLeadAudioProcessor& processor, bool postEq)
+    explicit GraphicEqEditor (NAMinatorAudioProcessor& processor, bool postEq)
         : audioProcessor (processor), isPostEq (postEq), qParameterId (postEq ? "postEqQ" : "preEqQ")
     {
         if (postEq)
@@ -525,7 +525,7 @@ public:
         }
 
         qLabel.setText ("BAND WIDTH / Q", juce::dontSendNotification);
-        qLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        qLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
         qLabel.setColour (juce::Label::textColourId, secondaryText);
         qLabel.setTooltip ("Controls the width of the bell bands. Lower Q is wider; higher Q is narrower.");
         addAndMakeVisible (qLabel);
@@ -575,7 +575,7 @@ public:
         g.drawRoundedRectangle (graph, 12.0f, 1.0f);
 
         const auto plot = getPlotBounds();
-        g.setFont (leadFontOptions (15.0f));
+        g.setFont (naminatorFontOptions (15.0f));
         for (int db = -12; db <= 12; db += 6)
         {
             const auto y = gainToY (static_cast<float> (db), plot);
@@ -592,7 +592,7 @@ public:
             g.setColour (juce::Colour::fromRGB (36, 44, 56));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
             g.setColour (secondaryText);
-            g.setFont (leadFontOptions (12.0f));
+            g.setFont (naminatorFontOptions (12.0f));
             g.drawText (formatFrequency (frequency), juce::Rectangle<int> (
                 juce::roundToInt (x - 30.0f), juce::roundToInt (plot.getBottom() + 12.0f), 60, 16),
                 juce::Justification::centred);
@@ -608,7 +608,7 @@ public:
             points.push_back (point);
             g.setColour (juce::Colour::fromRGB (41, 49, 61));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
-            g.setFont (leadFontOptions (12.0f));
+            g.setFont (naminatorFontOptions (12.0f));
             g.setColour (text);
             g.drawText (formatFrequency (bandFrequency (band)), juce::Rectangle<int> (
                 juce::roundToInt (x - 34.0f), juce::roundToInt (plot.getBottom() + 12.0f), 68, 18),
@@ -810,7 +810,7 @@ private:
         repaint();
     }
 
-    TheLeadAudioProcessor& audioProcessor;
+    NAMinatorAudioProcessor& audioProcessor;
     bool isPostEq = false;
     juce::String qParameterId;
     juce::StringArray parameterIds, frequencyIds;
@@ -824,7 +824,7 @@ private:
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
-    StageCard (TheLeadAudioProcessor& processor, juce::String name, juce::String enableId,
+    StageCard (NAMinatorAudioProcessor& processor, juce::String name, juce::String enableId,
                std::vector<ParameterControl> controls, FileKind fileKind = FileKind::none,
                int fileSlot = 0, std::function<void (int)> moveHandler = {},
                std::vector<ParameterControl> detailControls = {}, std::function<void()> contentSizeChanged = {})
@@ -834,7 +834,7 @@ public:
     {
         setName (stageName);
         heading.setText (getVisibleStageName (stageName).toUpperCase(), juce::dontSendNotification);
-        heading.setFont (leadFontOptions (19.0f, juce::Font::bold));
+        heading.setFont (naminatorFontOptions (19.0f, juce::Font::bold));
         heading.setColour (juce::Label::textColourId, text);
         addAndMakeVisible (heading);
 
@@ -851,7 +851,7 @@ public:
         if (hasMoveControls)
         {
             dragHandle.setText ("MOVE", juce::dontSendNotification);
-            dragHandle.setFont (leadFontOptions (18.0f, juce::Font::bold));
+            dragHandle.setFont (naminatorFontOptions (18.0f, juce::Font::bold));
             dragHandle.setColour (juce::Label::textColourId, secondaryText);
             dragHandle.setTooltip ("Drag this block to reorder it in this section");
             dragHandle.setInterceptsMouseClicks (false, false);
@@ -901,10 +901,24 @@ public:
             loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM CAPTURE" : "LOAD IR");
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
+            if (loadKind == FileKind::nam)
+                loadButton.setTooltip ("Load a capture from a folder containing this amp's other captures. The arrows step through NAM files in that folder. Saving a preset copies its NAM and IR files into that preset's Assets folder.");
             addAndMakeVisible (loadButton);
 
             if (loadKind == FileKind::nam)
             {
+                previousCaptureButton.setButtonText ("PREV");
+                nextCaptureButton.setButtonText ("NEXT");
+                previousCaptureButton.setTooltip ("Load the previous NAM capture from this folder.");
+                nextCaptureButton.setTooltip ("Load the next NAM capture from this folder.");
+                previousCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e3935));
+                nextCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e3935));
+                previousCaptureButton.setColour (juce::TextButton::textColourOffId, knobAccent);
+                nextCaptureButton.setColour (juce::TextButton::textColourOffId, knobAccent);
+                addAndMakeVisible (previousCaptureButton);
+                addAndMakeVisible (nextCaptureButton);
+                previousCaptureButton.onClick = [this] { audioProcessor.cycleNAMCapture (slot, -1); };
+                nextCaptureButton.onClick = [this] { audioProcessor.cycleNAMCapture (slot, 1); };
                 tone3000Button.setButtonText ({});
                 tone3000Button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff21473f));
                 tone3000Button.setColour (juce::TextButton::textColourOffId, knobAccent);
@@ -918,7 +932,7 @@ public:
             fileName.setText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
                                                         : audioProcessor.getImpulseResponseName (slot),
                               juce::dontSendNotification);
-            fileName.setFont (leadFontOptions (15.0f));
+            fileName.setFont (naminatorFontOptions (15.0f));
             fileName.setColour (juce::Label::textColourId, secondaryText);
             fileName.setJustificationType (loadKind == FileKind::nam
                 ? juce::Justification::centred : juce::Justification::centredLeft);
@@ -959,7 +973,7 @@ public:
         {
             auto label = std::make_unique<juce::Label>();
             label->setText (juce::String (control.label).replace ("(dB)", "").trim().toUpperCase(), juce::dontSendNotification);
-            label->setFont (leadFontOptions (15.0f));
+            label->setFont (naminatorFontOptions (15.0f));
             label->setColour (juce::Label::textColourId, secondaryText);
             addAndMakeVisible (*label);
             controlLabels.push_back (std::move (label));
@@ -1045,7 +1059,7 @@ public:
                 controlWidgets.push_back (slider.get());
                 controlIds.emplace_back (control.id);
                 auto valueLabel = std::make_unique<juce::Label>();
-                valueLabel->setFont (leadFontOptions (16.0f));
+                valueLabel->setFont (naminatorFontOptions (16.0f));
                 valueLabel->setColour (juce::Label::textColourId, text);
                 valueLabel->setJustificationType (juce::Justification::centred);
                 addAndMakeVisible (*valueLabel);
@@ -1168,9 +1182,14 @@ public:
             {
                 auto actions = header.withTrimmedLeft (294);
                 const auto gap = 8;
-                const auto loadWidth = juce::jmin (160, juce::jmax (112, (actions.getWidth() - gap) / 3));
-                const auto toneWidth = juce::jmax (0, juce::jmin (220, actions.getWidth() - loadWidth - gap));
+                const auto loadWidth = juce::jmin (160, juce::jmax (112, actions.getWidth() / 6));
+                const auto navWidth = 56;
+                const auto toneWidth = juce::jmax (120, juce::jmin (220, actions.getWidth() - loadWidth - navWidth * 2 - gap * 4));
                 loadButton.setBounds (actions.removeFromLeft (loadWidth).withHeight (34).withY (header.getY() + 1));
+                actions.removeFromLeft (gap);
+                previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).withHeight (34).withY (header.getY() + 1));
+                actions.removeFromLeft (4);
+                nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).withHeight (34).withY (header.getY() + 1));
                 actions.removeFromLeft (gap);
                 tone3000Button.setBounds (actions.removeFromLeft (toneWidth).withHeight (34).withY (header.getY() + 1));
                 actions.removeFromLeft (8);
@@ -1285,7 +1304,7 @@ public:
         tone3000Logo->drawWithin (g, logoBounds, juce::RectanglePlacement::centred, 1.0f);
         bounds.removeFromLeft (6.0f);
         g.setColour (knobAccent);
-        g.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        g.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
         g.drawText ("BROWSE", bounds.toNearestInt(), juce::Justification::centred);
     }
 
@@ -1507,6 +1526,8 @@ private:
         {
             const auto showCapture = ! isUsingInternalAmp();
             loadButton.setVisible (showCapture);
+            previousCaptureButton.setVisible (showCapture);
+            nextCaptureButton.setVisible (showCapture);
             tone3000Button.setVisible (showCapture);
             fileName.setVisible (showCapture);
         }
@@ -1669,8 +1690,8 @@ private:
         enableButton.setTooltip ("The amp can run with or without a cabinet IR. Disable the IR independently to bypass its cabinet processing.");
     }
 
-    TheLeadAudioProcessor& audioProcessor;
-    LeadLookAndFeel lookAndFeel;
+    NAMinatorAudioProcessor& audioProcessor;
+    NAMinatorLookAndFeel lookAndFeel;
     juce::String stageName;
     juce::String enableParameterId;
     FileKind loadKind;
@@ -1686,7 +1707,7 @@ private:
     int lastAmpModelTooltip = -1;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
-    juce::TextButton loadButton, tone3000Button, moveUpButton, moveDownButton;
+    juce::TextButton loadButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::TextButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
@@ -1801,7 +1822,7 @@ public:
             g.fillEllipse (marker);
             g.setColour (juce::Colour (0xff70d9b6));
             g.drawEllipse (marker, 1.5f);
-            g.setFont (leadFontOptions (markerSize * 0.72f, juce::Font::bold));
+            g.setFont (naminatorFontOptions (markerSize * 0.72f, juce::Font::bold));
             g.drawText ("?", marker.translated (0.0f, -0.5f), juce::Justification::centred, false);
         }
         g.endTransparencyLayer();
@@ -2163,7 +2184,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto wire = juce::Colour (0xff70d9b6);
-        g.setFont (leadFontOptions (15.0f, juce::Font::bold));
+        g.setFont (naminatorFontOptions (15.0f, juce::Font::bold));
         g.setColour (secondaryText);
         if (parallelRouting)
         {
@@ -2479,7 +2500,7 @@ private:
 class ChainControls final : public juce::Component, private juce::Timer
 {
 public:
-    explicit ChainControls (TheLeadAudioProcessor& processor, std::function<void (bool)> fullscreenChanged)
+    explicit ChainControls (NAMinatorAudioProcessor& processor, std::function<void (bool)> fullscreenChanged)
         : audioProcessor (processor), fullscreenChangedHandler (std::move (fullscreenChanged))
     {
         startTimerHz (30);
@@ -2504,7 +2525,7 @@ public:
         addStage ("Boost Pedal", "boostOn",
                   {{ "boostSource", "Source" }, { "boostGain", "Post Volume (dB)" },
                    { "boostNAMIn", "NAM Input (dB)" }, { "boostNAMOut", "NAM Output (dB)" }},
-                  FileKind::nam, TheLeadAudioProcessor::boostNAMSlot, mover (true, 2),
+                  FileKind::nam, NAMinatorAudioProcessor::boostNAMSlot, mover (true, 2),
                   {{ "boostModel", "Model", false, juce::StringArray { "Clean Boost", "808 Drive" } },
                    { "boostGain", "Post Volume (dB)" }, { "boostBass", "Bass (dB)" },
                    { "boostMid", "Mid (dB)" }, { "boostTreble", "Treble (dB)" },
@@ -2517,7 +2538,7 @@ public:
                   {{ "preLow", "80 Hz" }, { "preBand2", "250 Hz" }, { "preMid", "800 Hz" },
                    { "preBand4", "2.5 kHz" }, { "preHigh", "8 kHz" }});
 
-        for (int slot = 0; slot < TheLeadAudioProcessor::numAmpSlots; ++slot)
+        for (int slot = 0; slot < NAMinatorAudioProcessor::numAmpSlots; ++slot)
         {
             const auto number = juce::String (slot + 1);
             const auto prefix = "amp" + number;
@@ -2542,7 +2563,7 @@ public:
                       FileKind::nam, slot, ampMover (slot));
         }
 
-        for (int slot = 0; slot < TheLeadAudioProcessor::numIRSlots; ++slot)
+        for (int slot = 0; slot < NAMinatorAudioProcessor::numIRSlots; ++slot)
         {
             const auto number = juce::String (slot + 1);
             addStage ("Cab IR " + number, "ir" + number + "On", {},
@@ -2609,7 +2630,7 @@ public:
                         : "AMP PARALLEL  |  AMP 1 -> IR 1  /  AMP 2 -> IR 2")
             : "AMP SERIES  |  CAB 1 / CAB 2 BLEND";
         const auto chainBounds = chainViewport.getBounds();
-        g.setFont (leadFontOptions (15.0f, juce::Font::bold));
+        g.setFont (naminatorFontOptions (15.0f, juce::Font::bold));
         g.setColour (secondaryText);
         g.drawText (heading, chainBounds.getX() + 60, chainBounds.getY() - 8,
                     chainBounds.getWidth() - 120, 18, juce::Justification::centred);
@@ -2699,7 +2720,7 @@ private:
         drawZone (-18.0f, -3.0f, orange);
         drawZone (-3.0f, 6.0f, red);
         g.setColour (secondaryText);
-        g.setFont (leadFontOptions (14.0f, juce::Font::bold));
+        g.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
         g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 8.0f),
                                                   60, 18), juce::Justification::centred);
         if (clipped)
@@ -2860,7 +2881,7 @@ private:
         resized();
     }
 
-    TheLeadAudioProcessor& audioProcessor;
+    NAMinatorAudioProcessor& audioProcessor;
     std::function<void (bool)> fullscreenChangedHandler;
     juce::Viewport chainViewport;
     juce::Viewport detailsViewport;
@@ -2872,10 +2893,10 @@ private:
     std::vector<std::unique_ptr<StageTile>> tiles;
 };
 
-TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor& processor)
+NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProcessor& processor)
     : AudioProcessorEditor (&processor), audioProcessor (processor),
       tooltipWindow (this, 650),
-      editorLookAndFeel (std::make_unique<LeadLookAndFeel> (processor)),
+      editorLookAndFeel (std::make_unique<NAMinatorLookAndFeel> (processor)),
       chainControls (std::make_unique<ChainControls> (processor,
           [this] (bool fullscreen) { setEqFullscreen (fullscreen); }))
 {
@@ -2890,12 +2911,12 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     title.setColour (juce::Label::textColourId, text);
     addAndMakeVisible (title);
     subtitle.setText ("CAPTURE SIGNAL WORKSTATION", juce::dontSendNotification);
-    subtitle.setFont (leadFontOptions (9.0f, juce::Font::bold));
+    subtitle.setFont (naminatorFontOptions (9.0f, juce::Font::bold));
     subtitle.setColour (juce::Label::textColourId, secondaryText);
     addAndMakeVisible (subtitle);
 
     presetLabel.setText ("PRESET", juce::dontSendNotification);
-    presetLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    presetLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
     presetLabel.setColour (juce::Label::textColourId, secondaryText);
     presetLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (presetLabel);
@@ -2906,7 +2927,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     resetChainButton.setTooltip ("Restore the default signal chain and default parameter values");
     presetBox.setTooltip ("Load a saved NAMinator preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
-    pitchLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
     pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -24 to +24 semitones.");
@@ -2920,7 +2941,7 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     addAndMakeVisible (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "pitchSemitones", pitchSlider);
-    pitchValueLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    pitchValueLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
     pitchValueLabel.setColour (juce::Label::textColourId, text);
     pitchValueLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (pitchValueLabel);
@@ -2933,12 +2954,12 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     pitchSlider.onValueChange = updatePitchValue;
     updatePitchValue();
     masterVolumeLabel.setText ("MASTER", juce::dontSendNotification);
-    masterVolumeLabel.setFont (leadFontOptions (12.0f, juce::Font::bold));
+    masterVolumeLabel.setFont (naminatorFontOptions (12.0f, juce::Font::bold));
     masterVolumeLabel.setColour (juce::Label::textColourId, secondaryText);
     masterVolumeLabel.setJustificationType (juce::Justification::centredRight);
     masterVolumeLabel.setTooltip ("Overall plugin output level, applied after the Output block.");
     addAndMakeVisible (masterVolumeLabel);
-    masterVolumeValueLabel.setFont (leadFontOptions (11.0f, juce::Font::bold));
+    masterVolumeValueLabel.setFont (naminatorFontOptions (11.0f, juce::Font::bold));
     masterVolumeValueLabel.setColour (juce::Label::textColourId, text);
     masterVolumeValueLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (masterVolumeValueLabel);
@@ -3007,11 +3028,11 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
     parallelIRBox.setVisible (false);
 
     blendLabel.setText ("CAB 1 / CAB 2", juce::dontSendNotification);
-    blendLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    blendLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
     blendLabel.setColour (juce::Label::textColourId, secondaryText);
     blendLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (blendLabel);
-    blendValueLabel.setFont (leadFontOptions (14.0f, juce::Font::bold));
+    blendValueLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
     blendValueLabel.setColour (juce::Label::textColourId, text);
     blendValueLabel.setColour (juce::Label::backgroundColourId, panel);
     blendValueLabel.setColour (juce::Label::outlineColourId, panel);
@@ -3032,19 +3053,19 @@ TheLeadAudioProcessorEditor::TheLeadAudioProcessorEditor (TheLeadAudioProcessor&
 
 }
 
-TheLeadAudioProcessorEditor::~TheLeadAudioProcessorEditor()
+NAMinatorAudioProcessorEditor::~NAMinatorAudioProcessorEditor()
 {
     setLookAndFeel (nullptr);
 }
 
-void TheLeadAudioProcessorEditor::paint (juce::Graphics& g)
+void NAMinatorAudioProcessorEditor::paint (juce::Graphics& g)
 {
     g.fillAll (background);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
 }
 
-void TheLeadAudioProcessorEditor::resized()
+void NAMinatorAudioProcessorEditor::resized()
 {
     if (eqFullscreen)
     {
@@ -3095,7 +3116,7 @@ void TheLeadAudioProcessorEditor::resized()
     chainControls->setBounds (area);
 }
 
-void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
+void NAMinatorAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
 {
     eqFullscreen = shouldBeFullscreen;
     const auto showChrome = ! shouldBeFullscreen;
@@ -3122,7 +3143,7 @@ void TheLeadAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     resized();
 }
 
-void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
+void NAMinatorAudioProcessorEditor::refreshUserPresets (const juce::String& selectName)
 {
     auto previousName = selectName.isNotEmpty() ? selectName : selectedPresetName();
     if (previousName.isEmpty())
@@ -3139,7 +3160,7 @@ void TheLeadAudioProcessorEditor::refreshUserPresets (const juce::String& select
     deletePresetButton.setEnabled (presetBox.getSelectedId() != 0);
 }
 
-juce::String TheLeadAudioProcessorEditor::selectedPresetName() const
+juce::String NAMinatorAudioProcessorEditor::selectedPresetName() const
 {
     auto name = presetBox.getText().trim();
     if (name.endsWith (" *"))
@@ -3147,7 +3168,7 @@ juce::String TheLeadAudioProcessorEditor::selectedPresetName() const
     return name;
 }
 
-void TheLeadAudioProcessorEditor::timerCallback()
+void NAMinatorAudioProcessorEditor::timerCallback()
 {
     updateMasterVolumeValueLabel();
     const auto* routingParameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
@@ -3178,7 +3199,7 @@ void TheLeadAudioProcessorEditor::timerCallback()
     repaintChildren (repaintChildren, *this);
 }
 
-void TheLeadAudioProcessorEditor::updateMasterVolumeValueLabel()
+void NAMinatorAudioProcessorEditor::updateMasterVolumeValueLabel()
 {
     const auto value = masterVolumeSlider.getValue();
     const auto roundedDb = std::abs (value) < 0.05 ? 0.0 : std::round (value * 10.0) / 10.0;
@@ -3186,11 +3207,11 @@ void TheLeadAudioProcessorEditor::updateMasterVolumeValueLabel()
     masterVolumeValueLabel.setText (valueText + " dB", juce::dontSendNotification);
 }
 
-void TheLeadAudioProcessorEditor::comboBoxChanged (juce::ComboBox* box)
+void NAMinatorAudioProcessorEditor::comboBoxChanged (juce::ComboBox* box)
 {
     if (box != &ampRoutingBox && box != &parallelIRBox)
         return;
-    const juce::Component::SafePointer<TheLeadAudioProcessorEditor> safeThis (this);
+    const juce::Component::SafePointer<NAMinatorAudioProcessorEditor> safeThis (this);
     juce::MessageManager::callAsync ([safeThis]
     {
         if (safeThis != nullptr)
@@ -3198,7 +3219,7 @@ void TheLeadAudioProcessorEditor::comboBoxChanged (juce::ComboBox* box)
     });
 }
 
-void TheLeadAudioProcessorEditor::updateRoutingDisplay()
+void NAMinatorAudioProcessorEditor::updateRoutingDisplay()
 {
     const auto* parameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
     const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
@@ -3239,7 +3260,7 @@ void TheLeadAudioProcessorEditor::updateRoutingDisplay()
     resized();
 }
 
-void TheLeadAudioProcessorEditor::updateBlendValue()
+void NAMinatorAudioProcessorEditor::updateBlendValue()
 {
     const auto* parameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
     const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
@@ -3259,7 +3280,7 @@ void TheLeadAudioProcessorEditor::updateBlendValue()
                              juce::dontSendNotification);
 }
 
-void TheLeadAudioProcessorEditor::showSavePresetPrompt()
+void NAMinatorAudioProcessorEditor::showSavePresetPrompt()
 {
     auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
                                          juce::MessageBoxIconType::NoIcon);
@@ -3267,7 +3288,7 @@ void TheLeadAudioProcessorEditor::showSavePresetPrompt()
     alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "My Preset", "Preset name:");
     alert->addButton ("Save", 1);
     alert->addButton ("Cancel", 0);
-    juce::Component::SafePointer<TheLeadAudioProcessorEditor> safeThis (this);
+    juce::Component::SafePointer<NAMinatorAudioProcessorEditor> safeThis (this);
     alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert] (int result)
     {
         if (result != 1 || safeThis == nullptr)
@@ -3287,15 +3308,15 @@ void TheLeadAudioProcessorEditor::showSavePresetPrompt()
     }), true);
 }
 
-void TheLeadAudioProcessorEditor::showDeletePresetPrompt()
+void NAMinatorAudioProcessorEditor::showDeletePresetPrompt()
 {
     const auto name = presetBox.getText().trim();
     if (name.isEmpty()) return;
-    auto* alert = new juce::AlertWindow ("Delete preset?", "Delete “" + name + "” from your user presets?",
+    auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your user presets?",
                                          juce::MessageBoxIconType::WarningIcon);
     alert->addButton ("Delete", 1);
     alert->addButton ("Cancel", 0);
-    juce::Component::SafePointer<TheLeadAudioProcessorEditor> safeThis (this);
+    juce::Component::SafePointer<NAMinatorAudioProcessorEditor> safeThis (this);
     alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, name] (int result)
     {
         if (result != 1 || safeThis == nullptr) return;
