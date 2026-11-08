@@ -2,16 +2,16 @@
 #include "AmpSimBridge.h"
 #include "engine/internal/engine_internal.h"
 
-struct NAMinatorAmpSim
+struct NAMplifiedAmpSim
 {
     fx_amp_state_t channels[2];
     int model;
     float parameters[FX_AMP_PARAM_COUNT];
 };
 
-NAMinatorAmpSim* naminAmpSimCreate (int model)
+NAMplifiedAmpSim* naminAmpSimCreate (int model)
 {
-    NAMinatorAmpSim* amp = (NAMinatorAmpSim*) calloc (1, sizeof (NAMinatorAmpSim));
+    NAMplifiedAmpSim* amp = (NAMplifiedAmpSim*) calloc (1, sizeof (NAMplifiedAmpSim));
     if (amp == NULL)
         return NULL;
     amp->model = model;
@@ -22,12 +22,12 @@ NAMinatorAmpSim* naminAmpSimCreate (int model)
     return amp;
 }
 
-void naminAmpSimDestroy (NAMinatorAmpSim* amp)
+void naminAmpSimDestroy (NAMplifiedAmpSim* amp)
 {
     free (amp);
 }
 
-void naminAmpSimSetModel (NAMinatorAmpSim* amp, int model)
+void naminAmpSimSetModel (NAMplifiedAmpSim* amp, int model)
 {
     if (amp == NULL || model < 0 || model >= FX_AMP_COUNT || amp->model == model)
         return;
@@ -40,7 +40,7 @@ void naminAmpSimSetModel (NAMinatorAmpSim* amp, int model)
     }
 }
 
-void naminAmpSimSetParameter (NAMinatorAmpSim* amp, int parameter, float value)
+void naminAmpSimSetParameter (NAMplifiedAmpSim* amp, int parameter, float value)
 {
     if (amp == NULL || parameter < 0 || parameter >= FX_AMP_PARAM_COUNT)
         return;
@@ -49,7 +49,7 @@ void naminAmpSimSetParameter (NAMinatorAmpSim* amp, int parameter, float value)
         amp->channels[channel].params[parameter] = value;
 }
 
-void naminAmpSimProcess (NAMinatorAmpSim* amp, int channel, float* samples, int numSamples, float sampleRate)
+void naminAmpSimProcess (NAMplifiedAmpSim* amp, int channel, float* samples, int numSamples, float sampleRate)
 {
     if (amp == NULL || samples == NULL || channel < 0 || channel > 1 || numSamples <= 0)
         return;

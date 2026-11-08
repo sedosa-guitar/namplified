@@ -2,7 +2,7 @@ if (NOT DEFINED PLIST_PATH)
     message(FATAL_ERROR "PLIST_PATH is required")
 endif()
 
-set(description "NAMinator uses audio input to process your instrument signal.")
+set(description "NAMplified uses audio input to process your instrument signal.")
 execute_process(
     COMMAND /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription ${description}" "${PLIST_PATH}"
     RESULT_VARIABLE set_result

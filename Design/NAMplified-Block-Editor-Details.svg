@@ -12,7 +12,7 @@
   </defs>
   <rect width="1600" height="1040" fill="url(#bg)"/>
   <rect width="1600" height="4" fill="#66d6b2"/>
-  <text x="48" y="47" class="eyebrow green">NAMINATOR</text>
+  <text x="48" y="47" class="eyebrow green">NAMPLIFIED</text>
   <text x="48" y="83" class="title">Signal Chain</text>
   <text x="48" y="108" class="small muted">Build the route on the left. Select any block to edit it in the detail panel.</text>
   <rect x="1248" y="35" width="304" height="48" rx="10" class="inner"/>

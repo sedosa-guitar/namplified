@@ -9,7 +9,7 @@
     </style>
   </defs>
   <rect width="1200" height="760" fill="url(#bg)"/><rect width="1200" height="4" fill="#ef8047"/>
-  <text x="48" y="52" class="eyebrow green">NAMINATOR  /  PRE AMP EFFECT</text>
+  <text x="48" y="52" class="eyebrow green">NAMPLIFIED  /  PRE AMP EFFECT</text>
   <text x="48" y="96" class="title">Boost</text>
   <text x="48" y="124" class="small muted">Add level into the next block, then shape the tone before the NAM captures.</text>
   <rect x="966" y="42" width="186" height="42" rx="21" fill="#18332e" stroke="#326455"/>
@@ -19,7 +19,7 @@
   <line x1="84" y1="224" x2="1116" y2="224" stroke="#343b48"/>
   <rect x="88" y="270" width="280" height="360" rx="28" fill="#151a22" stroke="#414a58" stroke-width="2"/>
   <rect x="106" y="288" width="244" height="324" rx="22" fill="#1d242e" stroke="#303846"/>
-  <text x="228" y="328" text-anchor="middle" class="eyebrow green">NAMINATOR</text>
+  <text x="228" y="328" text-anchor="middle" class="eyebrow green">NAMPLIFIED</text>
   <text x="228" y="350" text-anchor="middle" class="small muted">CLEAN BOOST · WDF</text>
   <g fill="#121720" stroke="#4b5665" stroke-width="2">
     <circle cx="157" cy="420" r="38"/><circle cx="228" cy="420" r="38"/><circle cx="299" cy="420" r="38"/>

@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXAggregateTarget section */
-		6D46CF5BF14E06FC42BC584B /* NAMinator - All */ = {
+		6D46CF5BF14E06FC42BC584B /* NAMplified - All */ = {
 			isa = PBXAggregateTarget;
 			buildConfigurationList = FDC83847BA971420F7EDD3D3;
 			buildPhases = (
@@ -19,8 +19,8 @@
 				E26866D99114EB45F6747A48,
 				B1B174CE93C3892593DE0C24,
 			);
-			name = "NAMinator - All";
-			productName = "NAMinator";
+			name = "NAMplified - All";
+			productName = "NAMplified";
 		};
 /* End PBXAggregateTarget section */
 
@@ -48,15 +48,15 @@
 		54D00F3E07FE9C3090F9E5FD /* CoreAudioKit.framework */ /* CoreAudioKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudioKit.framework; path = System/Library/Frameworks/CoreAudioKit.framework; sourceTree = SDKROOT; };
 		5A53E3D475DCA2B31ED76C5E /* Info-VST3_Manifest_Helper.plist */ /* Info-VST3_Manifest_Helper.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-VST3_Manifest_Helper.plist"; path = "Info-VST3_Manifest_Helper.plist"; sourceTree = SOURCE_ROOT; };
 		5AFCFE3A99B49389D607607F /* PluginEditor.h */ /* PluginEditor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PluginEditor.h; path = ../../Source/PluginEditor.h; sourceTree = SOURCE_ROOT; };
-		65ACF9090252313422EEC885 /* VST3 */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "NAMinator.vst3"; sourceTree = BUILT_PRODUCTS_DIR; };
-		988473F6947B5FA6EB873391 /* Standalone Plugin */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NAMinator.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		65ACF9090252313422EEC885 /* VST3 */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "NAMplified.vst3"; sourceTree = BUILT_PRODUCTS_DIR; };
+		988473F6947B5FA6EB873391 /* Standalone Plugin */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "NAMplified.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		A2279017B450C86899562AB0 /* Info-VST3.plist */ /* Info-VST3.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; name = "Info-VST3.plist"; path = "Info-VST3.plist"; sourceTree = SOURCE_ROOT; };
 		C7EABD6D7370380F549C0A12 /* PluginProcessor.cpp */ /* PluginProcessor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PluginProcessor.cpp; path = ../../Source/PluginProcessor.cpp; sourceTree = SOURCE_ROOT; };
 		C8F4EB1D330630BEDCC60B57 /* PluginProcessor.h */ /* PluginProcessor.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = PluginProcessor.h; path = ../../Source/PluginProcessor.h; sourceTree = SOURCE_ROOT; };
 		CE0C747F039761ED37B57EB4 /* PluginEditor.cpp */ /* PluginEditor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; name = PluginEditor.cpp; path = ../../Source/PluginEditor.cpp; sourceTree = SOURCE_ROOT; };
-		E5B82C3BAB7D1498966CF268 /* Shared Code */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libNAMinator.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5B82C3BAB7D1498966CF268 /* Shared Code */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libNAMplified.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		E8193CD7C6F76F4C23BCDA90 /* JucePluginDefines.h */ /* JucePluginDefines.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = JucePluginDefines.h; path = ../../JuceLibraryCode/JucePluginDefines.h; sourceTree = SOURCE_ROOT; };
-		ECC365B25D06D07F52FA1076 /* AU */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "NAMinator.component"; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECC365B25D06D07F52FA1076 /* AU */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "NAMplified.component"; sourceTree = BUILT_PRODUCTS_DIR; };
 		F0A4DD7578F969FAF5A3A432 /* Cocoa.framework */ /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -95,12 +95,12 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		1A5493F9B045D48F9FEADF47 /* NAMinator */ = {
+		1A5493F9B045D48F9FEADF47 /* NAMplified */ = {
 			isa = PBXGroup;
 			children = (
 				6A4522CEA25AF03AF8CD7BCC,
 			);
-			name = "NAMinator";
+			name = "NAMplified";
 			sourceTree = "<group>";
 		};
 		1F4140849FAB277688A65718 /* Products */ = {
@@ -172,7 +172,7 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		2751AD3FD3D2AC1B4699DA91 /* NAMinator - VST3 Manifest Helper */ = {
+		2751AD3FD3D2AC1B4699DA91 /* NAMplified - VST3 Manifest Helper */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 9921E2A91998B15E7E7525FC;
 			buildPhases = (
@@ -184,12 +184,12 @@
 			);
 			dependencies = (
 			);
-			name = "NAMinator - VST3 Manifest Helper";
-			productName = "NAMinator";
+			name = "NAMplified - VST3 Manifest Helper";
+			productName = "NAMplified";
 			productReference = 16CC4DCA4EAF750A2CE05DAD;
 			productType = "com.apple.product-type.tool";
 		};
-		5A123F71D3DF1898A5C94D12 /* NAMinator - VST3 */ = {
+		5A123F71D3DF1898A5C94D12 /* NAMplified - VST3 */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CA36864DA4DC6B2F625E6539;
 			buildPhases = (
@@ -206,12 +206,12 @@
 				805937973752B87ECB1FB8E9,
 				2FB7D29A641CDBDF0B49F44B,
 			);
-			name = "NAMinator - VST3";
-			productName = "NAMinator";
+			name = "NAMplified - VST3";
+			productName = "NAMplified";
 			productReference = 65ACF9090252313422EEC885;
 			productType = "com.apple.product-type.bundle";
 		};
-		92CB0A6F2A689E0D6CFB9F16 /* NAMinator - Shared Code */ = {
+		92CB0A6F2A689E0D6CFB9F16 /* NAMplified - Shared Code */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 699B89672BD64DF635438C59;
 			buildPhases = (
@@ -221,12 +221,12 @@
 			);
 			dependencies = (
 			);
-			name = "NAMinator - Shared Code";
-			productName = "NAMinator";
+			name = "NAMplified - Shared Code";
+			productName = "NAMplified";
 			productReference = E5B82C3BAB7D1498966CF268;
 			productType = "com.apple.product-type.library.static";
 		};
-		D2E564D3BF5A294E307DDA4F /* NAMinator - Standalone Plugin */ = {
+		D2E564D3BF5A294E307DDA4F /* NAMplified - Standalone Plugin */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CD2AADCC6ABFB6FC41A2F1FC;
 			buildPhases = (
@@ -240,12 +240,12 @@
 			dependencies = (
 				589D904375054415789D7EA5,
 			);
-			name = "NAMinator - Standalone Plugin";
-			productName = "NAMinator";
+			name = "NAMplified - Standalone Plugin";
+			productName = "NAMplified";
 			productReference = 988473F6947B5FA6EB873391;
 			productType = "com.apple.product-type.application";
 		};
-		DAECF0E9C43A91FF40EA851C /* NAMinator - AU */ = {
+		DAECF0E9C43A91FF40EA851C /* NAMplified - AU */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CBCCEE0CC05D663B06A6FEBE;
 			buildPhases = (
@@ -260,8 +260,8 @@
 			dependencies = (
 				6A265A51CB4540F6D960F625,
 			);
-			name = "NAMinator - AU";
-			productName = "NAMinator";
+			name = "NAMplified - AU";
+			productName = "NAMplified";
 			productReference = ECC365B25D06D07F52FA1076;
 			productType = "com.apple.product-type.bundle";
 		};
@@ -648,8 +648,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -669,11 +669,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -681,13 +681,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -707,8 +707,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				USE_HEADERMAP = NO;
@@ -754,8 +754,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -775,11 +775,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -787,13 +787,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -817,8 +817,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -857,8 +857,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -878,11 +878,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -890,13 +890,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -919,8 +919,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -959,8 +959,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -980,11 +980,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -992,13 +992,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1020,7 +1020,7 @@
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
 				PRODUCT_NAME = "juce_vst3_helper";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
@@ -1060,8 +1060,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1081,11 +1081,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1093,13 +1093,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1120,7 +1120,7 @@
 				OTHER_CODE_SIGN_FLAGS = "";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
 				PRODUCT_NAME = "juce_vst3_helper";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
@@ -1158,8 +1158,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1179,11 +1179,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1191,13 +1191,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1222,8 +1222,8 @@
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
 				OTHER_REZFLAGS = "-d ppc_$ppc -d i386_$i386 -d ppc64_$ppc64 -d x86_64_$x86_64 -d arm64_$arm64 -I /System/Library/Frameworks/CoreServices.framework/Frameworks/CarbonCore.framework/Versions/A/Headers -I \"$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/AUBase\" -I \"$(DEVELOPER_DIR)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/AudioUnit.framework/Headers\"";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -1277,7 +1277,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				OTHER_CODE_SIGN_FLAGS = "--dryrun";
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_NAME = "NAMplified";
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				WARNING_CFLAGS = "-Wreorder";
@@ -1316,8 +1316,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1337,11 +1337,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1349,13 +1349,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1379,8 +1379,8 @@
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
 				OTHER_REZFLAGS = "-d ppc_$ppc -d i386_$i386 -d ppc64_$ppc64 -d x86_64_$x86_64 -d arm64_$arm64 -I /System/Library/Frameworks/CoreServices.framework/Frameworks/CarbonCore.framework/Versions/A/Headers -I \"$(DEVELOPER_DIR)/Extras/CoreAudio/AudioUnits/AUPublic/AUBase\" -I \"$(DEVELOPER_DIR)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/AudioUnit.framework/Headers\"";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -1435,7 +1435,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				ONLY_ACTIVE_ARCH = YES;
 				OTHER_CODE_SIGN_FLAGS = "--dryrun";
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_NAME = "NAMplified";
 				SDKROOT = macosx;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				WARNING_CFLAGS = "-Wreorder";
@@ -1473,8 +1473,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1494,11 +1494,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1506,13 +1506,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1533,8 +1533,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -1572,8 +1572,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1593,11 +1593,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1605,13 +1605,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1631,8 +1631,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				USE_HEADERMAP = NO;
 				VALID_ARCHS = "i386 x86_64 arm64 arm64e";
@@ -1669,8 +1669,8 @@
 					"JucePlugin_Build_LV2=0",
 					"JucePlugin_Enable_IAA=0",
 					"JucePlugin_Enable_ARA=0",
-					"JucePlugin_Name=\\\"NAMinator\\\"",
-					"JucePlugin_Desc=\\\"NAMinator\\\"",
+					"JucePlugin_Name=\\\"NAMplified\\\"",
+					"JucePlugin_Desc=\\\"NAMplified\\\"",
 					"JucePlugin_Manufacturer=\\\"yourcompany\\\"",
 					"JucePlugin_ManufacturerWebsite=\\\"www.yourcompany.com\\\"",
 					"JucePlugin_ManufacturerEmail=\\\"\\\"",
@@ -1690,11 +1690,11 @@
 					"JucePlugin_Vst3Category=\\\"Fx\\\"",
 					"JucePlugin_AUMainType=\\'aufx\\'",
 					"JucePlugin_AUSubType=JucePlugin_PluginCode",
-					"JucePlugin_AUExportPrefix=NAMinatorAU",
-					"JucePlugin_AUExportPrefixQuoted=\\\"NAMinatorAU\\\"",
+					"JucePlugin_AUExportPrefix=NAMplifiedAU",
+					"JucePlugin_AUExportPrefixQuoted=\\\"NAMplifiedAU\\\"",
 					"JucePlugin_AUManufacturerCode=JucePlugin_ManufacturerCode",
-					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMinator",
-					"JucePlugin_AAXIdentifier=org.sedosa.NAMinator",
+					"JucePlugin_CFBundleIdentifier=org.sedosa.NAMplified",
+					"JucePlugin_AAXIdentifier=org.sedosa.NAMplified",
 					"JucePlugin_AAXManufacturerCode=JucePlugin_ManufacturerCode",
 					"JucePlugin_AAXProductId=JucePlugin_PluginCode",
 					"JucePlugin_AAXCategory=0",
@@ -1702,13 +1702,13 @@
 					"JucePlugin_AAXDisableMultiMono=0",
 					"JucePlugin_IAAType=0x61757278",
 					"JucePlugin_IAASubType=JucePlugin_PluginCode",
-					"JucePlugin_IAAName=\\\"sedosa:\\ NAMinator\\\"",
+					"JucePlugin_IAAName=\\\"sedosa:\\ NAMplified\\\"",
 					"JucePlugin_VSTNumMidiInputs=16",
 					"JucePlugin_VSTNumMidiOutputs=16",
 					"JucePlugin_ARAContentTypes=0",
 					"JucePlugin_ARATransformationFlags=0",
-					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMinator.factory\\\"",
-					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMinator.aradocumentarchive.1.0.0\\\"",
+					"JucePlugin_ARAFactoryID=\\\"org.sedosa.NAMplified.factory\\\"",
+					"JucePlugin_ARADocumentArchiveID=\\\"org.sedosa.NAMplified.aradocumentarchive.1.0.0\\\"",
 					"JucePlugin_ARACompatibleArchiveIDs=\\\"\\\"",
 					"JUCE_STANDALONE_APPLICATION=JucePlugin_Build_Standalone",
 					"JUCER_XCODE_MAC_F6D2F4CF=1",
@@ -1729,8 +1729,8 @@
 				OTHER_CFLAGS = "$(inherited)";
 				OTHER_CPLUSPLUSFLAGS = "$(inherited)";
 				OTHER_LDFLAGS = "$(inherited)";
-				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMinator;
-				PRODUCT_NAME = "NAMinator";
+				PRODUCT_BUNDLE_IDENTIFIER = org.sedosa.NAMplified;
+				PRODUCT_NAME = "NAMplified";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SKIP_INSTALL = YES;
 				USE_HEADERMAP = NO;

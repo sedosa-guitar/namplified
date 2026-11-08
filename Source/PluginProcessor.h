@@ -18,7 +18,7 @@
 //==============================================================================
 /**
 */
-class NAMinatorAudioProcessor  : public juce::AudioProcessor
+class NAMplifiedAudioProcessor  : public juce::AudioProcessor
 {
 public:
     using IRParameters = juce::AudioProcessorValueTreeState;
@@ -29,8 +29,8 @@ public:
     static constexpr int numPostFxStages = 4;
 
     //==============================================================================
-    NAMinatorAudioProcessor();
-    ~NAMinatorAudioProcessor() override;
+    NAMplifiedAudioProcessor();
+    ~NAMplifiedAudioProcessor() override;
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -205,5 +205,5 @@ private:
     AlgorithmicReverb reverb;
 
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMplifiedAudioProcessor)
 };

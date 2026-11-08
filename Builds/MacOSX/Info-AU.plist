@@ -8,11 +8,11 @@
     <key>CFBundleIconFile</key>
     <string></string>
     <key>CFBundleIdentifier</key>
-    <string>org.sedosa.NAMinator</string>
+    <string>org.sedosa.NAMplified</string>
     <key>CFBundleName</key>
-    <string>NAMinator</string>
+    <string>NAMplified</string>
     <key>CFBundleDisplayName</key>
-    <string>NAMinator</string>
+    <string>NAMplified</string>
     <key>CFBundlePackageType</key>
     <string>BNDL</string>
     <key>CFBundleSignature</key>
@@ -29,11 +29,11 @@
     <array>
       <dict>
         <key>name</key>
-        <string>yourcompany: NAMinator</string>
+        <string>yourcompany: NAMplified</string>
         <key>description</key>
-        <string>NAMinator</string>
+        <string>NAMplified</string>
         <key>factoryFunction</key>
-        <string>NAMinatorAUFactory</string>
+        <string>NAMplifiedAUFactory</string>
         <key>manufacturer</key>
         <string>Manu</string>
         <key>type</key>

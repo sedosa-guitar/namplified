@@ -5,12 +5,12 @@
 
 class ChainControls;
 
-class NAMinatorAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
+class NAMplifiedAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
                                     private juce::ComboBox::Listener
 {
 public:
-    explicit NAMinatorAudioProcessorEditor (NAMinatorAudioProcessor&);
-    ~NAMinatorAudioProcessorEditor() override;
+    explicit NAMplifiedAudioProcessorEditor (NAMplifiedAudioProcessor&);
+    ~NAMplifiedAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -29,7 +29,7 @@ private:
     void mouseDown (const juce::MouseEvent&) override;
     juce::String selectedPresetName() const;
 
-    NAMinatorAudioProcessor& audioProcessor;
+    NAMplifiedAudioProcessor& audioProcessor;
     juce::TooltipWindow tooltipWindow;
     std::unique_ptr<juce::LookAndFeel_V4> editorLookAndFeel;
     juce::Label title;
@@ -61,5 +61,5 @@ private:
     bool midiLearnArmed = false;
     bool midiTargetArmed = false;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMplifiedAudioProcessorEditor)
 };

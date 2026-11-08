@@ -41,10 +41,10 @@
  #define JucePlugin_Enable_ARA             0
 #endif
 #ifndef  JucePlugin_Name
- #define JucePlugin_Name                   "NAMinator"
+ #define JucePlugin_Name                   "NAMplified"
 #endif
 #ifndef  JucePlugin_Desc
- #define JucePlugin_Desc                   "NAMinator"
+ #define JucePlugin_Desc                   "NAMplified"
 #endif
 #ifndef  JucePlugin_Manufacturer
  #define JucePlugin_Manufacturer           "yourcompany"
@@ -104,19 +104,19 @@
  #define JucePlugin_AUSubType              JucePlugin_PluginCode
 #endif
 #ifndef  JucePlugin_AUExportPrefix
- #define JucePlugin_AUExportPrefix         NAMinatorAU
+ #define JucePlugin_AUExportPrefix         NAMplifiedAU
 #endif
 #ifndef  JucePlugin_AUExportPrefixQuoted
- #define JucePlugin_AUExportPrefixQuoted   "NAMinatorAU"
+ #define JucePlugin_AUExportPrefixQuoted   "NAMplifiedAU"
 #endif
 #ifndef  JucePlugin_AUManufacturerCode
  #define JucePlugin_AUManufacturerCode     JucePlugin_ManufacturerCode
 #endif
 #ifndef  JucePlugin_CFBundleIdentifier
- #define JucePlugin_CFBundleIdentifier     org.sedosa.NAMinator
+ #define JucePlugin_CFBundleIdentifier     org.sedosa.NAMplified
 #endif
 #ifndef  JucePlugin_AAXIdentifier
- #define JucePlugin_AAXIdentifier          org.sedosa.NAMinator
+ #define JucePlugin_AAXIdentifier          org.sedosa.NAMplified
 #endif
 #ifndef  JucePlugin_AAXManufacturerCode
  #define JucePlugin_AAXManufacturerCode    JucePlugin_ManufacturerCode
@@ -140,7 +140,7 @@
  #define JucePlugin_IAASubType             JucePlugin_PluginCode
 #endif
 #ifndef  JucePlugin_IAAName
- #define JucePlugin_IAAName                "yourcompany: NAMinator"
+ #define JucePlugin_IAAName                "yourcompany: NAMplified"
 #endif
 #ifndef  JucePlugin_VSTNumMidiInputs
  #define JucePlugin_VSTNumMidiInputs       16
@@ -155,10 +155,10 @@
  #define JucePlugin_ARATransformationFlags  0
 #endif
 #ifndef  JucePlugin_ARAFactoryID
- #define JucePlugin_ARAFactoryID           "org.sedosa.NAMinator.factory"
+ #define JucePlugin_ARAFactoryID           "org.sedosa.NAMplified.factory"
 #endif
 #ifndef  JucePlugin_ARADocumentArchiveID
- #define JucePlugin_ARADocumentArchiveID   "org.sedosa.NAMinator.aradocumentarchive.1.0.0"
+ #define JucePlugin_ARADocumentArchiveID   "org.sedosa.NAMplified.aradocumentarchive.1.0.0"
 #endif
 #ifndef  JucePlugin_ARACompatibleArchiveIDs
  #define JucePlugin_ARACompatibleArchiveIDs  ""

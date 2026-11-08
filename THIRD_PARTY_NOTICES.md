@@ -6,9 +6,17 @@ and review the dependency inventory for the exact build (including the JUCE
 SPDX inventory described below), then include the applicable notices with the
 binary. Build dependencies may change when their pinned versions change.
 
+## NAMplified project materials
+
+Unless a file says otherwise, project-authored source code is licensed under
+AGPL-3.0-only; see [`LICENSE`](LICENSE). The NAMplified name, interface artwork,
+and application icon are project materials by Ronny Wels (sedosa), copyright
+2026. The application icon intentionally retains its existing artwork as a
+separate app-brand asset; the plugin and product name is NAMplified.
+
 ## JUCE
 
-NAMinator uses JUCE 9.0.5. The JUCE Framework modules are dual-licensed under
+NAMplified uses JUCE 9.0.5. The JUCE Framework modules are dual-licensed under
 AGPLv3 or a commercial JUCE licence. This project uses the AGPLv3 option; the
 project's `LICENSE` contains the AGPLv3 text. JUCE's framework dependencies
 and their license identifiers are inventoried in the upstream
@@ -19,7 +27,7 @@ that inventory is linked into every build.
 
 ## NeuralAmpModelerCore
 
-NAMinator uses NeuralAmpModelerCore v0.5.4 by Steven Atkinson, including its
+NAMplified uses NeuralAmpModelerCore v0.5.4 by Steven Atkinson, including its
 NAM A1/A2 model parsing and DSP code. The upstream project is licensed under
 the MIT License. Its vendored Eigen dependency is licensed under MPL-2.0; see
 the [Eigen license text](https://github.com/sdatkinson/NeuralAmpModelerCore/blob/v0.5.4/Dependencies/eigen/COPYING.MPL2).
@@ -63,7 +71,7 @@ TONE3000 integration. See the current [API terms and brand requirements](https:/
 
 ## chowdsp_wdf
 
-NAMinator uses `chowdsp_wdf` v1.0.0, a header-only Wave Digital Filter library by Jatin Chowdhury, to model the Boost stage's diode pair.
+NAMplified uses `chowdsp_wdf` v1.0.0, a header-only Wave Digital Filter library by Jatin Chowdhury, to model the Boost stage's diode pair.
 
 Copyright (c) 2022, Chowdhury-DSP. All rights reserved.
 
@@ -103,7 +111,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ## 0xFX amplifier DSP
 
-NAMinator includes the amp DSP and shared biquad implementation from 0xFX
+NAMplified includes the amp DSP and shared biquad implementation from 0xFX
 v1.3.1, commit `5b248779c96dce6e64d0ed29cfa598014dc4d3c4`, by Dan Michael.
 The source and full license are in `ThirdParty/0xFX/`.
 

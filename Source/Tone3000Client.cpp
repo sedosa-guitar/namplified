@@ -116,8 +116,8 @@ bool Client::startSelectFlow (int architecture, ModelsCallback callback)
 {
     if (isThreadRunning() || callback == nullptr)
         return false;
-    if (juce::String (NAMINATOR_TONE3000_CLIENT_ID).isEmpty()
-        || juce::String (NAMINATOR_TONE3000_REDIRECT_URI).isEmpty())
+    if (juce::String (NAMPLIFIED_TONE3000_CLIENT_ID).isEmpty()
+        || juce::String (NAMPLIFIED_TONE3000_REDIRECT_URI).isEmpty())
         return false;
 
     modelsCallback = std::move (callback);
@@ -135,8 +135,8 @@ bool Client::startSelectFlow (int architecture, ModelsCallback callback)
     }
 
     juce::URL auth ("https://www.tone3000.com/api/v1/oauth/authorize");
-    auth = auth.withParameter ("client_id", NAMINATOR_TONE3000_CLIENT_ID)
-               .withParameter ("redirect_uri", NAMINATOR_TONE3000_REDIRECT_URI)
+    auth = auth.withParameter ("client_id", NAMPLIFIED_TONE3000_CLIENT_ID)
+               .withParameter ("redirect_uri", NAMPLIFIED_TONE3000_REDIRECT_URI)
                .withParameter ("response_type", "code")
                .withParameter ("code_challenge", getCodeChallenge (codeVerifier))
                .withParameter ("code_challenge_method", "S256")
@@ -234,7 +234,7 @@ void Client::runSelectFlow()
 
     auto response = juce::String ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n")
                   + "<!doctype html><html><body style='font:16px sans-serif;background:#10131a;color:#eee;padding:3em'>"
-                    "TONE3000 selection received. You can return to NAMinator and close this tab."
+                    "TONE3000 selection received. You can return to NAMplified and close this tab."
                     "</body></html>";
     client->write (response.toRawUTF8(), static_cast<int> (response.getNumBytesAsUTF8()));
     client->close();
@@ -269,8 +269,8 @@ void Client::runSelectFlow()
     tokenFields.set ("grant_type", "authorization_code");
     tokenFields.set ("code", authorizationCode);
     tokenFields.set ("code_verifier", codeVerifier);
-    tokenFields.set ("redirect_uri", NAMINATOR_TONE3000_REDIRECT_URI);
-    tokenFields.set ("client_id", NAMINATOR_TONE3000_CLIENT_ID);
+    tokenFields.set ("redirect_uri", NAMPLIFIED_TONE3000_REDIRECT_URI);
+    tokenFields.set ("client_id", NAMPLIFIED_TONE3000_CLIENT_ID);
 
     int statusCode = 0;
     const auto tokenResponse = requestJson (
@@ -356,7 +356,7 @@ void Client::runModelDownload()
     }
 
     auto folder = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                      .getChildFile ("NAMinator").getChildFile ("TONE3000");
+                      .getChildFile ("NAMplified").getChildFile ("TONE3000");
     if (! folder.createDirectory().wasOk())
     {
         finish ({}, "Could not create the local TONE3000 model folder.");
