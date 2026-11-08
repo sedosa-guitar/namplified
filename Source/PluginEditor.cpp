@@ -3055,7 +3055,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
     masterVolumeValueLabel.setJustificationType (juce::Justification::centredLeft);
     addAndMakeVisible (masterVolumeValueLabel);
     masterVolumeSlider.setName ("masterVolume");
-    masterVolumeSlider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+    masterVolumeSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     masterVolumeSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     masterVolumeSlider.setLookAndFeel (editorLookAndFeel.get());
     masterVolumeSlider.setColour (juce::Slider::trackColourId, knobAccent);
@@ -3181,8 +3181,9 @@ void NAMinatorAudioProcessorEditor::resized()
     const auto pitchSliderWidth = compactHeader ? 92 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
-    const auto masterLabelWidth = compactHeader ? 50 : 56;
+    const auto masterLabelWidth = compactHeader ? 52 : 60;
     const auto masterValueWidth = compactHeader ? 42 : 48;
+    const auto masterSliderWidth = compactHeader ? 76 : 96;
     presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 52 : 58));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
@@ -3201,7 +3202,7 @@ void NAMinatorAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
-    masterVolumeSlider.setBounds (presetArea.removeFromLeft (compactHeader ? 42 : 48).reduced (0, 2));
+    masterVolumeSlider.setBounds (presetArea.removeFromLeft (masterSliderWidth).reduced (0, 10));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
 
