@@ -10,6 +10,8 @@ NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to
 
 > **Project status:** In active development. The plugin currently builds macOS Audio Unit, VST3, and standalone targets. Distribution packages and installation instructions are not ready yet.
 
+See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
+
 ## Features
 
 ### Build a signal chain
