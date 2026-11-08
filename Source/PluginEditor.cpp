@@ -126,6 +126,21 @@ public:
         return juce::Font (naminatorFontOptions (16.0f));
     }
 
+    juce::Font getAlertWindowTitleFont() override
+    {
+        return juce::Font (naminatorFontOptions (20.0f, juce::Font::bold));
+    }
+
+    juce::Font getAlertWindowMessageFont() override
+    {
+        return juce::Font (naminatorFontOptions (16.0f));
+    }
+
+    juce::Font getAlertWindowFont() override
+    {
+        return juce::Font (naminatorFontOptions (15.0f));
+    }
+
     juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
                                            juce::Point<int> screenPos,
                                            juce::Rectangle<int> parentArea) override
@@ -2998,7 +3013,9 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
     savePresetButton.setButtonText ("SAVE");
     deletePresetButton.setButtonText ("DELETE");
     resetChainButton.setButtonText ("RESET CHAIN");
+    aboutButton.setButtonText ("ABOUT");
     resetChainButton.setTooltip ("Restore the default signal chain and default parameter values");
+    aboutButton.setTooltip ("About NAMinator");
     presetBox.setTooltip ("Load a saved NAMinator preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
     pitchLabel.setFont (naminatorFontOptions (14.0f, juce::Font::bold));
@@ -3056,6 +3073,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
     addAndMakeVisible (savePresetButton);
     addAndMakeVisible (deletePresetButton);
     addAndMakeVisible (resetChainButton);
+    addAndMakeVisible (aboutButton);
     refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     presetBox.onChange = [this]
     {
@@ -3081,6 +3099,7 @@ NAMinatorAudioProcessorEditor::NAMinatorAudioProcessorEditor (NAMinatorAudioProc
         refreshUserPresets();
         updateRoutingDisplay();
     };
+    aboutButton.onClick = [this] { showAboutDialog(); };
 
     ampRoutingBox.addItem ("SERIES", 1);
     ampRoutingBox.addItem ("PARALLEL BLEND", 2);
@@ -3151,28 +3170,40 @@ void NAMinatorAudioProcessorEditor::resized()
     auto titleArea = top.removeFromLeft (240);
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
+    auto aboutArea = top.removeFromRight (76);
+    top.removeFromRight (8);
+    aboutButton.setBounds (aboutArea.reduced (0, 4));
     auto presetArea = top;
-    presetLabel.setBounds (presetArea.removeFromLeft (58));
-    presetArea.removeFromLeft (8);
-    presetBox.setBounds (presetArea.removeFromLeft (165).reduced (0, 4));
-    presetArea.removeFromLeft (8);
-    savePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
-    presetArea.removeFromLeft (6);
-    deletePresetButton.setBounds (presetArea.removeFromLeft (76).reduced (0, 4));
-    presetArea.removeFromLeft (6);
-    resetChainButton.setBounds (presetArea.removeFromLeft (104).reduced (0, 4));
-    presetArea.removeFromLeft (10);
-    pitchLabel.setBounds (presetArea.removeFromLeft (46).reduced (0, 4));
-    presetArea.removeFromLeft (6);
-    pitchSlider.setBounds (presetArea.removeFromLeft (112).reduced (0, 10));
-    presetArea.removeFromLeft (4);
-    pitchValueLabel.setBounds (presetArea.removeFromLeft (44).reduced (0, 4));
-    presetArea.removeFromLeft (8);
-    masterVolumeLabel.setBounds (presetArea.removeFromLeft (56).reduced (0, 4));
-    presetArea.removeFromLeft (4);
-    masterVolumeSlider.setBounds (presetArea.removeFromLeft (48).reduced (0, 2));
-    presetArea.removeFromLeft (4);
-    masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (48).reduced (0, 4));
+    const auto compactHeader = presetArea.getWidth() < 920;
+    const auto presetWidth = compactHeader ? 145 : 165;
+    const auto smallButtonWidth = compactHeader ? 70 : 76;
+    const auto resetButtonWidth = compactHeader ? 92 : 104;
+    const auto pitchSliderWidth = compactHeader ? 92 : 112;
+    const auto pitchLabelWidth = compactHeader ? 42 : 46;
+    const auto pitchValueWidth = compactHeader ? 42 : 44;
+    const auto masterLabelWidth = compactHeader ? 50 : 56;
+    const auto masterValueWidth = compactHeader ? 42 : 48;
+    presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 52 : 58));
+    presetArea.removeFromLeft (compactHeader ? 5 : 8);
+    presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 6 : 8);
+    savePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 4 : 6);
+    deletePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 4 : 6);
+    resetChainButton.setBounds (presetArea.removeFromLeft (resetButtonWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 6 : 10);
+    pitchLabel.setBounds (presetArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 4 : 6);
+    pitchSlider.setBounds (presetArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
+    presetArea.removeFromLeft (compactHeader ? 2 : 4);
+    pitchValueLabel.setBounds (presetArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 5 : 8);
+    masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
+    presetArea.removeFromLeft (compactHeader ? 3 : 4);
+    masterVolumeSlider.setBounds (presetArea.removeFromLeft (compactHeader ? 42 : 48).reduced (0, 2));
+    presetArea.removeFromLeft (compactHeader ? 3 : 4);
+    masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     ampRoutingBox.setBounds (controlRow.removeFromRight (180).reduced (0, 2));
@@ -3201,6 +3232,7 @@ void NAMinatorAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     savePresetButton.setVisible (showChrome);
     deletePresetButton.setVisible (showChrome);
     resetChainButton.setVisible (showChrome);
+    aboutButton.setVisible (showChrome);
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
@@ -3406,5 +3438,21 @@ void NAMinatorAudioProcessorEditor::showDeletePresetPrompt()
         safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets();
+    }), true);
+}
+
+void NAMinatorAudioProcessorEditor::showAboutDialog()
+{
+    auto* alert = new juce::AlertWindow (
+        "About NAMinator",
+        "Free, open-source amp and effects plugin.\n\n"
+        "Created and coded by Ronny Wels (sedosa).\n"
+        "Project code: AGPL-3.0. Captures, IRs and third-party assets remain under their respective licenses; retain required attribution.",
+        juce::MessageBoxIconType::NoIcon, this);
+    alert->setLookAndFeel (editorLookAndFeel.get());
+    alert->addButton ("CLOSE", 1);
+    alert->enterModalState (true, juce::ModalCallbackFunction::create ([alert] (int)
+    {
+        alert->setLookAndFeel (nullptr);
     }), true);
 }

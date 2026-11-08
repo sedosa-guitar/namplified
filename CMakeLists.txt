@@ -63,6 +63,7 @@ juce_add_plugin(NAMinator
     PLUGIN_CODE Qopw
     PRODUCT_NAME "NAMinator"
     DESCRIPTION "NAMinator guitar signal-chain plugin"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMinatorAppIcon.png"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT FALSE
     NEEDS_MIDI_OUTPUT FALSE
