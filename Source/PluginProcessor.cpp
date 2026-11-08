@@ -232,6 +232,13 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
         addToggle (("amp" + juce::String (slot + 1) + "On").toRawUTF8(),
                    ("Amp " + juce::String (slot + 1)).toRawUTF8(), slot == 0);
         layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "EqPosition").toRawUTF8(), 1 },
+            ("NAM " + number + " EQ Position").toRawUTF8(),
+            juce::StringArray { "Pre", "Post" }, 1));
+        addKnob (("amp" + number + "EqBass").toRawUTF8(), ("NAM " + number + " EQ Bass").toRawUTF8(), -12.0f, 12.0f, 0.0f);
+        addKnob (("amp" + number + "EqMid").toRawUTF8(), ("NAM " + number + " EQ Mid").toRawUTF8(), -12.0f, 12.0f, 0.0f);
+        addKnob (("amp" + number + "EqTreble").toRawUTF8(), ("NAM " + number + " EQ Treble").toRawUTF8(), -12.0f, 12.0f, 0.0f);
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
             juce::ParameterID { ("amp" + number + "Source").toRawUTF8(), 1 },
             ("Amp " + number + " Source").toRawUTF8(),
             juce::StringArray { "NAM Capture", "Amp Sim" }, 0));
@@ -680,6 +687,10 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     ampMixBuffer.setSize (static_cast<int> (channels), samplesPerBlock);
     for (auto& ampBuffer : ampWorkBuffers)
         ampBuffer.setSize (static_cast<int> (channels), samplesPerBlock);
+    for (auto& slotFilters : ampToneEqFilters)
+        for (auto& channelFilters : slotFilters)
+            for (auto& filter : channelFilters)
+                filter = {};
     for (auto& delayLine : delayLines)
     {
         delayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 1.2) + 2);
@@ -961,6 +972,34 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         else
             ampModels[slot]->process (target, numChannels, numSamples);
     };
+    const auto processAmpToneEQ = [&] (juce::AudioBuffer<float>& target, int slot, bool pre)
+    {
+        const auto number = juce::String (slot + 1);
+        if (get (("amp" + number + "Source").toRawUTF8()) >= 0.5f)
+            return; // This shaping EQ belongs to the NAM capture path, not the amp-sim controls.
+        const auto isPre = get (("amp" + number + "EqPosition").toRawUTF8(), 1.0f) < 0.5f;
+        if (isPre != pre)
+            return;
+
+        constexpr float frequencies[] { 120.0f, 800.0f, 5000.0f };
+        const char* suffixes[] { "EqBass", "EqMid", "EqTreble" };
+        for (int band = 0; band < 3; ++band)
+        {
+            const auto gain = get (("amp" + number + suffixes[band]).toRawUTF8());
+            for (int channel = 0; channel < numChannels; ++channel)
+                setEqCoefficients (ampToneEqFilters[static_cast<size_t> (slot)][static_cast<size_t> (channel)]
+                                                             [static_cast<size_t> (band)],
+                                   band, frequencies[band], gain, sampleRate);
+        }
+        for (int channel = 0; channel < numChannels; ++channel)
+        {
+            auto* samples = target.getWritePointer (channel);
+            auto& filters = ampToneEqFilters[static_cast<size_t> (slot)][static_cast<size_t> (channel)];
+            for (int sample = 0; sample < numSamples; ++sample)
+                for (auto& filter : filters)
+                    samples[sample] = filter.process (samples[sample]);
+        }
+    };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
         if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
@@ -976,7 +1015,9 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
             if (enabled (ampEnableIds[slot]))
             {
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
+                processAmpToneEQ (buffer, slot, true);
                 processAmpSlot (buffer, slot);
+                processAmpToneEQ (buffer, slot, false);
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
             }
         }
@@ -1009,7 +1050,9 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
+                processAmpToneEQ (branch, slot, true);
                 processAmpSlot (branch, slot);
+                processAmpToneEQ (branch, slot, false);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);
