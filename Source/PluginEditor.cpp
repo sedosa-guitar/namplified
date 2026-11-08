@@ -2905,6 +2905,11 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     setSize (1600, 900);
     setResizable (true, true);
     setResizeLimits (1200, 760, 1920, 1200);
+    brandIcon.setImage (juce::ImageCache::getFromMemory (
+        BinaryData::NAMplifiedAppIcon_png, BinaryData::NAMplifiedAppIcon_pngSize));
+    brandIcon.setImagePlacement (juce::RectanglePlacement::centred);
+    brandIcon.setTooltip ("NAMplified");
+    addAndMakeVisible (brandIcon);
     title.setText ("NAMplified", juce::dontSendNotification);
     title.setFont (juce::Font (juce::FontOptions().withTypeface (getBrandTypeface()).withHeight (29.0f).withStyle ("Bold")));
     title.setColour (juce::Label::textColourId, text);
@@ -3107,6 +3112,8 @@ void NAMplifiedAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
     auto titleArea = top.removeFromLeft (240);
+    brandIcon.setBounds (titleArea.removeFromLeft (34).withSizeKeepingCentre (32, 32));
+    titleArea.removeFromLeft (8);
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
     auto aboutArea = top.removeFromRight (76);
@@ -3171,6 +3178,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
 {
     eqFullscreen = shouldBeFullscreen;
     const auto showChrome = ! shouldBeFullscreen;
+    brandIcon.setVisible (showChrome);
     title.setVisible (showChrome);
     subtitle.setVisible (showChrome);
     presetLabel.setVisible (showChrome);

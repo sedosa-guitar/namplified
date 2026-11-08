@@ -32,6 +32,7 @@ private:
     NAMplifiedAudioProcessor& audioProcessor;
     juce::TooltipWindow tooltipWindow;
     std::unique_ptr<juce::LookAndFeel_V4> editorLookAndFeel;
+    juce::ImageComponent brandIcon;
     juce::Label title;
     juce::Label subtitle;
     juce::Label presetLabel;

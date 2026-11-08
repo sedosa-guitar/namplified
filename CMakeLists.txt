@@ -95,6 +95,7 @@ juce_add_binary_data(NAMplifiedAssets
         Assets/Fonts/InterVariable.ttf
         Assets/Fonts/SpaceGrotesk.ttf
         Assets/Branding/TONE3000Logo.svg
+        Assets/Branding/NAMplifiedAppIcon.png
 )
 
 target_sources(NAMplified PRIVATE
