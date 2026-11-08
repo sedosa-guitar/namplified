@@ -23,6 +23,7 @@ private:
     void setEqFullscreen (bool shouldBeFullscreen);
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
+    void showAboutDialog();
     void timerCallback() override;
     void comboBoxChanged (juce::ComboBox*) override;
     juce::String selectedPresetName() const;
@@ -37,6 +38,7 @@ private:
     juce::TextButton savePresetButton { "Save" };
     juce::TextButton deletePresetButton { "Delete" };
     juce::TextButton resetChainButton { "Reset Chain" };
+    juce::TextButton aboutButton { "About" };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;
     juce::Slider masterVolumeSlider;
