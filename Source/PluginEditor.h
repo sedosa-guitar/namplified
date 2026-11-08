@@ -5,12 +5,12 @@
 
 class ChainControls;
 
-class TheLeadAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
+class NAMinatorAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
                                     private juce::ComboBox::Listener
 {
 public:
-    explicit TheLeadAudioProcessorEditor (TheLeadAudioProcessor&);
-    ~TheLeadAudioProcessorEditor() override;
+    explicit NAMinatorAudioProcessorEditor (NAMinatorAudioProcessor&);
+    ~NAMinatorAudioProcessorEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -27,7 +27,7 @@ private:
     void comboBoxChanged (juce::ComboBox*) override;
     juce::String selectedPresetName() const;
 
-    TheLeadAudioProcessor& audioProcessor;
+    NAMinatorAudioProcessor& audioProcessor;
     juce::TooltipWindow tooltipWindow;
     std::unique_ptr<juce::LookAndFeel_V4> editorLookAndFeel;
     juce::Label title;
@@ -55,5 +55,5 @@ private:
     bool eqFullscreen = false;
     int lastBlendDisplayState = -1;
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessorEditor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessorEditor)
 };

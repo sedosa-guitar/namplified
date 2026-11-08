@@ -16,7 +16,7 @@ NAMinator is a JUCE-based audio effect for shaping a guitar sound from input to 
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
 - **Post-amp blocks:** Delay, Reverb, Chorus, and nine-band Post EQ. Reorder and enable them individually.
 - **Output section:** output trim and a signal meter. Input and output meters show signal level and briefly indicate clipping.
-- **Presets:** save, recall, and delete user presets; reset the chain to its default setup. Unsaved parameter changes are indicated in the interface.
+- **Presets:** save, recall, and delete user presets; reset the chain to its default setup. Saving copies referenced NAM captures and IRs into a matching `_Assets` folder beside the preset, so both can be backed up or moved together. Unsaved parameter and capture changes are indicated in the interface.
 
 The default chain starts with Input → Noise Gate → Amp 1 → IR 1 → Reverb → Output. Optional blocks can be enabled as needed; the chain editor presents the available stages and lets you reorder movable blocks inside their sections.
 
@@ -43,7 +43,7 @@ NAM captures and amp simulations use the same amp slots, so a slot can be switch
 
 ### Effects and tone shaping
 
-- **Boost:** choose Clean Boost or 808 Drive. Clean Boost provides post volume and tone controls; 808 Drive provides drive, tone, and level controls.
+- **Boost:** choose the built-in Clean Boost or 808 Drive, or switch the same block to a NAM capture. The NAM option can load individual captures and step through captures in the same folder.
 - **Compressor:** an 1176-inspired FET-style compressor with selectable ratios, including All Buttons In, plus attack, release, blend, output, tone, and EQ controls.
 - **Pre EQ:** five adjustable bands before the amp section.
 - **Post EQ:** nine adjustable bands after the effects section, with an expanded editor view.
@@ -67,13 +67,15 @@ NAMinator uses [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpMod
 
 ### TONE3000 model browser
 
-NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMinator downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected amp slot. The OAuth token is kept in memory for this operation; NAMinator does not upload captures or bundle them with presets. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
+NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMinator downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected NAM slot. The OAuth token is kept in memory for this operation; NAMinator does not upload captures. When a user saves a preset, the preset manager copies any referenced NAM captures and IR files into that preset's `_Assets` folder. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
 
 This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Before using Browse TONE3000, register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI in the TONE3000 API settings for that key. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
 
-The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api).
+The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api). This README links to the [TONE3000 website](https://www.tone3000.com).
 
-TONE3000's API and terms can change. See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMinator is an independent project and is not endorsed by TONE3000.
+TONE3000 support confirmed that a free, open-source product with no paid features or upsell can use the free tier without a separate agreement or sign-off. The integration must use OAuth 2.0 with PKCE, keep the secret key out of distributed binaries, preserve creator and license details, follow the design requirements, and stay within the default 100 requests per minute. The free tier is limited to the `select_tone` and `load_tone` flows and the `favorited`, `downloaded`, `created`, `trending`, and `latest` endpoints. NAMinator downloads only the capture selected by the user and does not host or redistribute it. TONE3000 may revoke access if an integration stops meeting its guidelines.
+
+See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMinator is an independent project and is not endorsed by TONE3000.
 
 ## Screenshots
 
@@ -118,13 +120,13 @@ cmake --build build --config Release
 
 The first configure fetches JUCE 9.0.5, NeuralAmpModelerCore 0.5.4, and `chowdsp_wdf` 1.0.0. To use an existing JUCE checkout, pass its path with `-DJUCE_SOURCE_DIR=/path/to/JUCE`.
 
-Build products are placed under `build`. The CMake project currently generates **AU**, **VST3**, and **Standalone** macOS targets. The standalone application can be opened from the generated `TheLead_artefacts` directory; plugin bundles are generated alongside it.
+Build products are placed under `build`. The CMake project currently generates **AU**, **VST3**, and **Standalone** macOS targets. The standalone application can be opened from the generated `NAMinator_artefacts` directory; plugin bundles are generated alongside it.
 
 ## Installation
 
 > **Placeholder:** Release builds and verified installation steps are not published yet. These sections will be completed when distributable packages are available.
 
-> **Release reminder:** Before preparing installer files, contact TONE3000 support to confirm that the free-tier integration may use the tone metadata and model-list endpoints used by NAMinator.
+> **Release reminder:** Before preparing installer files, recheck the current TONE3000 free-tier terms, confirm the published build contains no secret key, and verify the required logo, attribution, creator, and license details.
 
 ### macOS standalone
 

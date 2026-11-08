@@ -56,9 +56,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(chowdsp_wdf)
 
-juce_add_plugin(TheLead
+juce_add_plugin(NAMinator
     COMPANY_NAME "NAMinator"
-    BUNDLE_ID "com.yourcompany.TheLead"
+    BUNDLE_ID "org.sedosa.NAMinator"
     PLUGIN_MANUFACTURER_CODE Manu
     PLUGIN_CODE Qopw
     PRODUCT_NAME "NAMinator"
@@ -76,24 +76,24 @@ juce_add_plugin(TheLead
 # input devices. JUCE's generated standalone plist does not currently include
 # this key, so add it to the built bundle after linking.
 if (APPLE)
-    add_custom_command(TARGET TheLead_Standalone POST_BUILD
+    add_custom_command(TARGET NAMinator_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
-            "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:TheLead_Standalone>/Contents/Info.plist"
+            "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMinator_Standalone>/Contents/Info.plist"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
         VERBATIM
     )
 endif()
 
-juce_generate_juce_header(TheLead)
+juce_generate_juce_header(NAMinator)
 
-juce_add_binary_data(LeadFonts
+juce_add_binary_data(NAMinatorAssets
     SOURCES
         Assets/Fonts/InterVariable.ttf
         Assets/Fonts/SpaceGrotesk.ttf
         Assets/Branding/TONE3000Logo.svg
 )
 
-target_sources(TheLead PRIVATE
+target_sources(NAMinator PRIVATE
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/Tone3000Client.cpp
@@ -121,15 +121,15 @@ if (UNIX)
 endif()
 set_target_properties(naminator_amp_sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-target_compile_features(TheLead PUBLIC cxx_std_17)
-target_compile_definitions(TheLead PUBLIC
+target_compile_features(NAMinator PUBLIC cxx_std_17)
+target_compile_definitions(NAMinator PUBLIC
     JUCE_WEB_BROWSER=0
     JUCE_USE_CURL=0
     JUCE_VST3_CAN_REPLACE_VST2=0
 )
 
-target_link_libraries(TheLead PRIVATE
-    LeadFonts
+target_link_libraries(NAMinator PRIVATE
+    NAMinatorAssets
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_cryptography
@@ -145,7 +145,7 @@ target_link_libraries(TheLead PRIVATE
 # registration initializers (notably SlimmableContainer for NAM A2) survive
 # static archive dead stripping at the final link step.
 foreach(plugin_format AU VST3 Standalone)
-    if (TARGET TheLead_${plugin_format})
-        target_link_libraries(TheLead_${plugin_format} PRIVATE nam_core)
+    if (TARGET NAMinator_${plugin_format})
+        target_link_libraries(NAMinator_${plugin_format} PRIVATE nam_core)
     endif()
 endforeach()

@@ -17,7 +17,7 @@
 //==============================================================================
 /**
 */
-class TheLeadAudioProcessor  : public juce::AudioProcessor
+class NAMinatorAudioProcessor  : public juce::AudioProcessor
 {
 public:
     using IRParameters = juce::AudioProcessorValueTreeState;
@@ -28,8 +28,8 @@ public:
     static constexpr int numPostFxStages = 4;
 
     //==============================================================================
-    TheLeadAudioProcessor();
-    ~TheLeadAudioProcessor() override;
+    NAMinatorAudioProcessor();
+    ~NAMinatorAudioProcessor() override;
 
     //==============================================================================
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
@@ -48,8 +48,10 @@ public:
     void loadImpulseResponse (int slot, const juce::File& file);
     bool isImpulseResponseActive (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
+    bool cycleNAMCapture (int slot, int direction);
     juce::String getImpulseResponseName (int slot) const;
     juce::String getNAMCaptureName (int slot) const;
+    juce::File getNAMCaptureFile (int slot) const;
     juce::String getNAMCaptureStatus (int slot) const;
     std::array<int, numPreFxStages> getPreFxOrder() const;
     void setPreFxOrder (const std::array<int, numPreFxStages>& order);
@@ -121,7 +123,9 @@ private:
     juce::AudioBuffer<float> ampWorkBuffers[numAmpSlots];
     juce::String irFilePaths[numIRSlots];
     juce::String namFilePaths[numAmpSlots];
+    juce::String namDisplayNames[numAmpSlots];
     juce::String boostNAMFilePath;
+    juce::String boostNAMDisplayName;
     std::atomic<bool> irLoaded[numIRSlots] {};
     std::atomic<double> modelSampleRate { 48000.0 };
     std::atomic<int> modelMaxBlockSize { 512 };
@@ -130,6 +134,7 @@ private:
     std::array<std::atomic<int>, numIRSlots> irSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numPostFxStages> postFxOrder { 0, 1, 2, 3 };
     std::unordered_map<std::string, float> presetSnapshot;
+    std::unordered_map<std::string, juce::String> presetFileSnapshot;
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
@@ -163,5 +168,5 @@ private:
     juce::Reverb reverb;
 
     //==============================================================================
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (TheLeadAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMinatorAudioProcessor)
 };

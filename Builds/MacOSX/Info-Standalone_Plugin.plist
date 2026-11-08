@@ -8,7 +8,7 @@
     <key>CFBundleIconFile</key>
     <string></string>
     <key>CFBundleIdentifier</key>
-    <string>com.yourcompany.TheLead</string>
+    <string>org.sedosa.NAMinator</string>
     <key>CFBundleName</key>
     <string>NAMinator</string>
     <key>CFBundleDisplayName</key>
