@@ -10,10 +10,10 @@
 
 namespace
 {
-class NAMinatorStandaloneWindow final : public juce::StandaloneFilterWindow
+class NAMplifiedStandaloneWindow final : public juce::StandaloneFilterWindow
 {
 public:
-    NAMinatorStandaloneWindow (const juce::String& title,
+    NAMplifiedStandaloneWindow (const juce::String& title,
                                juce::Colour background,
                                std::unique_ptr<juce::StandalonePluginHolder> holder)
         : StandaloneFilterWindow (title, background, std::move (holder))
@@ -31,10 +31,10 @@ public:
     }
 };
 
-class NAMinatorStandaloneApp final : public juce::JUCEApplication
+class NAMplifiedStandaloneApp final : public juce::JUCEApplication
 {
 public:
-    NAMinatorStandaloneApp()
+    NAMplifiedStandaloneApp()
     {
         juce::PropertiesFile::Options options;
         options.applicationName = juce::CharPointer_UTF8 (JucePlugin_Name);
@@ -57,7 +57,7 @@ public:
     {
         if (! juce::Desktop::getInstance().getDisplays().displays.isEmpty())
         {
-            mainWindow = std::make_unique<NAMinatorStandaloneWindow> (
+            mainWindow = std::make_unique<NAMplifiedStandaloneWindow> (
                 getApplicationName(),
                 juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
                 createPluginHolder());
@@ -112,9 +112,9 @@ private:
     }
 
     juce::ApplicationProperties appProperties;
-    std::unique_ptr<NAMinatorStandaloneWindow> mainWindow;
+    std::unique_ptr<NAMplifiedStandaloneWindow> mainWindow;
     std::unique_ptr<juce::StandalonePluginHolder> pluginHolder;
 };
 } // namespace
 
-JUCE_CREATE_APPLICATION_DEFINE (NAMinatorStandaloneApp)
+JUCE_CREATE_APPLICATION_DEFINE (NAMplifiedStandaloneApp)

@@ -4,13 +4,13 @@
 extern "C" {
 #endif
 
-typedef struct NAMinatorAmpSim NAMinatorAmpSim;
+typedef struct NAMplifiedAmpSim NAMplifiedAmpSim;
 
-NAMinatorAmpSim* naminAmpSimCreate (int model);
-void naminAmpSimDestroy (NAMinatorAmpSim* amp);
-void naminAmpSimSetModel (NAMinatorAmpSim* amp, int model);
-void naminAmpSimSetParameter (NAMinatorAmpSim* amp, int parameter, float value);
-void naminAmpSimProcess (NAMinatorAmpSim* amp, int channel, float* samples, int numSamples, float sampleRate);
+NAMplifiedAmpSim* naminAmpSimCreate (int model);
+void naminAmpSimDestroy (NAMplifiedAmpSim* amp);
+void naminAmpSimSetModel (NAMplifiedAmpSim* amp, int model);
+void naminAmpSimSetParameter (NAMplifiedAmpSim* amp, int parameter, float value);
+void naminAmpSimProcess (NAMplifiedAmpSim* amp, int channel, float* samples, int numSamples, float sampleRate);
 
 #ifdef __cplusplus
 }

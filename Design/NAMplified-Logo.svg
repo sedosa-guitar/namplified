@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="240" viewBox="0 0 960 240" fill="none">
-  <g id="NAMinator-symbol" transform="translate(28 24)">
+  <g id="NAMplified-symbol" transform="translate(28 24)">
     <rect x="0" y="0" width="192" height="192" rx="48" fill="#171D26" stroke="#68D9B4" stroke-width="9"/>
     <path d="M35 135V57L96 124V57" stroke="#68D9B4" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
     <path d="M112 134V103L130 85L147 112L165 76" stroke="#56B9D8" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>
     <circle cx="165" cy="76" r="9" fill="#F17A3A"/>
   </g>
-  <g id="NAMinator-wordmark" fill="#F2F4F7">
-    <text x="264" y="119" font-family="Space Grotesk, Inter, sans-serif" font-size="80" font-weight="700" letter-spacing="1">NAMinator</text>
+  <g id="NAMplified-wordmark" fill="#F2F4F7">
+    <text x="264" y="119" font-family="Space Grotesk, Inter, sans-serif" font-size="80" font-weight="700" letter-spacing="1">NAMplified</text>
     <text x="268" y="170" fill="#9AA4B2" font-family="Space Grotesk, Inter, sans-serif" font-size="22" font-weight="600" letter-spacing="5">CAPTURE SIGNAL WORKSTATION</text>
   </g>
 </svg>

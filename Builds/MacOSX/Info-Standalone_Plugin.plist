@@ -6,15 +6,15 @@
     <key>CFBundleExecutable</key>
     <string>${EXECUTABLE_NAME}</string>
     <key>CFBundleIconFile</key>
-    <string></string>
+    <string>NAMplified.icns</string>
     <key>CFBundleIdentifier</key>
-    <string>org.sedosa.NAMinator</string>
+    <string>org.sedosa.NAMplified</string>
     <key>CFBundleName</key>
-    <string>NAMinator</string>
+    <string>NAMplified</string>
     <key>CFBundleDisplayName</key>
-    <string>NAMinator</string>
+    <string>NAMplified</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>NAMinator uses audio input to process your instrument signal.</string>
+    <string>NAMplified uses audio input to process your instrument signal.</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleSignature</key>

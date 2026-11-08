@@ -9,7 +9,7 @@
     </style>
   </defs>
   <rect width="1600" height="980" fill="url(#bg)"/><rect width="1600" height="4" fill="#66d6b2"/>
-  <text x="48" y="48" class="eyebrow green">NAMINATOR · POST AMP EFFECTS</text>
+  <text x="48" y="48" class="eyebrow green">NAMPLIFIED · POST AMP EFFECTS</text>
   <text x="48" y="88" class="title">Delay &amp; Reverb</text>
   <text x="48" y="115" class="small muted">Routing modes alter the audio path. Reverb modes use distinct decay, damping, width and pre-delay settings.</text>
   <rect x="48" y="150" width="1504" height="92" rx="14" class="panel"/>
