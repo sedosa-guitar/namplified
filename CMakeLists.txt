@@ -63,7 +63,7 @@ juce_add_plugin(NAMplified
     PLUGIN_CODE Qopw
     PRODUCT_NAME "NAMplified"
     DESCRIPTION "NAMplified guitar signal-chain plugin"
-    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMinatorAppIcon.png"
+    ICON_BIG "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplifiedAppIcon.png"
     IS_SYNTH FALSE
     NEEDS_MIDI_INPUT TRUE
     NEEDS_MIDI_OUTPUT FALSE
@@ -73,15 +73,16 @@ juce_add_plugin(NAMplified
     FORMATS AU VST3 Standalone
 )
 
-# macOS requires a usage description before a standalone app can access audio
-# input devices. JUCE's generated standalone plist does not currently include
-# this key, so add it to the built bundle after linking.
+# macOS needs the audio-input usage text and an ICNS file in the standalone
+# bundle. Add both to the finished bundle after linking.
 if (APPLE)
     target_compile_definitions(NAMplified_Standalone PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_sources(NAMplified_Standalone PRIVATE Source/NAMplifiedStandaloneApp.cpp)
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"
+            "-DICON_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
+            "-DRESOURCES_DIR=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
         VERBATIM
     )

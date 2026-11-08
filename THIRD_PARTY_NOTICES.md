@@ -11,8 +11,8 @@ binary. Build dependencies may change when their pinned versions change.
 Unless a file says otherwise, project-authored source code is licensed under
 AGPL-3.0-only; see [`LICENSE`](LICENSE). The NAMplified name, interface artwork,
 and application icon are project materials by Ronny Wels (sedosa), copyright
-2026. The application icon intentionally retains its existing artwork as a
-separate app-brand asset; the plugin and product name is NAMplified.
+2026. The NAMplified application icon (`Assets/Branding/NAMplifiedAppIcon.svg`,
+`.png`, and `.icns`) is original project artwork by Ronny Wels (sedosa).
 
 ## JUCE
 
