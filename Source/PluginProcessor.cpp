@@ -150,6 +150,7 @@ TheLeadAudioProcessor::TheLeadAudioProcessor()
 {
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot] = std::make_unique<AmpModel>();
+    boostNAMModel = std::make_unique<AmpModel>();
 }
 
 TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::createParameterLayout()
@@ -197,6 +198,9 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addToggle ("compBright", "Compressor Bright");
     addToggle ("boostOn", "Boost");
     layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "boostSource", 1 }, "Boost Source",
+        juce::StringArray { "Boost", "NAM Capture" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "boostModel", 1 }, "Boost Model",
         juce::StringArray { "Clean Boost", "808 Drive" }, 0));
     // Keep the boostGain ID so existing sessions and presets retain the value;
@@ -208,6 +212,8 @@ TheLeadAudioProcessor::IRParameters::ParameterLayout TheLeadAudioProcessor::crea
     addKnob ("boost808Drive", "808 Drive", 0.0f, 30.0f, 12.0f);
     addFrequency ("boost808Tone", "808 Tone", 500.0f, 7500.0f, 4200.0f);
     addKnob ("boost808Level", "808 Level", -24.0f, 12.0f, 0.0f);
+    addKnob ("boostNAMIn", "NAM Boost Input", -24.0f, 24.0f, 0.0f);
+    addKnob ("boostNAMOut", "NAM Boost Output", -24.0f, 24.0f, 0.0f);
     addToggle ("preEqOn", "Pre EQ");
     addKnob ("preLow", "Pre EQ Low", -12.0f, 12.0f, 0.0f);
     addFrequency ("preLowFreq", "Pre EQ Low Frequency", 50.0f, 12000.0f, 80.0f);
@@ -675,6 +681,7 @@ void TheLeadAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     pitchCurrentSemitones = 0.0f;
     for (int slot = 0; slot < numAmpSlots; ++slot)
         ampModels[slot]->prepare (sampleRate, samplesPerBlock);
+    boostNAMModel->prepare (sampleRate, samplesPerBlock);
     for (auto& circuit : tubeScreamerCircuits)
         circuit.prepare (sampleRate);
     for (int slot = 0; slot < numIRSlots; ++slot)
@@ -903,6 +910,13 @@ void TheLeadAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         }
         else if (stage == 2 && enabled ("boostOn"))
         {
+            if (get ("boostSource") >= 0.5f)
+            {
+                buffer.applyGain (juce::Decibels::decibelsToGain (get ("boostNAMIn")));
+                boostNAMModel->process (buffer, numChannels, numSamples);
+                buffer.applyGain (juce::Decibels::decibelsToGain (get ("boostNAMOut")));
+                return;
+            }
             const auto use808 = get ("boostModel") >= 0.5f;
             if (use808)
             {
@@ -1280,6 +1294,7 @@ void TheLeadAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty ("irFile" + juce::String (slot + 1), irFilePaths[slot], nullptr);
     for (int slot = 0; slot < numAmpSlots; ++slot)
         state.setProperty ("ampFile" + juce::String (slot + 1), namFilePaths[slot], nullptr);
+    state.setProperty ("boostNAMFile", boostNAMFilePath, nullptr);
     const auto preOrder = getPreFxOrder();
     for (size_t i = 0; i < preOrder.size(); ++i)
         state.setProperty ("preFxOrder" + juce::String (static_cast<int> (i)), preOrder[i], nullptr);
@@ -1358,6 +1373,10 @@ void TheLeadAudioProcessor::setStateInformation (const void* data, int sizeInByt
             if (file.existsAsFile())
                 loadNAMCapture (slot, file);
         }
+        boostNAMFilePath = state.getProperty ("boostNAMFile").toString();
+        const juce::File boostNAMFile (boostNAMFilePath);
+        if (boostNAMFile.existsAsFile())
+            loadNAMCapture (boostNAMSlot, boostNAMFile);
     }
 }
 
@@ -1391,6 +1410,19 @@ bool TheLeadAudioProcessor::isImpulseResponseActive (int slot) const
 
 void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
 {
+    if (slot == boostNAMSlot)
+    {
+        if (! file.existsAsFile())
+            return;
+        boostNAMFilePath = file.getFullPathName();
+        boostNAMModel->setStatus ("Loading NAM capture…");
+        modelLoader.addJob ([this, file]
+        {
+            juce::String error;
+            boostNAMModel->create (file, modelSampleRate.load(), modelMaxBlockSize.load(), error);
+        });
+        return;
+    }
     if (slot < 0 || slot >= numAmpSlots || ! file.existsAsFile())
         return;
     namFilePaths[slot] = file.getFullPathName();
@@ -1404,6 +1436,8 @@ void TheLeadAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
 
 juce::String TheLeadAudioProcessor::getNAMCaptureName (int slot) const
 {
+    if (slot == boostNAMSlot)
+        return boostNAMFilePath.isEmpty() ? "No NAM capture loaded" : juce::File (boostNAMFilePath).getFileName();
     if (slot < 0 || slot >= numAmpSlots || namFilePaths[slot].isEmpty())
         return "No NAM capture loaded";
     return juce::File (namFilePaths[slot]).getFileName();
@@ -1411,6 +1445,8 @@ juce::String TheLeadAudioProcessor::getNAMCaptureName (int slot) const
 
 juce::String TheLeadAudioProcessor::getNAMCaptureStatus (int slot) const
 {
+    if (slot == boostNAMSlot)
+        return boostNAMModel->getStatus();
     if (slot < 0 || slot >= numAmpSlots)
         return "Invalid slot";
     return ampModels[slot]->getStatus();

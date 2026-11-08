@@ -23,6 +23,7 @@ public:
     using IRParameters = juce::AudioProcessorValueTreeState;
     static constexpr int numIRSlots = 2;
     static constexpr int numAmpSlots = 2;
+    static constexpr int boostNAMSlot = numAmpSlots;
     static constexpr int numPreFxStages = 4;
     static constexpr int numPostFxStages = 4;
 
@@ -110,6 +111,7 @@ private:
                             double sampleRate, float q = 1.0f);
     struct AmpModel;
     std::unique_ptr<AmpModel> ampModels[numAmpSlots];
+    std::unique_ptr<AmpModel> boostNAMModel;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];
@@ -119,6 +121,7 @@ private:
     juce::AudioBuffer<float> ampWorkBuffers[numAmpSlots];
     juce::String irFilePaths[numIRSlots];
     juce::String namFilePaths[numAmpSlots];
+    juce::String boostNAMFilePath;
     std::atomic<bool> irLoaded[numIRSlots] {};
     std::atomic<double> modelSampleRate { 48000.0 };
     std::atomic<int> modelMaxBlockSize { 512 };
