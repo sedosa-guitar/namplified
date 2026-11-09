@@ -668,7 +668,7 @@ class GraphicEqEditor final : public juce::Component, private juce::Timer
 {
 public:
     explicit GraphicEqEditor (NAMplifiedAudioProcessor& processor, bool postEq)
-        : audioProcessor (processor), isPostEq (postEq), qParameterId (postEq ? "postEqQ" : "preEqQ")
+        : audioProcessor (processor), isPostEq (postEq)
     {
         if (postEq)
         {
@@ -683,6 +683,8 @@ public:
             parameterIds = { "preLow", "preBand2", "preMid", "preBand4", "preHigh" };
             frequencyIds = { "preLowFreq", "preBand2Freq", "preMidFreq", "preBand4Freq", "preHighFreq" };
         }
+        for (const auto& id : parameterIds)
+            qParameterIds.add (id + "Q");
 
         qLabel.setText ("BAND WIDTH / Q", juce::dontSendNotification);
         qLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
@@ -691,7 +693,7 @@ public:
         addAndMakeVisible (qLabel);
 
         qSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-        qSlider.setName (qParameterId);
+        qSlider.setName (qParameterIds[0]);
         qSlider.setTextBoxStyle (juce::Slider::TextBoxRight, false, 54, 22);
         qSlider.setDoubleClickReturnValue (true, 0.707);
         qSlider.setColour (juce::Slider::trackColourId, knobAccent);
@@ -702,8 +704,7 @@ public:
         qSlider.valueFromTextFunction = [] (const juce::String& value) { return value.getDoubleValue(); };
         qSlider.setTooltip ("Controls the width of the bell bands. Lower Q is wider; higher Q is narrower.");
         addAndMakeVisible (qSlider);
-        qAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            audioProcessor.parameters, qParameterId, qSlider);
+        bindQToBand (selectedBand);
 
         setMouseCursor (juce::MouseCursor::CrosshairCursor);
         for (int band = 0; band < parameterIds.size(); ++band)
@@ -782,36 +783,36 @@ public:
         if (! points.empty())
         {
             juce::Path response;
-            const auto firstShelfGain = bandGain (0);
-            response.startNewSubPath (plot.getX(), gainToY (firstShelfGain, plot));
-            if (points.front().x > plot.getX())
-                response.lineTo (points.front());
-            else
-                response.startNewSubPath (points.front());
-            for (size_t i = 0; i + 1 < points.size(); ++i)
+            constexpr int curveSamples = 640;
+            for (int sample = 0; sample <= curveSamples; ++sample)
             {
-                const auto p0 = i == 0 ? points[i] : points[i - 1];
-                const auto p1 = points[i];
-                const auto p2 = points[i + 1];
-                const auto p3 = i + 2 < points.size() ? points[i + 2] : points[i + 1];
-                auto c1 = p1 + (p2 - p0) * (1.0f / 6.0f);
-                auto c2 = p2 - (p3 - p1) * (1.0f / 6.0f);
-                c1.x = juce::jlimit (p1.x, p2.x, c1.x);
-                c2.x = juce::jlimit (p1.x, p2.x, c2.x);
-                response.cubicTo (c1, c2, p2);
+                const auto x = plot.getX() + plot.getWidth() * static_cast<float> (sample)
+                                               / static_cast<float> (curveSamples);
+                const auto frequency = xToFrequency (x, plot);
+                auto responseDb = 0.0f;
+                for (int band = 0; band < parameterIds.size(); ++band)
+                    responseDb += bandMagnitudeDb (band, frequency);
+                const juce::Point<float> responsePoint (x, gainToY (responseDb, plot));
+                if (sample == 0)
+                    response.startNewSubPath (responsePoint);
+                else
+                    response.lineTo (responsePoint);
             }
-            if (points.back().x < plot.getRight())
-                response.lineTo (plot.getRight(), gainToY (bandGain (parameterIds.size() - 1), plot));
             g.setColour (juce::Colour (0xff66d6b2));
             g.strokePath (response, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                            juce::PathStrokeType::rounded));
         }
 
-        for (const auto& point : points)
+        for (int band = 0; band < static_cast<int> (points.size()); ++band)
         {
+            const auto& point = points[static_cast<size_t> (band)];
+            const auto changed = audioProcessor.isParameterModified (parameterIds[band])
+                              || audioProcessor.isParameterModified (frequencyIds[band])
+                              || audioProcessor.isParameterModified (qParameterIds[band]);
+            const auto pointColour = changed ? accent : juce::Colour (0xff66d6b2);
             g.setColour (juce::Colour::fromRGB (19, 24, 32));
             g.fillEllipse (point.x - 10.0f, point.y - 10.0f, 20.0f, 20.0f);
-            g.setColour (juce::Colour (0xff66d6b2));
+            g.setColour (pointColour);
             g.fillEllipse (point.x - 5.5f, point.y - 5.5f, 11.0f, 11.0f);
         }
     }
@@ -828,6 +829,8 @@ public:
             if (distance < nearestDistance) { nearestDistance = distance; nearest = band; }
         }
         activeBand = nearest;
+        selectedBand = nearest;
+        bindQToBand (selectedBand);
         if (auto* parameter = audioProcessor.parameters.getParameter (parameterIds[activeBand]))
             parameter->beginChangeGesture();
         if (auto* parameter = audioProcessor.parameters.getParameter (frequencyIds[activeBand]))
@@ -853,6 +856,16 @@ public:
     }
 
 private:
+    void bindQToBand (int band)
+    {
+        if (! juce::isPositiveAndBelow (band, qParameterIds.size()))
+            return;
+        qAttachment.reset();
+        qSlider.setName (qParameterIds[band]);
+        qAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            audioProcessor.parameters, qParameterIds[band], qSlider);
+    }
+
     void timerCallback() override
     {
         positionResetButtons (getPlotBounds());
@@ -932,6 +945,59 @@ private:
                            plot.getBottom(), plot.getY());
     }
 
+    float bandMagnitudeDb (int band, float frequency) const
+    {
+        const auto sampleRate = juce::jmax (1.0, audioProcessor.getSampleRate());
+        const auto f0 = juce::jlimit (20.0f, static_cast<float> (sampleRate * 0.45), bandFrequency (band));
+        const auto gainDb = bandGain (band);
+        const auto* qValue = audioProcessor.parameters.getRawParameterValue (qParameterIds[band]);
+        const auto q = qValue != nullptr ? qValue->load() : 0.707f;
+        const auto omega = juce::MathConstants<float>::twoPi * f0 / static_cast<float> (sampleRate);
+        const auto cosine = std::cos (omega);
+        const auto sine = std::sin (omega);
+        const auto A = std::pow (10.0f, gainDb / 40.0f);
+        const auto alpha = sine / (2.0f * juce::jmax (0.1f, q));
+        float b0, b1, b2, a0, a1, a2;
+
+        if (band != 0 && band != parameterIds.size() - 1)
+        {
+            b0 = 1.0f + alpha * A; b1 = -2.0f * cosine; b2 = 1.0f - alpha * A;
+            a0 = 1.0f + alpha / A; a1 = -2.0f * cosine; a2 = 1.0f - alpha / A;
+        }
+        else
+        {
+            const auto beta = sine * std::sqrt (2.0f * A);
+            if (band == 0)
+            {
+                b0 = A * ((A + 1.0f) - (A - 1.0f) * cosine + beta);
+                b1 = 2.0f * A * ((A - 1.0f) - (A + 1.0f) * cosine);
+                b2 = A * ((A + 1.0f) - (A - 1.0f) * cosine - beta);
+                a0 = (A + 1.0f) + (A - 1.0f) * cosine + beta;
+                a1 = -2.0f * ((A - 1.0f) + (A + 1.0f) * cosine);
+                a2 = (A + 1.0f) + (A - 1.0f) * cosine - beta;
+            }
+            else
+            {
+                b0 = A * ((A + 1.0f) + (A - 1.0f) * cosine + beta);
+                b1 = -2.0f * A * ((A - 1.0f) + (A + 1.0f) * cosine);
+                b2 = A * ((A + 1.0f) + (A - 1.0f) * cosine - beta);
+                a0 = (A + 1.0f) - (A - 1.0f) * cosine + beta;
+                a1 = 2.0f * ((A - 1.0f) - (A + 1.0f) * cosine);
+                a2 = (A + 1.0f) - (A - 1.0f) * cosine - beta;
+            }
+        }
+
+        const auto inverseA0 = 1.0f / a0;
+        b0 *= inverseA0; b1 *= inverseA0; b2 *= inverseA0;
+        a1 *= inverseA0; a2 *= inverseA0;
+        const auto w = juce::MathConstants<float>::twoPi * frequency / static_cast<float> (sampleRate);
+        const auto c1 = std::cos (w), c2 = std::cos (2.0f * w);
+        const auto s1 = std::sin (w), s2 = std::sin (2.0f * w);
+        const auto numerator = std::hypot (b0 + b1 * c1 + b2 * c2, b1 * s1 + b2 * s2);
+        const auto denominator = std::hypot (1.0f + a1 * c1 + a2 * c2, a1 * s1 + a2 * s2);
+        return 20.0f * std::log10 (juce::jmax (1.0e-6f, numerator / juce::jmax (1.0e-6f, denominator)));
+    }
+
     void updateBand (float x, float y, juce::Rectangle<float> plot)
     {
         if (activeBand < 0)
@@ -972,12 +1038,12 @@ private:
 
     NAMplifiedAudioProcessor& audioProcessor;
     bool isPostEq = false;
-    juce::String qParameterId;
-    juce::StringArray parameterIds, frequencyIds;
+    juce::StringArray parameterIds, frequencyIds, qParameterIds;
     juce::Label qLabel;
     juce::Slider qSlider;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> qAttachment;
     std::vector<std::unique_ptr<juce::TextButton>> resetButtons;
+    int selectedBand = 0;
     int activeBand = -1;
 };
 
@@ -1656,6 +1722,14 @@ public:
         resized();
     }
 
+    void setAdaptiveCompactMode (bool shouldBeCompact)
+    {
+        if (adaptiveCompactMode == shouldBeCompact)
+            return;
+        adaptiveCompactMode = shouldBeCompact;
+        resized();
+    }
+
     int getPreferredHeight() const
     {
         if (graphicEq != nullptr)
@@ -1675,8 +1749,8 @@ public:
         }
         const auto columns = selectorCount > 0 ? 4 : 5;
         const auto rows = (knobCount + columns - 1) / columns;
-        const auto denseControls = compactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = denseControls ? 104 : 148;
+        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
+        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
             : (loadKind == FileKind::none || isUsingBuiltInBoost() ? 0 : 46);
@@ -1797,8 +1871,8 @@ public:
         constexpr int maxControlWidth = 1320;
         if (area.getWidth() > maxControlWidth)
             area = area.withSizeKeepingCentre (maxControlWidth, area.getHeight());
-        const auto denseControls = compactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = denseControls ? 104 : 148;
+        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
+        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
         std::vector<int> selectors;
         std::vector<int> knobs;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
@@ -1847,8 +1921,9 @@ public:
                 auto valueArea = cell.removeFromBottom (denseControls ? 17 : 20);
                 if (widgetValueLabels[index] != nullptr)
                     widgetValueLabels[index]->setBounds (valueArea);
-                const auto knobWidth = juce::jmin (denseControls ? 78 : 102, cell.getWidth());
-                auto knob = cell.withSizeKeepingCentre (knobWidth, denseControls ? 68 : 94);
+                const auto knobWidth = juce::jmin (adaptiveCompactMode ? 62 : denseControls ? 78 : 102,
+                                                   cell.getWidth());
+                auto knob = cell.withSizeKeepingCentre (knobWidth, adaptiveCompactMode ? 56 : denseControls ? 68 : 94);
                 controlWidgets[index]->setBounds (knob);
             }
             else
@@ -2286,6 +2361,7 @@ private:
     std::function<void()> contentSizeChangedHandler;
     std::function<void (bool)> fullscreenHandler;
     bool compactMode = false;
+    bool adaptiveCompactMode = false;
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
@@ -3202,8 +3278,13 @@ public:
         {
             if (detailsViewport.getViewedComponent() != selectedStage)
                 detailsViewport.setViewedComponent (selectedStage, false);
+            // Use the available detail area first. Compact the control grid
+            // only when this stage would otherwise force immediate scrolling.
+            selectedStage->setAdaptiveCompactMode (
+                selectedStage->getPreferredHeight() > detailsViewport.getHeight());
             selectedStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
-                                    selectedStage->getPreferredHeight());
+                                    juce::jmax (selectedStage->getPreferredHeight(),
+                                                detailsViewport.getHeight()));
         }
         refreshTileOrder();
     }
@@ -3441,6 +3522,11 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
       chainControls (std::make_unique<ChainControls> (processor,
           [this] (bool fullscreen) { setEqFullscreen (fullscreen); }))
 {
+    if (auto* masterParameter = audioProcessor.parameters.getParameter ("masterVolume"))
+    {
+        const auto savedMasterDb = static_cast<float> (namplifiedSettings().getDoubleValue ("masterVolumeDb", 0.0));
+        masterParameter->setValueNotifyingHost (masterParameter->convertTo0to1 (savedMasterDb));
+    }
     audioProcessor.capturePresetSnapshot();
     startTimerHz (20);
     setLookAndFeel (editorLookAndFeel.get());
@@ -3523,6 +3609,13 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (masterVolumeSlider);
     masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "masterVolume", masterVolumeSlider);
+    masterVolumeSlider.onValueChange = [this]
+    {
+        auto& settings = namplifiedSettings();
+        settings.setValue ("masterVolumeDb", masterVolumeSlider.getValue());
+        settings.saveIfNeeded();
+        updateMasterVolumeValueLabel();
+    };
     updateMasterVolumeValueLabel();
     addAndMakeVisible (presetBox);
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
