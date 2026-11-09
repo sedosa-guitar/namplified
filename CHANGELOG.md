@@ -6,6 +6,7 @@ All notable changes to NAMplified are summarized here. This changelog is reconst
 
 ### 2026-11-08
 
+- Removed the built-in amp simulations and the NAM/Amp Sim source switch; NAM capture loading and the Clean Boost, 808 Drive, and NAM Boost options remain.
 - Renamed the application and plugin to **NAMplified** and refreshed the app icon and branding.
 - Added an About window with project and author information, and made the interface typography more consistent.
 - Added MIDI CC Learn for assigning hardware controls to plugin parameters and switches.

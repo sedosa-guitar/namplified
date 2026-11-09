@@ -4,9 +4,9 @@
 
 # NAMplified
 
-**A guitar signal-chain plugin built around Neural Amp Modeler captures and amp simulations.**
+**A guitar signal-chain plugin built around Neural Amp Modeler captures.**
 
-NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to output. Build a chain from pedals, NAM captures or built-in amp models, cabinet impulse responses, and post-amp effects. The interface keeps the signal path visible while exposing each block's controls when selected.
+NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to output. Build a chain from pedals, NAM captures, cabinet impulse responses, and post-amp effects. The interface keeps the signal path visible while exposing each block's controls when selected.
 
 > **Project status:** In active development. The plugin currently builds macOS Audio Unit, VST3, and standalone targets. Distribution packages and installation instructions are not ready yet.
 
@@ -18,7 +18,7 @@ See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
 - **Input section:** input trim and global pitch shift from −24 to +24 semitones.
 - **Pre-amp blocks:** Noise Gate, 1176-style compressor, Boost, and five-band Pre EQ. Reorder these blocks within the section and enable or disable them individually.
-- **Two amp slots:** load a Neural Amp Modeler (NAM) capture into either slot, or switch that slot to one of the built-in amp simulations.
+- **Two NAM slots:** load a Neural Amp Modeler (NAM) capture into either slot, adjust its input/output levels, and shape it with a Bass/Mid/Treble EQ placed before or after the capture.
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
 - **Post-amp blocks:** Delay, Reverb, Chorus, and nine-band Post EQ. Reorder and enable them individually.
 - **Output section:** output trim and a signal meter. Input and output meters show signal level and briefly indicate clipping.
@@ -27,19 +27,16 @@ See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
 The default chain starts with Input → Noise Gate → Amp 1 → IR 1 → Reverb → Output. Optional blocks can be enabled as needed; the chain editor presents the available stages and lets you reorder movable blocks inside their sections.
 
-### Amp sources and routing
+### NAM routing
 
-Each of the two amp slots can use either:
-
-- **NAM Capture:** load a compatible `.nam` model.
-- **Amp Sim:** choose from twelve built-in amp models, with controls such as Gain, Volume, Bass, Mid, Treble, Presence, and model-specific parameters.
+Each of the two NAM slots loads a compatible `.nam` capture. Capture files can be switched with the previous/next controls when they share a folder. Preset saving copies referenced NAM captures and IRs to a matching `_Assets` folder.
 
 The amp slots can run **in series** or **in parallel**. In series, the output of one active amp feeds the next. In parallel, both amp paths run side by side and can be blended. Cabinet routing offers two choices for parallel amps:
 
 1. **Paired IRs:** Amp 1 feeds IR 1 and Amp 2 feeds IR 2; the cabinet paths can be blended.
 2. **Shared IR 1:** the amp outputs are blended first, then processed through IR 1.
 
-NAM captures and amp simulations use the same amp slots, so a slot can be switched between sources without changing the overall routing layout.
+Both NAM slots can run in series or parallel without changing the overall routing layout.
 
 ### Cabinet IRs
 
@@ -98,10 +95,6 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ![Parallel amp paths summed into a shared cabinet IR, with IR shaping controls open](docs/images/parallel-shared-ir-shaping.png)
 
-### Built-in amp simulation
-
-![Parallel signal chain with an amp simulation selected and its controls open](docs/images/amp-sim-parallel.png)
-
 ### Compressor controls
 
 ![Compressor detail panel with ratio, attack, release, tone, blend, output and EQ controls](docs/images/compressor-parallel.png)
@@ -159,7 +152,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 ## Third-party software and licenses
 
-Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), the 0xFX amp DSP (MIT), KissFFT headers (BSD 3-Clause), and bundled fonts (SIL OFL 1.1). JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
+Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), and bundled fonts (SIL OFL 1.1). JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
 
 **NAMplified's own code is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only).** See [`LICENSE`](LICENSE). Third-party components retain their own licenses and notices listed above and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
@@ -173,7 +166,6 @@ When publishing plugin binaries or installers, provide access to the correspondi
 
 - Current CMake targets are for macOS only.
 - NAM captures must be mono-in/mono-out and compatible with the bundled NAM Core version.
-- Amp simulations are circuit-inspired DSP models, not official recreations endorsed by amplifier manufacturers.
 - Installation packages and signing/notarization guidance are still to be added.
 
 ## Contributing

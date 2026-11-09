@@ -95,6 +95,7 @@ juce_add_binary_data(NAMplifiedAssets
         Assets/Fonts/InterVariable.ttf
         Assets/Fonts/SpaceGrotesk.ttf
         Assets/Branding/TONE3000Logo.svg
+        Assets/Branding/NAMplifiedAppIcon.png
 )
 
 target_sources(NAMplified PRIVATE
@@ -103,28 +104,9 @@ target_sources(NAMplified PRIVATE
     Source/Tone3000Client.cpp
     Source/CleanBoost.h
     Source/AlgorithmicReverb.h
-    Source/AmpSimBridge.h
     Source/Tone3000Client.h
     Source/Tone3000Config.h
 )
-
-# The amp-only DSP is derived from 0xFX 1.3.1 (MIT). Keep its license in
-# ThirdParty/0xFX and compile only the amp and shared biquad implementation;
-# NAMplified continues to use its own UI, routing, pedals, and cabinet stages.
-add_library(namplified_amp_sim STATIC
-    Source/AmpSimBridge.c
-    ThirdParty/0xFX/engine/internal/amp.c
-    ThirdParty/0xFX/engine/internal/biquad.c
-)
-target_include_directories(namplified_amp_sim PRIVATE
-    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/0xFX"
-    "${CMAKE_CURRENT_SOURCE_DIR}/ThirdParty/0xFX/deps"
-)
-target_compile_features(namplified_amp_sim PRIVATE c_std_99)
-if (UNIX)
-    target_link_libraries(namplified_amp_sim PRIVATE m)
-endif()
-set_target_properties(namplified_amp_sim PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
 target_compile_features(NAMplified PUBLIC cxx_std_17)
 target_compile_definitions(NAMplified PUBLIC
@@ -139,7 +121,6 @@ target_link_libraries(NAMplified PRIVATE
     juce::juce_dsp
     juce::juce_cryptography
     nam_core
-    namplified_amp_sim
     chowdsp_wdf
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
