@@ -381,7 +381,8 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addFrequency ("preBand4Freq", "Pre EQ Band 4 Frequency", 50.0f, 12000.0f, 2500.0f);
     addKnob ("preHigh", "Pre EQ High", -12.0f, 12.0f, 0.0f);
     addFrequency ("preHighFreq", "Pre EQ High Frequency", 50.0f, 12000.0f, 8000.0f);
-    addKnob ("preEqQ", "Pre EQ Band Width / Q", 0.30f, 4.0f, 0.707f);
+    for (const auto* id : { "preLowQ", "preBand2Q", "preMidQ", "preBand4Q", "preHighQ" })
+        addKnob (id, "Pre EQ Band Q", 0.30f, 4.0f, 0.707f);
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "ampRouting", 1 }, "Amp Routing",
         juce::StringArray { "Series", "Parallel Blend" }, 0));
@@ -475,7 +476,9 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addFrequency ("postGraphic8Freq", "Post EQ 6.4 kHz Frequency", 50.0f, 16000.0f, 6400.0f);
     addKnob ("postHigh", "Post EQ High", -12.0f, 12.0f, 0.0f);
     addFrequency ("postHighFreq", "Post EQ High Frequency", 50.0f, 16000.0f, 16000.0f);
-    addKnob ("postEqQ", "Post EQ Band Width / Q", 0.30f, 4.0f, 0.707f);
+    for (const auto* id : { "postLowQ", "postGraphic2Q", "postGraphic3Q", "postGraphic4Q", "postMidQ",
+                            "postGraphic6Q", "postGraphic7Q", "postGraphic8Q", "postHighQ" })
+        addKnob (id, "Post EQ Band Q", 0.30f, 4.0f, 0.707f);
     addKnob ("outputGain", "Output Gain", -24.0f, 12.0f, 0.0f);
     return layout;
 }
@@ -573,8 +576,6 @@ void NAMplifiedAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffe
     const char* postFrequencyIds[] { "postLowFreq", "postGraphic2Freq", "postGraphic3Freq", "postGraphic4Freq",
                                      "postMidFreq", "postGraphic6Freq", "postGraphic7Freq", "postGraphic8Freq",
                                      "postHighFreq" };
-    const auto* qParameter = parameters.getRawParameterValue (pre ? "preEqQ" : "postEqQ");
-    const auto q = qParameter != nullptr ? qParameter->load() : 0.707f;
     const auto processFilters = [&] (auto& filters, int bandCount, bool isPre)
     {
         for (int band = 0; band < bandCount; ++band)
@@ -586,6 +587,8 @@ void NAMplifiedAudioProcessor::processEqualizer (juce::AudioBuffer<float>& buffe
                                             : juce::String (postFrequencyIds[band]);
             const auto* frequency = parameters.getRawParameterValue (frequencyId);
             const auto hz = frequency != nullptr ? frequency->load() : 1000.0f;
+            const auto* qParameter = parameters.getRawParameterValue (gainId + "Q");
+            const auto q = qParameter != nullptr ? qParameter->load() : 0.707f;
             for (int channel = 0; channel < channels; ++channel)
             {
                 const auto filterType = band == 0 ? 0 : band == bandCount - 1 ? 2 : 1;
@@ -800,6 +803,10 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     if (xml == nullptr)
         return false;
     auto presetState = juce::ValueTree::fromXml (*xml);
+    // Master volume is an application-wide control, not part of a named preset.
+    for (int i = presetState.getNumChildren(); --i >= 0;)
+        if (presetState.getChild (i).getProperty ("id").toString() == "masterVolume")
+            presetState.removeChild (i, nullptr);
     presetState.setProperty ("selectedUserPreset", file.getFileNameWithoutExtension(), nullptr);
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
     if (! assetsFolder.createDirectory().wasOk())
@@ -1057,6 +1064,8 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     if (xml == nullptr)
         return false;
     auto presetState = juce::ValueTree::fromXml (*xml);
+    const auto* masterParameter = parameters.getRawParameterValue ("masterVolume");
+    const auto preservedMasterVolume = masterParameter != nullptr ? masterParameter->load() : 0.0f;
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
     for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2" })
     {
@@ -1074,6 +1083,8 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     juce::MemoryBlock resolvedState;
     copyXmlToBinary (*resolvedXml, resolvedState);
     setStateInformation (resolvedState.getData(), static_cast<int> (resolvedState.getSize()));
+    if (auto* parameter = parameters.getParameter ("masterVolume"))
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (preservedMasterVolume));
     return true;
 }
 
@@ -1106,6 +1117,8 @@ void NAMplifiedAudioProcessor::capturePresetSnapshot()
     {
         const auto* parameterWithID = dynamic_cast<const juce::AudioProcessorParameterWithID*> (parameter);
         if (parameterWithID == nullptr)
+            continue;
+        if (parameterWithID->paramID == "masterVolume")
             continue;
         if (const auto* rawValue = parameters.getRawParameterValue (parameterWithID->paramID))
             presetSnapshot.emplace (parameterWithID->paramID.toStdString(), rawValue->load());
