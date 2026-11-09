@@ -126,8 +126,12 @@ public:
         setColour (juce::ComboBox::outlineColourId, juce::Colour::fromRGB (52, 59, 72));
     }
 
-    juce::Font getTextButtonFont (juce::TextButton&, int buttonHeight) override
+    juce::Font getTextButtonFont (juce::TextButton& button, int buttonHeight) override
     {
+        const auto overrideHeight = static_cast<float> (
+            button.getProperties().getWithDefault ("namButtonFontHeight", 0.0));
+        if (overrideHeight > 0.0f)
+            return juce::Font (namplifiedFontOptions (overrideHeight));
         return juce::Font (namplifiedFontOptions (juce::jlimit (16.0f, 20.0f, buttonHeight * 0.50f)));
     }
 
@@ -918,6 +922,353 @@ private:
     int activeBand = -1;
 };
 
+class NAMCaptureBrowser final : public juce::Component, private juce::ListBoxModel
+{
+public:
+    using Selection = std::function<void (const juce::File&)>;
+
+    NAMCaptureBrowser (NAMplifiedAudioProcessor& processor, int blockSlot, Selection onSelect)
+        : lookAndFeel (processor), slot (blockSlot), selection (std::move (onSelect)),
+          listBox ("NAM captures", this)
+    {
+        setLookAndFeel (&lookAndFeel);
+        setSize (860, 620);
+        title.setText ("LOCAL CAPTURE LIBRARY", juce::dontSendNotification);
+        title.setFont (namplifiedFontOptions (21.0f, juce::Font::bold));
+        title.setColour (juce::Label::textColourId, text);
+        addAndMakeVisible (title);
+
+        search.setTextToShowWhenEmpty ("Search capture, amp, creator…", secondaryText);
+        search.setFont (namplifiedFontOptions (16.0f));
+        search.onTextChange = [this] { refreshRows(); };
+        addAndMakeVisible (search);
+
+        addFilter (familyFilter, { "ALL FAMILIES" });
+        familyFilter.onChange = [this] { refreshRows(); };
+
+        chooseFolder.setButtonText ("CHOOSE FOLDER");
+        chooseFolder.onClick = [this] { chooseLibraryFolder(); };
+        styleButton (chooseFolder);
+        addAndMakeVisible (chooseFolder);
+
+        status.setFont (namplifiedFontOptions (14.0f));
+        status.setColour (juce::Label::textColourId, secondaryText);
+        addAndMakeVisible (status);
+
+        listBox.setRowHeight (54);
+        listBox.setColour (juce::ListBox::backgroundColourId, detailSurface);
+        listBox.setColour (juce::ListBox::outlineColourId, juce::Colour (0xff303845));
+        listBox.setOutlineThickness (1);
+        addAndMakeVisible (listBox);
+
+        loadButton.setButtonText (slot >= NAMplifiedAudioProcessor::numAmpSlots
+                                      ? "LOAD INTO BOOST" : "LOAD INTO NAM " + juce::String (slot + 1));
+        styleButton (loadButton);
+        loadButton.onClick = [this] { loadSelected(); };
+        addAndMakeVisible (loadButton);
+        closeButton.setButtonText ("CLOSE");
+        styleButton (closeButton);
+        closeButton.onClick = [this]
+        {
+            if (auto* dialog = findParentComponentOfClass<juce::DialogWindow>())
+                dialog->exitModalState (0);
+        };
+        addAndMakeVisible (closeButton);
+
+        const juce::File savedFolder (namplifiedSettings().getValue ("captureLibraryDirectory"));
+        rootFolder = savedFolder.isDirectory() ? savedFolder : lastNAMDirectory();
+        if (rootFolder.isDirectory())
+            scanFolder();
+        else
+            status.setText ("Choose a local folder containing your NAM captures.", juce::dontSendNotification);
+    }
+
+    ~NAMCaptureBrowser() override { setLookAndFeel (nullptr); }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().reduced (22);
+        title.setBounds (area.removeFromTop (34));
+        area.removeFromTop (12);
+        auto controls = area.removeFromTop (38);
+        search.setBounds (controls.removeFromLeft (juce::jmax (170, controls.getWidth() / 4)));
+        controls.removeFromLeft (8);
+        familyFilter.setBounds (controls.removeFromLeft (155));
+        controls.removeFromLeft (8);
+        chooseFolder.setBounds (controls);
+        area.removeFromTop (7);
+        status.setBounds (area.removeFromTop (26));
+        area.removeFromTop (4);
+        auto footer = area.removeFromBottom (40);
+        closeButton.setBounds (footer.removeFromRight (100));
+        footer.removeFromRight (8);
+        loadButton.setBounds (footer.removeFromRight (190));
+        area.removeFromBottom (8);
+        listBox.setBounds (area);
+    }
+
+private:
+    struct Capture
+    {
+        juce::File file;
+        juce::String family, creator, settings, channelColour;
+    };
+
+    static void styleButton (juce::TextButton& button)
+    {
+        button.getProperties().set ("namButtonFontHeight", 15.0);
+        button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff26323b));
+        button.setColour (juce::TextButton::textColourOffId, text);
+        button.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff21473f));
+    }
+
+    static void addFilter (juce::ComboBox& box, const juce::StringArray& choices)
+    {
+        for (int i = 0; i < choices.size(); ++i)
+            box.addItem (choices[i], i + 1);
+        box.setSelectedId (1, juce::dontSendNotification);
+        box.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff131820));
+        box.setColour (juce::ComboBox::textColourId, text);
+        box.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff38424f));
+    }
+
+    static juce::String findSetting (const juce::String& textToInspect,
+                                     const juce::StringArray& aliases)
+    {
+        const auto tokens = juce::StringArray::fromTokens (textToInspect.toUpperCase(), " _-().:=,/[]{}", "");
+        for (int i = 0; i < tokens.size(); ++i)
+        {
+            for (const auto& alias : aliases)
+            {
+                juce::String number;
+                if (tokens[i] == alias && i + 1 < tokens.size())
+                    number = tokens[i + 1];
+                else if (tokens[i].startsWith (alias))
+                    number = tokens[i].substring (alias.length());
+                if (number.isNotEmpty() && number.containsOnly ("0123456789."))
+                    return number;
+            }
+        }
+        return {};
+    }
+
+    static juce::String readSettings (const juce::String& textToInspect)
+    {
+        const std::array<std::pair<const char*, juce::StringArray>, 6> parameters {{
+            { "GAIN", { "GAIN", "G" } },
+            { "TREBLE", { "TREBLE", "TREB", "T" } },
+            { "MID", { "MIDRANGE", "MIDS", "MID", "M" } },
+            { "HIGH", { "HIGH", "HIGHS", "H" } },
+            { "BASS", { "BASS", "B" } },
+            { "PRESENCE", { "PRESENCE", "PRES", "P" } }
+        }};
+        juce::StringArray found;
+        for (const auto& parameter : parameters)
+        {
+            const auto number = findSetting (textToInspect, parameter.second);
+            if (number.isNotEmpty())
+                found.add (juce::String (parameter.first) + " " + number);
+        }
+        return found.joinIntoString ("   ·   ");
+    }
+
+    static juce::String readChannelColour (const juce::String& fileName, const juce::String& family)
+    {
+        const auto tokens = juce::StringArray::fromTokens (fileName.toUpperCase(), " _-().:=,/[]{}", "");
+        for (int i = 0; i < tokens.size(); ++i)
+        {
+            const auto token = tokens[i];
+            if (token != "GREEN" && token != "ORANGE" && token != "BLUE" && token != "RED")
+                continue;
+            const auto previous = i > 0 ? tokens[i - 1] : juce::String();
+            const auto next = i + 1 < tokens.size() ? tokens[i + 1] : juce::String();
+            const auto isChannelContext = previous == "CHANNEL" || previous == "CH"
+                || next == "CHANNEL" || next == "CH"
+                || previous.startsWith ("CH") || next.startsWith ("CH");
+            const auto isAmbiguousOrangeBrand = token == "ORANGE" && family.equalsIgnoreCase ("ORANGE");
+            if (isChannelContext || ! isAmbiguousOrangeBrand)
+                return token;
+        }
+        return {};
+    }
+
+    static juce::String classifyFamily (const juce::String& textToInspect, const juce::String& fallback)
+    {
+        const auto value = textToInspect.toLowerCase();
+        const std::array<std::pair<const char*, const char*>, 22> known {{
+            { "jp2c", "Mesa JP-2C" }, { "jp-2c", "Mesa JP-2C" }, { "jp 2c", "Mesa JP-2C" },
+            { "evh", "EVH" },
+            { "5150", "5150 / EVH" }, { "soldano", "Soldano" }, { "slo-100", "Soldano SLO" },
+            { "jcm800", "Marshall JCM800" }, { "jcm 800", "Marshall JCM800" }, { "jcm900", "Marshall JCM900" },
+            { "plexi", "Marshall Plexi" }, { "marshall", "Marshall" }, { "mesa", "Mesa / Boogie" },
+            { "rectifier", "Mesa Rectifier" }, { "boogie", "Mesa / Boogie" }, { "fender", "Fender" },
+            { "tweed", "Fender Tweed" }, { "vox", "Vox" }, { "ac30", "Vox AC30" },
+            { "orange", "Orange" }, { "bogner", "Bogner" }, { "engl", "ENGL" }
+        }};
+        for (const auto& item : known)
+            if (value.contains (item.first)) return item.second;
+        auto folder = fallback.trim();
+        if (folder.equalsIgnoreCase ("NAM1") || folder.equalsIgnoreCase ("NAM2")
+            || folder.endsWithIgnoreCase ("_Assets") || folder.isEmpty())
+            return "UNCLASSIFIED";
+        return folder.toUpperCase();
+    }
+
+    void chooseLibraryFolder()
+    {
+        folderChooser = std::make_unique<juce::FileChooser> ("Choose a folder containing NAM captures", rootFolder);
+        juce::Component::SafePointer<NAMCaptureBrowser> safeThis (this);
+        folderChooser->launchAsync (juce::FileBrowserComponent::openMode
+                                        | juce::FileBrowserComponent::canSelectDirectories,
+                                    [safeThis] (const juce::FileChooser& chooser)
+        {
+            if (safeThis == nullptr) return;
+            const auto folder = chooser.getResult();
+            if (! folder.isDirectory()) return;
+            safeThis->rootFolder = folder;
+            auto& settings = namplifiedSettings();
+            settings.setValue ("captureLibraryDirectory", folder.getFullPathName());
+            settings.saveIfNeeded();
+            safeThis->scanFolder();
+        });
+    }
+
+    void scanFolder()
+    {
+        captures.clear();
+        if (! rootFolder.isDirectory())
+        {
+            status.setText ("Choose a folder containing NAM captures.", juce::dontSendNotification);
+            refreshRows();
+            return;
+        }
+        juce::RangedDirectoryIterator iterator (rootFolder, true, "*", juce::File::findFiles);
+        juce::StringArray families;
+        for (const auto& item : iterator)
+        {
+            const auto file = item.getFile();
+            if (! file.hasFileExtension ("nam")) continue;
+            const auto sidecar = file.getSiblingFile (file.getFileNameWithoutExtension() + ".t3k.json");
+            auto metadata = sidecar.existsAsFile() ? juce::JSON::parse (sidecar.loadFileAsString()) : juce::var();
+            const auto tone = metadata.getProperty ("tone", {}).toString();
+            const auto creator = metadata.getProperty ("creator", {}).toString();
+            const auto model = metadata.getProperty ("model", {}).toString();
+            auto searchable = file.getFileName() + " " + tone + " " + creator + " " + model;
+            const auto parentFolder = file.getParentDirectory();
+            const auto familyFolder = parentFolder == rootFolder ? juce::String()
+                                                                  : parentFolder.getFileName();
+            const auto family = classifyFamily (searchable, familyFolder);
+            captures.push_back ({ file, family, creator, readSettings (searchable),
+                                  readChannelColour (file.getFileNameWithoutExtension(), family) });
+            if (! families.contains (family)) families.add (family);
+        }
+        families.sort (true);
+        familyFilter.clear (juce::dontSendNotification);
+        familyFilter.addItem ("ALL FAMILIES", 1);
+        for (int i = 0; i < families.size(); ++i)
+            familyFilter.addItem (families[i], i + 2);
+        familyFilter.setSelectedId (1, juce::dontSendNotification);
+        std::sort (captures.begin(), captures.end(), [] (const Capture& a, const Capture& b)
+        {
+            const auto familyCompare = a.family.compareIgnoreCase (b.family);
+            return familyCompare == 0 ? a.file.getFileName().compareIgnoreCase (b.file.getFileName()) < 0
+                                      : familyCompare < 0;
+        });
+        refreshRows();
+    }
+
+    void refreshRows()
+    {
+        visibleCaptures.clear();
+        const auto query = search.getText().trim().toLowerCase();
+        const auto family = familyFilter.getSelectedId() > 1 ? familyFilter.getText() : juce::String();
+        for (size_t i = 0; i < captures.size(); ++i)
+        {
+            const auto& capture = captures[i];
+            const auto searchText = (capture.file.getFileName() + " " + capture.family + " "
+                                     + capture.creator + " " + capture.settings + " "
+                                     + capture.channelColour).toLowerCase();
+            if (query.isNotEmpty() && ! searchText.contains (query)) continue;
+            if (family.isNotEmpty() && capture.family != family) continue;
+            visibleCaptures.push_back (static_cast<int> (i));
+        }
+        listBox.updateContent();
+        status.setText (rootFolder.getFullPathName() + "   |   " + juce::String (visibleCaptures.size())
+                        + " of " + juce::String (captures.size())
+                        + " captures   |   only explicit filename tags are shown; NAM audio is not analyzed",
+                        juce::dontSendNotification);
+    }
+
+    int getNumRows() override { return static_cast<int> (visibleCaptures.size()); }
+
+    void listBoxItemDoubleClicked (int row, const juce::MouseEvent&) override
+    {
+        listBox.selectRow (row);
+        loadSelected();
+    }
+
+    void paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected) override
+    {
+        if (row < 0 || row >= static_cast<int> (visibleCaptures.size())) return;
+        const auto& capture = captures[static_cast<size_t> (visibleCaptures[static_cast<size_t> (row)])];
+        auto categoryColour = knobAccent;
+        if (capture.channelColour == "GREEN") categoryColour = juce::Colour (0xff58c9a5);
+        else if (capture.channelColour == "ORANGE") categoryColour = juce::Colour (0xffffa24f);
+        else if (capture.channelColour == "BLUE") categoryColour = juce::Colour (0xff55b8e8);
+        else if (capture.channelColour == "RED") categoryColour = juce::Colour (0xffff625e);
+
+        auto rowColour = selected ? juce::Colour (0xff1d3040)
+                                  : (row % 2 == 0 ? detailSurface : tileSurface);
+        if (! selected && capture.channelColour.isNotEmpty())
+            rowColour = rowColour.overlaidWith (categoryColour.withAlpha (0.075f));
+        g.fillAll (rowColour);
+        g.setColour (categoryColour);
+        g.fillRoundedRectangle (4.0f, 8.0f, 3.0f, static_cast<float> (height - 16), 1.5f);
+        g.setColour (text);
+        g.setFont (namplifiedFontOptions (15.5f, juce::Font::bold));
+        g.drawFittedText (capture.file.getFileName(), 18, 6, width - 32, 21,
+                          juce::Justification::centredLeft, 1);
+        g.setColour (secondaryText);
+        g.setFont (namplifiedFontOptions (12.5f));
+        juce::StringArray details;
+        if (capture.family.isNotEmpty()) details.add (capture.family);
+        if (capture.channelColour.isNotEmpty()) details.add ("CHANNEL " + capture.channelColour);
+        if (capture.settings.isNotEmpty()) details.add (capture.settings);
+        if (capture.creator.isNotEmpty()) details.add (capture.creator);
+        const auto detailText = details.joinIntoString ("   ·   ");
+        g.drawFittedText (detailText, 18, 28, width - 32, 19, juce::Justification::centredLeft, 1);
+    }
+
+    void selectedRowsChanged (int) override {}
+
+    void loadSelected()
+    {
+        const auto row = listBox.getSelectedRow();
+        if (row < 0 || row >= static_cast<int> (visibleCaptures.size())) return;
+        const auto file = captures[static_cast<size_t> (visibleCaptures[static_cast<size_t> (row)])].file;
+        auto callback = selection;
+        if (auto* dialog = findParentComponentOfClass<juce::DialogWindow>())
+            dialog->exitModalState (1);
+        juce::MessageManager::callAsync ([callback = std::move (callback), file]
+        {
+            if (callback) callback (file);
+        });
+    }
+
+    NAMplifiedLookAndFeel lookAndFeel;
+    int slot;
+    Selection selection;
+    juce::File rootFolder;
+    std::vector<Capture> captures;
+    std::vector<int> visibleCaptures;
+    juce::Label title, status;
+    juce::TextEditor search;
+    juce::ComboBox familyFilter;
+    juce::TextButton chooseFolder, loadButton, closeButton;
+    juce::ListBox listBox;
+    std::unique_ptr<juce::FileChooser> folderChooser;
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -996,23 +1347,29 @@ public:
 
         if (loadKind != FileKind::none)
         {
-            loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM CAPTURE" : "LOAD IR");
+            loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM FILE" : "LOAD IR");
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
             if (loadKind == FileKind::nam)
-                loadButton.setTooltip ("Load a capture from a folder containing this amp's other captures. The arrows step through NAM files in that folder. Saving a preset copies its NAM and IR files into that preset's Assets folder.");
+                loadButton.setTooltip ("Load one NAM file directly. Use the capture browser to search a local library, or PREV/NEXT to step through captures in the loaded file's folder.");
             addAndMakeVisible (loadButton);
 
             if (loadKind == FileKind::nam)
             {
+                libraryButton.setButtonText ("SMART BROWSER");
+                libraryButton.setTooltip ("Search and filter NAM captures in a local folder library.");
+                libraryButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
+                libraryButton.setColour (juce::TextButton::textColourOffId, text);
+                addAndMakeVisible (libraryButton);
+                libraryButton.onClick = [this] { openCaptureBrowser(); };
                 previousCaptureButton.setButtonText ("PREV");
                 nextCaptureButton.setButtonText ("NEXT");
                 previousCaptureButton.setTooltip ("Load the previous NAM capture from this folder.");
                 nextCaptureButton.setTooltip ("Load the next NAM capture from this folder.");
-                previousCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e3935));
-                nextCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff1e3935));
-                previousCaptureButton.setColour (juce::TextButton::textColourOffId, knobAccent);
-                nextCaptureButton.setColour (juce::TextButton::textColourOffId, knobAccent);
+                previousCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
+                nextCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
+                previousCaptureButton.setColour (juce::TextButton::textColourOffId, text);
+                nextCaptureButton.setColour (juce::TextButton::textColourOffId, text);
                 addAndMakeVisible (previousCaptureButton);
                 addAndMakeVisible (nextCaptureButton);
                 previousCaptureButton.onClick = [this] { stepCapture (-1); };
@@ -1030,10 +1387,9 @@ public:
             fileName.setText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
                                                         : audioProcessor.getImpulseResponseName (slot),
                               juce::dontSendNotification);
-            fileName.setFont (namplifiedFontOptions (15.0f));
-            fileName.setColour (juce::Label::textColourId, secondaryText);
-            fileName.setJustificationType (loadKind == FileKind::nam
-                ? juce::Justification::centred : juce::Justification::centredLeft);
+            fileName.setFont (namplifiedFontOptions (16.0f, juce::Font::bold));
+            fileName.setColour (juce::Label::textColourId, text);
+            fileName.setJustificationType (juce::Justification::centredLeft);
             addAndMakeVisible (fileName);
 
             loadButton.onClick = [this]
@@ -1046,7 +1402,7 @@ public:
                 if (! initialDirectory.isDirectory())
                     initialDirectory = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
                 fileChooser = std::make_unique<juce::FileChooser> (
-                    loadKind == FileKind::nam ? "Choose a NAM capture" : "Choose an impulse response",
+                    loadKind == FileKind::nam ? "Choose a NAM file" : "Choose an impulse response",
                     initialDirectory, filter);
                 juce::Component::SafePointer<StageCard> safeThis (this);
                 fileChooser->launchAsync (
@@ -1239,7 +1595,8 @@ public:
         const auto denseControls = compactMode || isUsingBuiltInBoost() || stageName == "Delay";
         const auto rowPitch = denseControls ? 104 : 148;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
-        const auto fileControlsHeight = loadKind == FileKind::none || isUsingBuiltInBoost() || loadKind == FileKind::nam ? 0 : 46;
+        const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
+            : (loadKind == FileKind::none || isUsingBuiltInBoost() ? 0 : 46);
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
@@ -1292,21 +1649,6 @@ public:
         // NAM profile blocks deliberately have no source selector.
         if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
         {
-            auto actions = header.withTrimmedLeft (sourceIndex >= 0 ? 294 : 142);
-            const auto gap = 8;
-            const auto loadWidth = juce::jmin (160, juce::jmax (112, actions.getWidth() / 6));
-            const auto navWidth = 56;
-            const auto toneWidth = juce::jmax (120, juce::jmin (220, actions.getWidth() - loadWidth - navWidth * 2 - gap * 4));
-            loadButton.setBounds (actions.removeFromLeft (loadWidth).withHeight (34).withY (header.getY() + 1));
-            actions.removeFromLeft (gap);
-            previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).withHeight (34).withY (header.getY() + 1));
-            actions.removeFromLeft (4);
-            nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).withHeight (34).withY (header.getY() + 1));
-            actions.removeFromLeft (gap);
-            tone3000Button.setBounds (actions.removeFromLeft (toneWidth).withHeight (34).withY (header.getY() + 1));
-            actions.removeFromLeft (8);
-            fileName.setBounds (actions);
-            fileName.setTooltip (fileName.getText());
         }
         if (hasEnableControl)
             enableButton.setBounds (right.removeFromLeft (92));
@@ -1320,6 +1662,34 @@ public:
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
         if (expandButton != nullptr)
             expandButton->setBounds (right.removeFromLeft (104).withY (header.getY() + 4).withHeight (28));
+
+        if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
+        {
+            fileName.setBounds ({});
+            auto actionRow = area.removeFromTop (38);
+            constexpr int loadWidth = 160, browserWidth = 160, navWidth = 64, toneWidth = 210;
+            constexpr int gap = 10;
+            constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
+            const auto nameWidth = juce::jmax (0, juce::jmin (1000, actionRow.getWidth() - actionWidth - 16));
+            const auto combinedWidth = actionWidth + (nameWidth > 0 ? 16 + nameWidth : 0);
+            auto actions = actionRow.withSizeKeepingCentre (combinedWidth, actionRow.getHeight());
+            loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
+            actions.removeFromLeft (gap);
+            libraryButton.setBounds (actions.removeFromLeft (browserWidth).reduced (0, 2));
+            actions.removeFromLeft (gap);
+            previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+            actions.removeFromLeft (4);
+            nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+            actions.removeFromLeft (gap);
+            tone3000Button.setBounds (actions.removeFromLeft (toneWidth).reduced (0, 2));
+            if (nameWidth > 0)
+            {
+                actions.removeFromLeft (16);
+                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (4, 0));
+            }
+            fileName.setTooltip (fileName.getText());
+            fileName.setJustificationType (juce::Justification::centred);
+        }
 
         if (loadKind != FileKind::none && ! isUsingBuiltInBoost())
         {
@@ -1612,6 +1982,30 @@ private:
         }
     }
 
+    void openCaptureBrowser()
+    {
+        juce::DialogWindow::LaunchOptions options;
+        options.dialogTitle = "LOCAL CAPTURE LIBRARY";
+        options.dialogBackgroundColour = background;
+        options.escapeKeyTriggersCloseButton = true;
+        options.useNativeTitleBar = true;
+        options.resizable = true;
+        options.componentToCentreAround = this;
+        options.associatedComponent = getTopLevelComponent();
+        auto browser = std::make_unique<NAMCaptureBrowser> (audioProcessor, slot,
+            [safeThis = juce::Component::SafePointer<StageCard> (this)] (const juce::File& file)
+            {
+                if (safeThis == nullptr || ! file.existsAsFile()) return;
+                safeThis->toneModels.clear();
+                safeThis->tone3000Attribution.clear();
+                rememberNAMDirectory (file.getParentDirectory());
+                safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
+            });
+        options.content.setOwned (browser.release());
+        if (auto* dialog = options.launchAsync())
+            dialog->setSize (860, 620);
+    }
+
     bool isControlVisible (size_t index) const
     {
         if (index >= controlIds.size())
@@ -1671,6 +2065,7 @@ private:
         {
             const auto showCapture = ! isUsingBuiltInBoost();
             loadButton.setVisible (showCapture);
+            libraryButton.setVisible (showCapture);
             previousCaptureButton.setVisible (showCapture);
             nextCaptureButton.setVisible (showCapture);
             tone3000Button.setVisible (showCapture);
@@ -1806,7 +2201,7 @@ private:
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     juce::ToggleButton enableButton;
-    juce::TextButton loadButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
+    juce::TextButton loadButton, libraryButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::TextButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
