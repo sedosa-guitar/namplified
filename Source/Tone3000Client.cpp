@@ -62,7 +62,7 @@ juce::String formBody (const juce::StringPairArray& values)
 }
 
 juce::var requestJson (const juce::URL& url, const juce::String& bearerToken,
-                       int& statusCode, bool post = false)
+                       int& statusCode, bool post = false, juce::String* responseText = nullptr)
 {
     juce::String headers ("Accept: application/json\r\n");
     if (bearerToken.isNotEmpty())
@@ -75,9 +75,24 @@ juce::var requestJson (const juce::URL& url, const juce::String& bearerToken,
         .withConnectionTimeoutMs (20000)
         .withStatusCode (&statusCode);
     auto input = url.createInputStream (options);
-    if (input == nullptr || (statusCode != 0 && (statusCode < 200 || statusCode >= 300)))
+    if (input == nullptr)
         return {};
-    return juce::JSON::parse (input->readEntireStreamAsString());
+    const auto body = input->readEntireStreamAsString();
+    if (responseText != nullptr)
+        *responseText = body;
+    return juce::JSON::parse (body);
+}
+
+juce::String responseError (const juce::var& response, const juce::String& rawBody)
+{
+    auto message = response.getProperty ("error_description", {}).toString();
+    if (message.isEmpty())
+        message = response.getProperty ("message", {}).toString();
+    if (message.isEmpty())
+        message = response.getProperty ("error", {}).toString();
+    if (message.isEmpty() && rawBody.isNotEmpty())
+        message = rawBody.substring (0, 240).trim();
+    return message;
 }
 
 juce::String getQueryParameter (const juce::URL& url, const juce::String& name)
@@ -157,12 +172,13 @@ bool Client::startSelectFlow (int architecture, ModelsCallback callback)
     return startThread();
 }
 
-bool Client::downloadModel (const Model& model, DownloadCallback callback)
+bool Client::downloadModel (const Model& model, int slot, DownloadCallback callback)
 {
     if (isThreadRunning() || accessToken.isEmpty()
         || model.modelUrl.isEmpty() || callback == nullptr)
         return false;
     selectedModel = model;
+    downloadSlot = slot;
     downloadCallback = std::move (callback);
     operation = Operation::download;
     return startThread();
@@ -187,6 +203,32 @@ void Client::run()
 
 void Client::runSelectFlow()
 {
+    std::unique_ptr<juce::StreamingSocket> client;
+    bool browserAnswered = false;
+    const auto answerBrowser = [&client, &browserAnswered] (bool success)
+    {
+        if (client == nullptr || browserAnswered)
+            return;
+
+        const auto response = juce::String ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n")
+            + "<!doctype html><html lang='en'><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>NAMplified</title></head>"
+              "<body style='margin:0;min-height:100vh;display:grid;place-items:center;background:#0b0e14;color:#eef1f6;font:16px -apple-system,BlinkMacSystemFont,sans-serif'>"
+              "<main style='box-sizing:border-box;width:min(560px,calc(100% - 32px));padding:36px;border:1px solid #35404d;border-radius:18px;background:#151a22;box-shadow:0 24px 80px #0008'>"
+              "<div style='color:#69d7b5;font-size:13px;font-weight:700;letter-spacing:.16em'>NAMPLIFIED</div>"
+            + juce::String ("<h1 style='margin:18px 0 10px;font-size:28px'>")
+            + (success ? "Tone selected" : "Selection not completed") + "</h1>"
+            + (success
+                ? "<p style='color:#c0c8d3;line-height:1.6'>NAMplified is opening the capture selection. If there is one compatible capture, it loads automatically; otherwise choose one from the list.</p>"
+                  "<p style='color:#c0c8d3;line-height:1.6'>Save your NAMplified preset afterward to keep the capture with it.</p>"
+                  "<div style='margin-top:24px;padding:14px 16px;border-radius:10px;background:#1b382f;color:#69d7b5;font-weight:600'>The selected capture will load into the active NAM block.</div>"
+                : "<p style='color:#c0c8d3;line-height:1.6'>Return to NAMplified for details, then try selecting the tone again.</p>")
+            + "<div style='margin-top:28px;padding-top:18px;border-top:1px solid #303845;color:#8e99a8;font-size:13px'>"
+              "TONE selection is complete. You can close this tab.</div></main></body></html>";
+        client->write (response.toRawUTF8(), static_cast<int> (response.getNumBytesAsUTF8()));
+        client->close();
+        browserAnswered = true;
+    };
+
     const auto finish = [this] (std::vector<Model> models, juce::String error)
     {
         if (error.isNotEmpty())
@@ -199,56 +241,73 @@ void Client::runSelectFlow()
             });
     };
 
-    std::unique_ptr<juce::StreamingSocket> client (listener.waitForNextConnection());
+    juce::String target;
+    for (int attempt = 0; attempt < 5 && ! threadShouldExit(); ++attempt)
+    {
+        target.clear();
+        client.reset (listener.waitForNextConnection());
+        if (client == nullptr)
+            break;
+
+        juce::String requestData;
+        std::array<char, 1024> requestBuffer {};
+        while (! threadShouldExit() && requestData.length() < 8192 && ! requestData.contains ("\r\n"))
+        {
+            if (client->waitUntilReady (true, 5000) <= 0)
+                break;
+            const auto bytesRead = client->read (requestBuffer.data(), static_cast<int> (requestBuffer.size()), false);
+            if (bytesRead <= 0)
+                break;
+            requestData += juce::String::fromUTF8 (requestBuffer.data(), bytesRead);
+        }
+
+        if (requestData.contains ("\r\n"))
+        {
+            const auto requestLine = requestData.upToFirstOccurrenceOf ("\r\n", false, false);
+            const auto firstSpace = requestLine.indexOfChar (' ');
+            const auto relativeSecondSpace = firstSpace >= 0 ? requestLine.substring (firstSpace + 1).indexOfChar (' ') : -1;
+            const auto secondSpace = relativeSecondSpace >= 0 ? relativeSecondSpace + firstSpace + 1 : -1;
+            target = firstSpace >= 0 && secondSpace > firstSpace
+                ? requestLine.substring (firstSpace + 1, secondSpace) : juce::String();
+        }
+
+        const auto isCallbackRequest = target == callbackPath || target.startsWith (juce::String (callbackPath) + "?");
+        if (isCallbackRequest)
+            break;
+
+        const auto notFound = juce::String ("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        client->write (notFound.toRawUTF8(), static_cast<int> (notFound.getNumBytesAsUTF8()));
+        client->close();
+        client.reset();
+    }
     listener.close();
+
     if (client == nullptr || threadShouldExit())
     {
-        finish ({}, "TONE3000 selection was cancelled.");
+        finish ({}, "TONE3000 selection was cancelled or its browser callback was not received.");
         return;
     }
 
-    juce::String requestData;
-    std::array<char, 1024> requestBuffer {};
-    while (! threadShouldExit() && requestData.length() < 8192 && ! requestData.contains ("\r\n"))
-    {
-        if (client->waitUntilReady (true, 5000) <= 0)
-            break;
-        const auto bytesRead = client->read (requestBuffer.data(), static_cast<int> (requestBuffer.size()), false);
-        if (bytesRead <= 0)
-            break;
-        requestData += juce::String::fromUTF8 (requestBuffer.data(), bytesRead);
-    }
-
-    if (requestData.isEmpty() || ! requestData.contains ("\r\n"))
-    {
-        finish ({}, "Could not read the TONE3000 callback request.");
-        return;
-    }
-
-    const auto requestLine = requestData.upToFirstOccurrenceOf ("\r\n", false, false);
-    const auto firstSpace = requestLine.indexOfChar (' ');
-    const auto relativeSecondSpace = firstSpace >= 0 ? requestLine.substring (firstSpace + 1).indexOfChar (' ') : -1;
-    const auto secondSpace = relativeSecondSpace >= 0 ? relativeSecondSpace + firstSpace + 1 : -1;
-    const auto target = firstSpace >= 0 && secondSpace > firstSpace
-        ? requestLine.substring (firstSpace + 1, secondSpace) : juce::String();
-
-    auto response = juce::String ("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nConnection: close\r\n\r\n")
-                  + "<!doctype html><html><body style='font:16px sans-serif;background:#10131a;color:#eee;padding:3em'>"
-                    "TONE3000 selection received. You can return to NAMplified and close this tab."
-                    "</body></html>";
-    client->write (response.toRawUTF8(), static_cast<int> (response.getNumBytesAsUTF8()));
-    client->close();
-
-    if (! target.startsWith (callbackPath))
-    {
-        finish ({}, "The TONE3000 callback used an unexpected path.");
-        return;
-    }
+    // The OAuth callback is opened by the external browser. Bring the host app
+    // forward before presenting the capture picker so it cannot hide behind it.
+    juce::MessageManager::callAsync ([] { juce::Process::makeForegroundProcess(); });
 
     const juce::URL callbackUrl ("http://127.0.0.1" + target);
     if (getQueryParameter (callbackUrl, "state") != expectedState)
     {
+        answerBrowser (false);
         finish ({}, "TONE3000 login state did not match. Please try again.");
+        return;
+    }
+
+    const auto oauthError = getQueryParameter (callbackUrl, "error");
+    if (oauthError.isNotEmpty())
+    {
+        auto description = getQueryParameter (callbackUrl, "error_description");
+        if (description.isEmpty())
+            description = oauthError;
+        answerBrowser (false);
+        finish ({}, "TONE3000 authorization failed: " + description);
         return;
     }
 
@@ -256,11 +315,13 @@ void Client::runSelectFlow()
     selectedToneId = getQueryParameter (callbackUrl, "tone_id");
     if (getQueryParameter (callbackUrl, "canceled") == "true")
     {
+        answerBrowser (false);
         finish ({}, "TONE3000 selection was cancelled.");
         return;
     }
     if (authorizationCode.isEmpty() || selectedToneId.isEmpty())
     {
+        answerBrowser (false);
         finish ({}, "TONE3000 did not return a selected tone.");
         return;
     }
@@ -273,13 +334,17 @@ void Client::runSelectFlow()
     tokenFields.set ("client_id", NAMPLIFIED_TONE3000_CLIENT_ID);
 
     int statusCode = 0;
+    juce::String tokenBody;
     const auto tokenResponse = requestJson (
         juce::URL (juce::String (apiRoot) + "/oauth/token").withPOSTData (formBody (tokenFields)),
-        {}, statusCode, true);
+        {}, statusCode, true, &tokenBody);
     accessToken = tokenResponse.getProperty ("access_token", {}).toString();
     if (accessToken.isEmpty())
     {
-        finish ({}, "TONE3000 sign-in failed (HTTP " + juce::String (statusCode) + ").");
+        auto detail = responseError (tokenResponse, tokenBody);
+        answerBrowser (false);
+        finish ({}, "TONE3000 sign-in failed (HTTP " + juce::String (statusCode)
+                    + (detail.isNotEmpty() ? "): " + detail : "). Check the registered redirect URI and try again."));
         return;
     }
 
@@ -288,7 +353,8 @@ void Client::runSelectFlow()
                                    accessToken, toneStatus);
     if (tone.isVoid() || (toneStatus != 0 && (toneStatus < 200 || toneStatus >= 300)))
     {
-        finish ({}, "Could not load TONE3000 tone details.");
+        answerBrowser (false);
+        finish ({}, "Could not load TONE3000 tone details (HTTP " + juce::String (toneStatus) + ").");
         return;
     }
 
@@ -313,6 +379,7 @@ void Client::runSelectFlow()
         for (const auto& item : *data)
         {
             Model model;
+            model.toneId = selectedToneId;
             model.name = item.getProperty ("name", {}).toString();
             model.architecture = architectureName (item.getProperty ("architecture_version", {}));
             model.modelUrl = item.getProperty ("model_url", {}).toString();
@@ -329,9 +396,11 @@ void Client::runSelectFlow()
 
     if (models.empty())
     {
+        answerBrowser (false);
         finish ({}, "No compatible NAM captures were found in the selected TONE3000 tone.");
         return;
     }
+    answerBrowser (true);
     finish (std::move (models), {});
 }
 
@@ -339,7 +408,6 @@ void Client::runModelDownload()
 {
     auto finish = [this] (juce::File file, juce::String error)
     {
-        accessToken.clear();
         selectedModel = {};
         auto callback = std::move (downloadCallback);
         if (callback != nullptr)
@@ -357,6 +425,9 @@ void Client::runModelDownload()
 
     auto folder = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
                       .getChildFile ("NAMplified").getChildFile ("TONE3000");
+    const auto slotFolder = downloadSlot >= 2 ? juce::String ("BOOST_NAM")
+        : "NAM" + juce::String (juce::jlimit (0, 1, downloadSlot) + 1);
+    folder = folder.getChildFile (slotFolder).getChildFile (safeFilePart (selectedModel.toneId));
     if (! folder.createDirectory().wasOk())
     {
         finish ({}, "Could not create the local TONE3000 model folder.");
@@ -409,7 +480,9 @@ void Client::runModelDownload()
 
     juce::DynamicObject::Ptr metadata = new juce::DynamicObject();
     metadata->setProperty ("source", "TONE3000");
+    metadata->setProperty ("toneId", selectedModel.toneId);
     metadata->setProperty ("model", selectedModel.name);
+    metadata->setProperty ("modelUrl", selectedModel.modelUrl);
     metadata->setProperty ("architecture", selectedModel.architecture);
     metadata->setProperty ("tone", selectedModel.toneTitle);
     metadata->setProperty ("toneUrl", selectedModel.toneUrl);
