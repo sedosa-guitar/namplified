@@ -124,6 +124,10 @@ public:
         setColour (juce::ComboBox::backgroundColourId, juce::Colour::fromRGB (19, 24, 32));
         setColour (juce::ComboBox::textColourId, text);
         setColour (juce::ComboBox::outlineColourId, juce::Colour::fromRGB (52, 59, 72));
+        setColour (juce::PopupMenu::backgroundColourId, juce::Colour::fromRGB (26, 32, 41));
+        setColour (juce::PopupMenu::textColourId, text);
+        setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour::fromRGB (40, 52, 64));
+        setColour (juce::PopupMenu::highlightedTextColourId, text);
     }
 
     juce::Font getTextButtonFont (juce::TextButton& button, int buttonHeight) override
@@ -143,6 +147,61 @@ public:
     juce::Font getPopupMenuFont() override
     {
         return juce::Font (namplifiedFontOptions (16.0f));
+    }
+
+    void drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area,
+                            bool isSeparator, bool isActive, bool isHighlighted, bool isTicked,
+                            bool hasSubMenu, const juce::String& itemText, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* itemTextColour) override
+    {
+        juce::ignoreUnused (shortcutKeyText, icon);
+        if (isSeparator)
+        {
+            g.setColour (juce::Colour::fromRGB (55, 64, 76));
+            g.fillRect (area.reduced (12, area.getHeight() / 2));
+            return;
+        }
+
+        auto itemArea = area.reduced (5, 2);
+        if (isTicked || isHighlighted)
+        {
+            const auto selectedFill = isHighlighted ? juce::Colour::fromRGB (47, 66, 78)
+                                                    : juce::Colour::fromRGB (34, 58, 57);
+            g.setColour (selectedFill);
+            g.fillRoundedRectangle (itemArea.toFloat(), 6.0f);
+        }
+        if (isTicked)
+        {
+            g.setColour (knobAccent);
+            g.fillRoundedRectangle (juce::Rectangle<float> (static_cast<float> (itemArea.getX() + 7),
+                                                              static_cast<float> (itemArea.getY() + 7),
+                                                              3.0f, static_cast<float> (itemArea.getHeight() - 14)), 1.5f);
+        }
+
+        auto colour = itemTextColour != nullptr ? *itemTextColour : text;
+        if (! isActive)
+            colour = colour.withAlpha (0.42f);
+        else if (isTicked)
+            colour = juce::Colour (0xff7be0bd);
+        g.setColour (colour);
+        g.setFont (getPopupMenuFont());
+        auto textArea = itemArea.reduced (isTicked ? 20 : 12, 0);
+        if (hasSubMenu)
+            textArea.removeFromRight (18);
+        g.drawFittedText (itemText, textArea, juce::Justification::centredLeft, 1);
+
+        if (hasSubMenu)
+        {
+            const auto centre = juce::Point<float> (static_cast<float> (itemArea.getRight() - 12),
+                                                    static_cast<float> (itemArea.getCentreY()));
+            juce::Path arrow;
+            arrow.startNewSubPath (centre.x - 2.0f, centre.y - 4.0f);
+            arrow.lineTo (centre.x + 2.0f, centre.y);
+            arrow.lineTo (centre.x - 2.0f, centre.y + 4.0f);
+            g.setColour (colour);
+            g.strokePath (arrow, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved,
+                                                       juce::PathStrokeType::rounded));
+        }
     }
 
     juce::Font getAlertWindowTitleFont() override
@@ -2039,7 +2098,7 @@ private:
             const auto prefix = "amp" + stageName.fromLastOccurrenceOf (" ", false, false);
             const auto& id = controlIds[index];
             return id == prefix + "In" || id == prefix + "Out"
-                || id == prefix + "EqPosition" || id == prefix + "EqBass"
+                || id == prefix + "EqPosition" || id == prefix + "Polarity" || id == prefix + "EqBass"
                 || id == prefix + "EqMid" || id == prefix + "EqTreble";
         }
         if (stageName != "Boost Pedal")
