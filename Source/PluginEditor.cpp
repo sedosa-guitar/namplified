@@ -1269,6 +1269,28 @@ private:
     std::unique_ptr<juce::FileChooser> folderChooser;
 };
 
+class StatusLightButton final : public juce::Button
+{
+public:
+    StatusLightButton() : juce::Button ("Block status")
+    {
+        setClickingTogglesState (true);
+        setTooltip ("ENABLED");
+    }
+
+    void paintButton (juce::Graphics& g, bool isMouseOver, bool isButtonDown) override
+    {
+        auto bounds = getLocalBounds().toFloat();
+        const auto diameter = juce::jmin (18.0f, bounds.getHeight() - 4.0f);
+        const auto dot = juce::Rectangle<float> (diameter, diameter).withCentre (bounds.getCentre());
+        const auto colour = getToggleState() ? juce::Colour (0xff61d7b4) : juce::Colour (0xffe66b68);
+        g.setColour (colour.withAlpha (isButtonDown ? 0.55f : (isMouseOver ? 0.28f : 0.16f)));
+        g.fillEllipse (dot.expanded (4.0f));
+        g.setColour (colour);
+        g.fillEllipse (dot);
+    }
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -1290,11 +1312,11 @@ public:
         {
             hasEnableControl = true;
             enableButton.setName (enableParameterId);
-            enableButton.setButtonText ("ENABLED");
-            enableButton.setColour (juce::ToggleButton::textColourId, secondaryText);
+            enableButton.onClick = [this] { updateEnableTooltip(); };
             addAndMakeVisible (enableButton);
             enableAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
                 audioProcessor.parameters, enableParameterId, enableButton);
+            updateEnableTooltip();
         }
 
         if (hasMoveControls)
@@ -1350,6 +1372,8 @@ public:
             loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM FILE" : "LOAD IR");
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
+            if (loadKind == FileKind::impulseResponse)
+                loadButton.getProperties().set ("namButtonFontHeight", 18.0);
             if (loadKind == FileKind::nam)
                 loadButton.setTooltip ("Load one NAM file directly. Use the capture browser to search a local library, or PREV/NEXT to step through captures in the loaded file's folder.");
             addAndMakeVisible (loadButton);
@@ -1627,7 +1651,7 @@ public:
         for (size_t i = 0; i < controlIds.size(); ++i)
             if (controlIds[i].endsWith ("Source"))
                 sourceIndex = static_cast<int> (i);
-        const auto rightWidth = (hasEnableControl ? 92 : 0) + (hasMoveControls ? 68 : 0)
+        const auto rightWidth = (hasEnableControl ? 36 : 0) + (hasMoveControls ? 68 : 0)
                               + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 110 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
@@ -1651,7 +1675,7 @@ public:
         {
         }
         if (hasEnableControl)
-            enableButton.setBounds (right.removeFromLeft (92));
+            enableButton.setBounds (right.removeFromLeft (36).withSizeKeepingCentre (24, 24));
         if (hasMoveControls)
         {
             moveUpButton.setBounds (right.removeFromLeft (32));
@@ -2178,11 +2202,16 @@ private:
         if (! stageName.startsWith ("NAM Profile") || ! hasEnableControl)
             return;
         enableButton.setEnabled (true);
-        enableButton.setButtonText ("ENABLED");
         const auto* ampEnabled = audioProcessor.parameters.getRawParameterValue (enableParameterId);
         enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
                                      juce::dontSendNotification);
-        enableButton.setTooltip ("The amp can run with or without a cabinet IR. Disable the IR independently to bypass its cabinet processing.");
+        updateEnableTooltip();
+    }
+
+    void updateEnableTooltip()
+    {
+        enableButton.setTooltip (enableButton.getToggleState() ? "ENABLED" : "BYPASSED");
+        enableButton.repaint();
     }
 
     NAMplifiedAudioProcessor& audioProcessor;
@@ -2200,7 +2229,7 @@ private:
     bool compactMode = false;
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
-    juce::ToggleButton enableButton;
+    StatusLightButton enableButton;
     juce::TextButton loadButton, libraryButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::TextButton> expandButton;
