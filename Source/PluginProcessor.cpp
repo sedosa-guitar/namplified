@@ -479,7 +479,8 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     for (const auto* id : { "postLowQ", "postGraphic2Q", "postGraphic3Q", "postGraphic4Q", "postMidQ",
                             "postGraphic6Q", "postGraphic7Q", "postGraphic8Q", "postHighQ" })
         addKnob (id, "Post EQ Band Q", 0.30f, 4.0f, 0.707f);
-    addKnob ("outputGain", "Output Gain", -24.0f, 12.0f, 0.0f);
+    // Keep unity gain at the rotary's midpoint so 0 dB points to 12 o'clock.
+    addKnob ("outputGain", "Output Gain", -24.0f, 24.0f, 0.0f);
     return layout;
 }
 

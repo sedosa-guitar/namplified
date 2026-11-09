@@ -1533,11 +1533,15 @@ public:
                     BinaryData::TONE3000Logo_svg, BinaryData::TONE3000Logo_svgSize));
             }
 
-            fileName.setText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
-                                                        : audioProcessor.getImpulseResponseName (slot),
-                              juce::dontSendNotification);
+            setFileNameText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
+                                                       : audioProcessor.getImpulseResponseName (slot),
+                             juce::dontSendNotification);
             fileName.setFont (namplifiedFontOptions (16.0f, juce::Font::bold));
             fileName.setColour (juce::Label::textColourId, text);
+            fileName.setColour (juce::Label::backgroundColourId, juce::Colour::fromRGB (22, 28, 37));
+            fileName.setColour (juce::Label::outlineColourId, juce::Colour::fromRGB (57, 66, 80));
+            fileName.setBorderSize ({ 1, 8, 1, 8 });
+            fileName.setOpaque (true);
             fileName.setJustificationType (juce::Justification::centredLeft);
             addAndMakeVisible (fileName);
 
@@ -1572,7 +1576,7 @@ public:
                         }
                         else
                             safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
-                        safeThis->fileName.setText (file.getFileName(), juce::dontSendNotification);
+                        safeThis->setFileNameText (file.getFileName(), juce::dontSendNotification);
                     });
             };
             if (loadKind == FileKind::nam || loadKind == FileKind::impulseResponse)
@@ -1714,22 +1718,6 @@ public:
             expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
         }
     }
-    void setCompactMode (bool shouldBeCompact)
-    {
-        if (compactMode == shouldBeCompact)
-            return;
-        compactMode = shouldBeCompact;
-        resized();
-    }
-
-    void setAdaptiveCompactMode (bool shouldBeCompact)
-    {
-        if (adaptiveCompactMode == shouldBeCompact)
-            return;
-        adaptiveCompactMode = shouldBeCompact;
-        resized();
-    }
-
     int getPreferredHeight() const
     {
         if (graphicEq != nullptr)
@@ -1749,8 +1737,7 @@ public:
         }
         const auto columns = selectorCount > 0 ? 4 : 5;
         const auto rows = (knobCount + columns - 1) / columns;
-        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
+        const auto rowPitch = controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
             : (loadKind == FileKind::none || isUsingBuiltInBoost() ? 0 : 46);
@@ -1827,7 +1814,7 @@ public:
             constexpr int loadWidth = 160, browserWidth = 160, navWidth = 64, toneWidth = 210;
             constexpr int gap = 10;
             constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
-            const auto nameWidth = juce::jmax (0, juce::jmin (1000, actionRow.getWidth() - actionWidth - 16));
+            const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
             const auto combinedWidth = actionWidth + (nameWidth > 0 ? 16 + nameWidth : 0);
             auto actions = actionRow.withSizeKeepingCentre (combinedWidth, actionRow.getHeight());
             loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
@@ -1842,10 +1829,9 @@ public:
             if (nameWidth > 0)
             {
                 actions.removeFromLeft (16);
-                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (4, 0));
+                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
             }
-            fileName.setTooltip (fileName.getText());
-            fileName.setJustificationType (juce::Justification::centred);
+            fileName.setJustificationType (juce::Justification::centredLeft);
         }
 
         if (loadKind != FileKind::none && ! isUsingBuiltInBoost())
@@ -1855,7 +1841,8 @@ public:
                 auto fileRow = area.removeFromTop (40);
                 loadButton.setBounds (fileRow.removeFromLeft (130));
                 fileRow.removeFromLeft (10);
-                fileName.setBounds (fileRow);
+                const auto nameWidth = juce::jmin (620, fileRow.getWidth());
+                fileName.setBounds (fileRow.removeFromLeft (nameWidth));
                 area.removeFromTop (3);
             }
         }
@@ -1868,11 +1855,13 @@ public:
 
         if (controlWidgets.empty())
             return;
-        constexpr int maxControlWidth = 1320;
+        // Keep a deliberate gutter around the control grid while letting it
+        // use more of the detail card on wide plugin windows.
+        area = area.reduced (16, 0);
+        constexpr int maxControlWidth = 1480;
         if (area.getWidth() > maxControlWidth)
             area = area.withSizeKeepingCentre (maxControlWidth, area.getHeight());
-        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
+        const auto centeredMeterStage = stageName == "Input" || stageName == "Noise Gate" || stageName == "Output";
         std::vector<int> selectors;
         std::vector<int> knobs;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
@@ -1902,28 +1891,58 @@ public:
 
         if (knobs.empty())
             return;
+        if (centeredMeterStage && selectors.empty() && knobs.size() == 1)
+        {
+            const auto index = static_cast<size_t> (knobs.front());
+            if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
+            {
+                const auto knobSize = rotarySize;
+                const auto labelHeight = 22;
+                const auto valueHeight = 20;
+                const auto labelKnobGap = 10;
+                const auto groupHeight = labelHeight + labelKnobGap + knobSize + valueHeight;
+                auto group = area.withHeight (groupHeight).withCentre (area.getCentre());
+                controlLabels[index]->setBounds (group.removeFromTop (labelHeight));
+                group.removeFromTop (labelKnobGap);
+                auto valueArea = group.removeFromBottom (valueHeight);
+                if (widgetValueLabels[index] != nullptr)
+                    widgetValueLabels[index]->setBounds (valueArea);
+                controlWidgets[index]->setBounds (group.withSizeKeepingCentre (knobSize, knobSize));
+                return;
+            }
+        }
         const auto isNamCapture = stageName.startsWith ("NAM Profile");
         const auto columns = isNamCapture ? juce::jmin (3, static_cast<int> (knobs.size()))
                                          : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
+        const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
+        const auto baseRowPitch = controlRowPitch;
+        const auto distributedRowPitch = rows > 0
+            ? juce::jmin (240, juce::jmax (baseRowPitch, area.getHeight() / rows))
+            : baseRowPitch;
+        const auto gridHeight = rows * distributedRowPitch;
+        const auto gridTop = area.getY() + juce::jmax (0, (area.getHeight() - gridHeight) / 2);
         for (size_t position = 0; position < knobs.size(); ++position)
         {
             const auto index = static_cast<size_t> (knobs[position]);
             const auto row = static_cast<int> (position) / columns;
             const auto column = static_cast<int> (position) % columns;
             auto cell = juce::Rectangle<int> (area.getX() + column * cellWidth,
-                                               area.getY() + row * rowPitch,
+                                               gridTop + row * distributedRowPitch,
                                                column + 1 == columns ? area.getWidth() - column * cellWidth : cellWidth,
-                                               rowPitch - 6).reduced (8, 3);
-            controlLabels[index]->setBounds (cell.removeFromTop (denseControls ? 18 : 22));
+                                               distributedRowPitch - 6).reduced (8, 3);
+            controlLabels[index]->setBounds (cell.removeFromTop (22));
+            if (centeredMeterStage)
+                cell.removeFromTop (8);
             if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
             {
-                auto valueArea = cell.removeFromBottom (denseControls ? 17 : 20);
+                auto valueArea = cell.removeFromBottom (20);
                 if (widgetValueLabels[index] != nullptr)
                     widgetValueLabels[index]->setBounds (valueArea);
-                const auto knobWidth = juce::jmin (adaptiveCompactMode ? 62 : denseControls ? 78 : 102,
+                const auto knobWidth = juce::jmin (rotarySize,
                                                    cell.getWidth());
-                auto knob = cell.withSizeKeepingCentre (knobWidth, adaptiveCompactMode ? 56 : denseControls ? 68 : 94);
+                const auto knobHeight = rotarySize;
+                auto knob = cell.withSizeKeepingCentre (knobWidth, knobHeight);
                 controlWidgets[index]->setBounds (knob);
             }
             else
@@ -2097,7 +2116,7 @@ private:
             return;
         tone3000Button.setEnabled (false);
         tone3000Button.setButtonText ("DOWNLOADING...");
-        fileName.setText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
+        setFileNameText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
         const juce::Component::SafePointer<StageCard> safeThis (this);
         if (! tone3000Client->downloadModel (model, slot,
             [safeThis, model] (juce::File file, juce::String error)
@@ -2110,8 +2129,8 @@ private:
                 safeThis->nextCaptureButton.setEnabled (true);
                 if (error.isNotEmpty() || ! file.existsAsFile())
                 {
-                    safeThis->fileName.setText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
-                                                juce::dontSendNotification);
+                    safeThis->setFileNameText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
+                                               juce::dontSendNotification);
                     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                             "TONE3000", error.isNotEmpty() ? error : "Download failed.");
                     return;
@@ -2121,15 +2140,14 @@ private:
                 safeThis->tone3000Attribution = "POWERED BY TONE3000 | " + model.toneTitle + " | " + model.name
                     + (model.creator.isNotEmpty() ? " | " + model.creator : "")
                     + (model.license.isNotEmpty() ? " | " + model.license : "");
-                safeThis->fileName.setText (safeThis->tone3000Attribution, juce::dontSendNotification);
-                safeThis->fileName.setTooltip (safeThis->tone3000Attribution);
+                safeThis->setFileNameText (safeThis->tone3000Attribution, juce::dontSendNotification);
             }))
         {
             tone3000Button.setEnabled (true);
             tone3000Button.setButtonText ({});
             previousCaptureButton.setEnabled (true);
             nextCaptureButton.setEnabled (true);
-            fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
+            setFileNameText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                     "TONE3000", "Could not start the selected capture download.");
         }
@@ -2320,13 +2338,12 @@ private:
         {
             const auto status = audioProcessor.getNAMCaptureStatus (slot);
             if (status == "Loaded")
-                fileName.setText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
+                setFileNameText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
                     : ("LOADED: " + audioProcessor.getNAMCaptureName (slot)).toUpperCase(), juce::dontSendNotification);
             else if (status.isNotEmpty())
-                fileName.setText (status, juce::dontSendNotification);
+                setFileNameText (status, juce::dontSendNotification);
             else
-                fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
-            fileName.setTooltip (fileName.getText());
+                setFileNameText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
         }
         repaint();
     }
@@ -2340,6 +2357,17 @@ private:
         enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
                                      juce::dontSendNotification);
         updateEnableTooltip();
+    }
+
+    void setFileNameText (const juce::String& fullText,
+                          juce::NotificationType notification = juce::dontSendNotification)
+    {
+        auto displayText = fullText;
+        if (displayText.length() > 60)
+            displayText = displayText.substring (0, 57) + "...";
+
+        fileName.setText (displayText, notification);
+        fileName.setTooltip (fullText);
     }
 
     void updateEnableTooltip()
@@ -2360,8 +2388,8 @@ private:
     std::function<void (int)> moveHandler;
     std::function<void()> contentSizeChangedHandler;
     std::function<void (bool)> fullscreenHandler;
-    bool compactMode = false;
-    bool adaptiveCompactMode = false;
+    static constexpr int rotarySize = 102;
+    static constexpr int controlRowPitch = 156;
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
@@ -2834,7 +2862,17 @@ public:
     }
 
     int getRequiredWidth() const { return 48 + (parallelRouting ? 12 : 13) * 86; }
-    int getRequiredHeight() const { return 394; }
+    int getRequiredHeight() const
+    {
+        // The tallest route is the two-row NAM/IR branch. Keep only enough
+        // height for both rows, the branch gap and a little breathing room;
+        // the old fixed 394 px reservation left a large dead band above details.
+        constexpr int tileSize = 96;
+        constexpr int branchTop = 46;
+        constexpr int branchGap = 12;
+        constexpr int bottomPadding = 24;
+        return branchTop + tileSize + branchGap + tileSize + bottomPadding;
+    }
 
     void resized() override
     {
@@ -3232,15 +3270,11 @@ public:
         tileList->setSize (juce::jmax (chainViewport.getWidth(), tileList->getRequiredWidth()),
                            tileList->getRequiredHeight());
         area.removeFromTop (12);
-        detailsViewport.setBounds (area);
+        detailsViewport.setBounds (area.withTrimmedLeft (58).withTrimmedRight (58));
         if (selectedStage != nullptr)
         {
             if (detailsViewport.getViewedComponent() != selectedStage)
                 detailsViewport.setViewedComponent (selectedStage, false);
-            // Use the available detail area first. Compact the control grid
-            // only when this stage would otherwise force immediate scrolling.
-            selectedStage->setAdaptiveCompactMode (
-                selectedStage->getPreferredHeight() > detailsViewport.getHeight());
             selectedStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
                                     juce::jmax (selectedStage->getPreferredHeight(),
                                                 detailsViewport.getHeight()));
@@ -3251,8 +3285,6 @@ public:
     void setParallelRouting (bool parallel, bool sharedIR)
     {
         tileList->setParallelRouting (parallel, sharedIR);
-        for (auto& card : cards)
-            card->setCompactMode (parallel);
         if (parallel && sharedIR && selectedStage != nullptr
             && selectedStage->getStageName() == "Cab IR 2")
             selectStage (findCard ("Cab IR 1"));
@@ -3270,9 +3302,14 @@ private:
 
     void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label, bool clipped)
     {
+        if (! chainViewport.isVisible() || ! detailsViewport.isVisible())
+            return;
         const auto chainBounds = chainViewport.getBounds().toFloat();
-        const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 32.0f);
-        const juce::Rectangle<float> track (x, chainBounds.getY() + 16.0f, 16.0f, height);
+        const auto trackTop = chainBounds.getY() + 16.0f;
+        const auto trackBottom = static_cast<float> (detailsViewport.getBottom());
+        const juce::Rectangle<float> track (x, trackTop, 16.0f, juce::jmax (0.0f, trackBottom - trackTop));
+        if (track.isEmpty())
+            return;
         g.setColour (juce::Colour::fromRGB (35, 43, 53));
         g.fillRoundedRectangle (track, 5.0f);
         const auto teal = knobAccent;
@@ -3300,17 +3337,15 @@ private:
         drawZone (-60.0f, -18.0f, teal);
         drawZone (-18.0f, -3.0f, orange);
         drawZone (-3.0f, 6.0f, red);
+        if (clipped)
+        {
+            g.setColour (red);
+            g.drawRoundedRectangle (track.expanded (2.0f), 5.0f, 2.0f);
+        }
         g.setColour (secondaryText);
         g.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
         g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 8.0f),
                                                   60, 18), juce::Justification::centred);
-        if (clipped)
-        {
-            g.setColour (red);
-            g.drawText ("CLIP", juce::Rectangle<int> (juce::roundToInt (x - 22.0f),
-                                                       juce::roundToInt (chainBounds.getY() - 25.0f),
-                                                       60, 16), juce::Justification::centred);
-        }
     }
 
     std::function<void (int)> mover (bool pre, int stageId)
