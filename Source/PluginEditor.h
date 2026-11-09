@@ -51,8 +51,13 @@ private:
     juce::Slider blendSlider;
     juce::ComboBox ampRoutingBox;
     juce::ComboBox parallelIRBox;
+    juce::TextButton ampCrossoverButton { "FREQ SPLIT" };
+    juce::Slider ampCrossoverSlider;
+    juce::Label ampCrossoverValueLabel;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampRoutingAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampCrossoverAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampCrossoverSliderAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterVolumeAttachment;
