@@ -1015,8 +1015,8 @@ public:
                 nextCaptureButton.setColour (juce::TextButton::textColourOffId, knobAccent);
                 addAndMakeVisible (previousCaptureButton);
                 addAndMakeVisible (nextCaptureButton);
-                previousCaptureButton.onClick = [this] { audioProcessor.cycleNAMCapture (slot, -1); };
-                nextCaptureButton.onClick = [this] { audioProcessor.cycleNAMCapture (slot, 1); };
+                previousCaptureButton.onClick = [this] { stepCapture (-1); };
+                nextCaptureButton.onClick = [this] { stepCapture (1); };
                 tone3000Button.setButtonText ({});
                 tone3000Button.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff21473f));
                 tone3000Button.setColour (juce::TextButton::textColourOffId, knobAccent);
@@ -1060,6 +1060,7 @@ public:
                             return;
                         if (safeThis->loadKind == FileKind::nam)
                         {
+                            safeThis->toneModels.clear();
                             safeThis->tone3000Attribution.clear();
                             rememberNAMDirectory (file.getParentDirectory());
                             safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
@@ -1488,11 +1489,14 @@ private:
     {
         if (models.size() == 1)
         {
-            downloadToneModel (models.front());
+            toneModels = std::move (models);
+            toneModelIndex = 0;
+            downloadToneModel (toneModels.front());
             return;
         }
 
         juce::PopupMenu menu;
+        menu.addSectionHeader ("CHOOSE A CAPTURE FOR " + stageName.toUpperCase());
         for (size_t i = 0; i < models.size(); ++i)
         {
             const auto& model = models[i];
@@ -1512,8 +1516,51 @@ private:
                         safeThis->tone3000Client->cancel();
                     return;
                 }
-                safeThis->downloadToneModel (models[static_cast<size_t> (result - 1)]);
+                safeThis->toneModels = std::move (models);
+                safeThis->toneModelIndex = result - 1;
+                safeThis->downloadToneModel (safeThis->toneModels[static_cast<size_t> (safeThis->toneModelIndex)]);
             });
+    }
+
+    juce::File findDownloadedToneModel (const tone3000::Model& model) const
+    {
+        const auto slotFolder = slot >= NAMplifiedAudioProcessor::numAmpSlots ? juce::String ("BOOST_NAM")
+            : "NAM" + juce::String (juce::jlimit (0, 1, slot) + 1);
+        const auto folder = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+            .getChildFile ("NAMplified").getChildFile ("TONE3000").getChildFile (slotFolder)
+            .getChildFile (model.toneId);
+        for (const auto& metadataFile : folder.findChildFiles (juce::File::findFiles, false, "*.t3k.json"))
+        {
+            const auto metadata = juce::JSON::parse (metadataFile.loadFileAsString());
+            if (metadata.getProperty ("modelUrl", {}).toString() == model.modelUrl)
+            {
+                auto captureBase = metadataFile.getFileName();
+                if (captureBase.endsWithIgnoreCase (".t3k.json"))
+                    captureBase = captureBase.dropLastCharacters (9);
+                return metadataFile.getSiblingFile (captureBase + ".nam");
+            }
+        }
+        return {};
+    }
+
+    void stepCapture (int direction)
+    {
+        if (! toneModels.empty())
+        {
+            toneModelIndex = (toneModelIndex + (direction > 0 ? 1 : -1)
+                              + static_cast<int> (toneModels.size())) % static_cast<int> (toneModels.size());
+            const auto& model = toneModels[static_cast<size_t> (toneModelIndex)];
+            const auto localFile = findDownloadedToneModel (model);
+            if (localFile.existsAsFile())
+            {
+                audioProcessor.loadNAMCapture (slot, localFile);
+                rememberNAMDirectory (localFile.getParentDirectory());
+            }
+            else
+                downloadToneModel (model);
+            return;
+        }
+        audioProcessor.cycleNAMCapture (slot, direction);
     }
 
     void downloadToneModel (const tone3000::Model& model)
@@ -1524,13 +1571,15 @@ private:
         tone3000Button.setButtonText ("DOWNLOADING...");
         fileName.setText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
         const juce::Component::SafePointer<StageCard> safeThis (this);
-        if (! tone3000Client->downloadModel (model,
+        if (! tone3000Client->downloadModel (model, slot,
             [safeThis, model] (juce::File file, juce::String error)
             {
                 if (safeThis == nullptr)
                     return;
                 safeThis->tone3000Button.setEnabled (true);
                 safeThis->tone3000Button.setButtonText ({});
+                safeThis->previousCaptureButton.setEnabled (true);
+                safeThis->nextCaptureButton.setEnabled (true);
                 if (error.isNotEmpty() || ! file.existsAsFile())
                 {
                     safeThis->fileName.setText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
@@ -1550,9 +1599,16 @@ private:
         {
             tone3000Button.setEnabled (true);
             tone3000Button.setButtonText ({});
+            previousCaptureButton.setEnabled (true);
+            nextCaptureButton.setEnabled (true);
             fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                     "TONE3000", "Could not start the selected capture download.");
+        }
+        else
+        {
+            previousCaptureButton.setEnabled (false);
+            nextCaptureButton.setEnabled (false);
         }
     }
 
@@ -1771,6 +1827,8 @@ private:
     std::unique_ptr<tone3000::Client> tone3000Client;
     std::unique_ptr<juce::Drawable> tone3000Logo;
     juce::String tone3000Attribution;
+    std::vector<tone3000::Model> toneModels;
+    int toneModelIndex = 0;
     juce::String displayedNAMPath;
 };
 

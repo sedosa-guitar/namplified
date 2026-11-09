@@ -8,6 +8,7 @@ namespace tone3000
 {
 struct Model
 {
+    juce::String toneId;
     juce::String name;
     juce::String architecture;
     juce::String modelUrl;
@@ -28,7 +29,7 @@ public:
     ~Client() override;
 
     bool startSelectFlow (int architecture, ModelsCallback callback);
-    bool downloadModel (const Model& model, DownloadCallback callback);
+    bool downloadModel (const Model& model, int slot, DownloadCallback callback);
     void cancel();
 
 private:
@@ -43,6 +44,7 @@ private:
     juce::String selectedToneId;
     int architectureToBrowse = 2;
     Model selectedModel;
+    int downloadSlot = 0;
     Operation operation = Operation::none;
     ModelsCallback modelsCallback;
     DownloadCallback downloadCallback;
