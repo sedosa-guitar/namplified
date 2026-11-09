@@ -2734,11 +2734,11 @@ private:
         {
             g.drawRoundedRectangle (r.reduced (2.0f, 5.0f), 3.0f, 1.5f);
             const auto mid = r.getCentreY();
-            const auto left = kind == ModuleKind::input;
-            const auto startX = left ? r.getX() + 5.0f : r.getRight() - 5.0f;
-            const auto endX = left ? r.getRight() - 5.0f : r.getX() + 5.0f;
-            const auto tipX = left ? r.getRight() - 4.0f : r.getX() + 4.0f;
-            const auto wingX = left ? tipX - 4.0f : tipX + 4.0f;
+            // The output port points out of the block (180 degrees from input).
+            const auto startX = r.getX() + 5.0f;
+            const auto endX = r.getRight() - 5.0f;
+            const auto tipX = r.getRight() - 4.0f;
+            const auto wingX = tipX - 4.0f;
             g.drawLine (startX, mid, endX, mid, 1.5f);
             g.drawLine (wingX, mid - 3.0f, tipX, mid, 1.5f);
             g.drawLine (wingX, mid + 3.0f, tipX, mid, 1.5f);
@@ -2815,9 +2815,6 @@ public:
         g.setColour (secondaryText);
         if (parallelRouting)
         {
-            const auto tileWidth = juce::jmax (90, juce::jmin (92, juce::roundToInt ((getWidth() - 20) / 8.0f) - 12));
-            const auto postY = 50 + 2 * (tileWidth + 12) + 10 + tileWidth + 8;
-            g.drawText ("POST FX  /  OUTPUT", 10, postY, getWidth() - 20, 18, juce::Justification::centredLeft);
             drawParallelWiring (g, wire);
             return;
         }
@@ -2836,75 +2833,56 @@ public:
         resized();
     }
 
-    int getRequiredWidth() const { return 48 + 8 * 132; }
-    int getRequiredHeight() const { return parallelRouting ? 394 : 300; }
+    int getRequiredWidth() const { return 48 + (parallelRouting ? 12 : 13) * 86; }
+    int getRequiredHeight() const { return 394; }
 
     void resized() override
     {
         constexpr int sideInset = 24;
         const auto contentWidth = getWidth() - 2 * sideInset;
-        const auto pitch = static_cast<float> (contentWidth) / 8.0f;
-        const auto maxTileSize = parallelRouting ? 92 : 102;
-        const auto width = juce::jmax (90, juce::jmin (maxTileSize, juce::roundToInt (pitch) - 12));
-        if (parallelRouting)
+        const auto columns = parallelRouting ? 12.0f : 13.0f;
+        const auto pitch = static_cast<float> (contentWidth) / columns;
+        const auto maxTileSize = 96;
+        const auto width = juce::jlimit (70, maxTileSize, juce::roundToInt (pitch) - 20);
+        const auto tileWidth = width;
+        const auto tileHeight = tileWidth;
+        const auto branchPitch = tileHeight + 12;
+        const auto branchY = 46;
+        const auto postRowY = branchY;
+        const auto columnX = [sideInset, pitch, tileWidth] (int column)
         {
-            const auto tileWidth = width;
-            const auto tileHeight = tileWidth;
-            const auto branchPitch = tileHeight + 12;
-            const auto branchY = 50;
-            const auto postRowY = branchY + 2 * branchPitch + 10;
-            const auto branchX = sideInset + juce::roundToInt (contentWidth * 0.63f);
-            const auto irX = sideInset + juce::roundToInt (contentWidth * 0.80f);
-            int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
-            int postCount = 0;
-            for (auto* tile : tiles)
-                if (isPostEffect (tile->getName())) ++postCount;
-            const auto lowerSlots = juce::jmax (1, postCount + 1);
-            const auto lowerSpan = static_cast<float> (contentWidth - tileWidth) / lowerSlots;
-            for (auto* tile : tiles)
-            {
-                const auto name = tile->getName();
-                if (name == "Input")
-                    tile->setBounds (sideInset, 24, tileWidth, tileHeight);
-                else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
-                         || name == "Boost Pedal" || name == "PreEQ")
-                    tile->setBounds (sideInset + juce::roundToInt ((preIndex++ + 1) * pitch), 24, tileWidth, tileHeight);
-                else if (name.startsWith ("NAM Profile"))
-                    tile->setBounds (branchX, branchY + namIndex++ * branchPitch, tileWidth, tileHeight);
-                else if (name.startsWith ("Cab IR"))
-                    tile->setBounds (irX, branchY + irIndex++ * branchPitch, tileWidth, tileHeight);
-                else if (name == "Output")
-                    tile->setBounds (sideInset, postRowY, tileWidth, tileHeight);
-                else
-                {
-                    const auto slot = postCount - postIndex++;
-                    tile->setBounds (sideInset + juce::roundToInt (slot * lowerSpan), postRowY, tileWidth, tileHeight);
-                }
-            }
-            return;
-        }
-        StageTile* input = findTile ("Input");
-        StageTile* output = findTile ("Output");
-        std::vector<StageTile*> pre, nams, irs, post;
+            return sideInset + juce::roundToInt ((static_cast<float> (column) + 0.5f) * pitch
+                                                   - static_cast<float> (tileWidth) * 0.5f);
+        };
+        int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
         for (auto* tile : tiles)
         {
             const auto name = tile->getName();
-            if (name == "Noise Gate" || name == "1176-Style FET Compressor" || name == "Boost Pedal" || name == "PreEQ") pre.push_back (tile);
-            else if (name.startsWith ("NAM Profile")) nams.push_back (tile);
-            else if (name.startsWith ("Cab IR")) irs.push_back (tile);
-            else if (isPostEffect (name)) post.push_back (tile);
+            if (name == "Input")
+                tile->setBounds (columnX (0), branchY, tileWidth, tileHeight);
+            else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
+                     || name == "Boost Pedal" || name == "PreEQ")
+                tile->setBounds (columnX (++preIndex), branchY, tileWidth, tileHeight);
+            else if (name.startsWith ("NAM Profile"))
+            {
+                tile->setBounds (columnX (parallelRouting ? 5 : 5 + namIndex % 2),
+                                 branchY + (parallelRouting ? namIndex : 0) * branchPitch,
+                                 tileWidth, tileHeight);
+                ++namIndex;
+            }
+            else if (name.startsWith ("Cab IR"))
+            {
+                const auto y = parallelRouting && parallelSharedIR
+                    ? branchY + (branchPitch / 2) : branchY + (irIndex % 2) * branchPitch;
+                tile->setBounds (columnX (parallelRouting ? 6 : 7), y, tileWidth, tileHeight);
+                ++irIndex;
+            }
+            else if (name == "Output")
+                tile->setBounds (columnX (parallelRouting ? 11 : 12), postRowY, tileWidth, tileHeight);
+            else
+                tile->setBounds (columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY, tileWidth, tileHeight);
         }
-        if (input != nullptr) input->setBounds (sideInset, 24, width, width);
-        int preColumn = 1;
-        for (auto* tile : pre) tile->setBounds (sideInset + juce::roundToInt (preColumn++ * pitch), 24, width, width);
-        int namColumn = 5;
-        for (auto* tile : nams) tile->setBounds (sideInset + juce::roundToInt (namColumn++ * pitch), 24, width, width);
-        const auto lowerY = 24 + width + 24;
-        int irIndex = 0;
-        for (auto* tile : irs) tile->setBounds (sideInset + juce::roundToInt (7 * pitch), irIndex++ == 0 ? 24 : lowerY, width, width);
-        int postColumn = static_cast<int> (post.size());
-        for (auto* tile : post) tile->setBounds (sideInset + juce::roundToInt (postColumn-- * pitch), lowerY, width, width);
-        if (output != nullptr) output->setBounds (sideInset, lowerY, width, width);
+        return;
     }
 
 private:
@@ -2942,17 +2920,6 @@ private:
         path.lineTo (end);
         g.strokePath (path, juce::PathStrokeType (thickness, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
-        const auto angle = std::atan2 (end.y - start.y, end.x - start.x);
-        constexpr float headLength = 13.0f, halfWidth = 6.2f;
-        const juce::Point<float> base (end.x - headLength * std::cos (angle),
-                                       end.y - headLength * std::sin (angle));
-        const juce::Point<float> normal (-std::sin (angle), std::cos (angle));
-        juce::Path head;
-        head.startNewSubPath (end);
-        head.lineTo (base + normal * halfWidth);
-        head.lineTo (base - normal * halfWidth);
-        head.closeSubPath();
-        g.fillPath (head);
     }
 
     static void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
@@ -2993,42 +2960,34 @@ private:
         for (size_t i = 0; i + 1 < ampChain.size(); ++i)
             drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]), wire);
 
-        const auto irInX = static_cast<float> (irs.front()->getX() - 18);
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 18);
+        const auto irInX = static_cast<float> (irs.front()->getX() - 14);
+        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
         std::vector<float> branchY;
         for (auto* ir : irs)
-        {
-            const auto y = static_cast<float> (ir->getY() + ir->getHeight() / 2);
-            branchY.push_back (y);
-        }
-        const auto splitX = irInX - 14.0f;
+            branchY.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
+        const auto splitX = irInX;
         const auto ampOutput = rightCentre (ampChain.back());
         const auto branchTop = *std::min_element (branchY.begin(), branchY.end());
         const auto branchBottom = *std::max_element (branchY.begin(), branchY.end());
-        auto irBottomEdge = 0.0f;
-        for (auto* ir : irs)
-            irBottomEdge = juce::jmax (irBottomEdge, static_cast<float> (ir->getBottom()));
         drawBus (g, ampOutput, { splitX, ampOutput.y }, wire);
-        drawBus (g, { splitX, branchTop }, { splitX, branchBottom }, wire);
+        drawBus (g, { splitX, juce::jmin (branchTop, ampOutput.y) },
+                 { splitX, juce::jmax (branchBottom, ampOutput.y) }, wire);
         for (auto* ir : irs)
             drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir), wire);
 
-        const auto mergeX = static_cast<float> (getWidth() - 12);
-        drawBus (g, { irOutX, branchTop }, { mergeX, branchTop }, wire);
-        drawBus (g, { irOutX, branchBottom }, { mergeX, branchBottom }, wire);
+        const auto mergeX = irOutX;
+        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop }, wire);
+        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom }, wire);
         drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom }, wire);
         for (auto* ir : irs)
             drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
-        const auto postInput = rightCentre (post.front());
-        const auto routeY = irBottomEdge + 12.0f;
-        const auto postRouteX = static_cast<float> (post.front()->getRight() + 26);
-        drawBus (g, { mergeX, branchBottom }, { mergeX, routeY }, wire);
-        drawBus (g, { postRouteX, routeY }, { mergeX, routeY }, wire);
-        drawBus (g, { postRouteX, routeY }, { postRouteX, postInput.y }, wire);
-        drawArrow (g, { postRouteX, postInput.y }, { postInput.x + 2.0f, postInput.y }, wire);
+        const auto postInput = leftCentre (post.front());
+        const auto routeY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
+        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY }, wire);
+        drawBus (g, { mergeX, routeY }, postInput, wire);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, leftCentre (post[i]), rightCentre (post[i + 1]), wire);
-        drawArrow (g, leftCentre (post.back()), rightCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
+        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
     }
 
     void drawParallelWiring (juce::Graphics& g, juce::Colour wire)
@@ -3049,7 +3008,7 @@ private:
 
         const auto nams = namedTiles ("NAM Profile");
         if (nams.empty()) return;
-        const auto splitX = static_cast<float> (nams.front()->getX() - 20);
+        const auto splitX = static_cast<float> (nams.front()->getX() - 14);
         const auto topY = static_cast<float> (nams.front()->getY() + nams.front()->getHeight() / 2);
         const auto bottomY = static_cast<float> (nams.back()->getY() + nams.back()->getHeight() / 2);
         const auto inputY = static_cast<float> (pre.back()->getY() + pre.back()->getHeight() / 2);
@@ -3071,7 +3030,7 @@ private:
         auto* output = findTile ("Output");
         if (irs.empty() || post.empty() || output == nullptr) return;
 
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 18);
+        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
         std::vector<float> irCentres;
         for (auto* ir : irs)
             irCentres.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
@@ -3080,7 +3039,7 @@ private:
         const auto irMid = (irTop + irBottom) * 0.5f;
         if (parallelSharedIR)
         {
-            const auto joinX = static_cast<float> (irs.front()->getX() - 20);
+            const auto joinX = static_cast<float> (irs.front()->getX() - 14);
             const auto joinTop = juce::jmin (irMid, topY, bottomY);
             const auto joinBottom = juce::jmax (irMid, topY, bottomY);
             for (auto* nam : nams)
@@ -3113,10 +3072,10 @@ private:
 
         const auto lowerY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
         drawBus (g, { irOutX, irMid }, { irOutX, lowerY }, wire);
-        drawArrow (g, { irOutX, lowerY }, { rightCentre (post.front()).x + 2.0f, lowerY }, wire);
+        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()), wire);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, leftCentre (post[i]), rightCentre (post[i + 1]), wire);
-        drawArrow (g, leftCentre (post.back()), rightCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
+        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
     }
 
     std::vector<StageTile*> tiles;
