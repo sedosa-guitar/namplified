@@ -3036,6 +3036,7 @@ public:
             const auto prefix = "amp" + number;
             addStage ("NAM Profile " + number, "amp" + number + "On",
                       {{ prefix + "EqPosition", "EQ Position", false, juce::StringArray { "Pre", "Post" } },
+                       { prefix + "Polarity", "Polarity", false, juce::StringArray { "Normal", "Invert" } },
                        { prefix + "EqBass", "Bass" }, { prefix + "EqMid", "Mid" },
                        { prefix + "EqTreble", "Treble" },
                        { prefix + "In", "Input (dB)" }, { prefix + "Out", "Output (dB)" }},
@@ -3545,6 +3546,33 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     parallelIRBox.addListener (this);
     parallelIRBox.setVisible (false);
 
+    ampCrossoverButton.setTooltip ("Enable a 4th-order crossover in parallel mode: AMP 1 carries lows, AMP 2 carries highs. It is bypassed when only one amp is active.");
+    ampCrossoverButton.setClickingTogglesState (true);
+    ampCrossoverButton.setColour (juce::TextButton::buttonColourId, panel);
+    ampCrossoverButton.setColour (juce::TextButton::buttonOnColourId, juce::Colour::fromRGB (24, 72, 61));
+    ampCrossoverButton.setColour (juce::TextButton::textColourOffId, text);
+    ampCrossoverButton.setColour (juce::TextButton::textColourOnId, knobAccent);
+    addAndMakeVisible (ampCrossoverButton);
+    ampCrossoverAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+        processor.parameters, "ampCrossoverOn", ampCrossoverButton);
+    ampCrossoverSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    ampCrossoverSlider.setName ("ampCrossoverFreq");
+    ampCrossoverSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    ampCrossoverSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    addAndMakeVisible (ampCrossoverSlider);
+    ampCrossoverSliderAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        processor.parameters, "ampCrossoverFreq", ampCrossoverSlider);
+    ampCrossoverValueLabel.setFont (namplifiedFontOptions (13.0f, juce::Font::bold));
+    ampCrossoverValueLabel.setColour (juce::Label::textColourId, text);
+    ampCrossoverValueLabel.setJustificationType (juce::Justification::centred);
+    ampCrossoverValueLabel.setTooltip ("Crossover frequency");
+    addAndMakeVisible (ampCrossoverValueLabel);
+    ampCrossoverSlider.onValueChange = [this]
+    {
+        ampCrossoverValueLabel.setText (juce::String (juce::roundToInt (ampCrossoverSlider.getValue())) + " Hz",
+                                        juce::dontSendNotification);
+    };
+
     blendLabel.setText ("CAB 1 / CAB 2", juce::dontSendNotification);
     blendLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     blendLabel.setColour (juce::Label::textColourId, secondaryText);
@@ -3646,6 +3674,15 @@ void NAMplifiedAudioProcessorEditor::resized()
     {
         controlRow.removeFromRight (8);
         parallelIRBox.setBounds (controlRow.removeFromRight (190).reduced (0, 2));
+    }
+    if (ampCrossoverButton.isVisible())
+    {
+        controlRow.removeFromRight (8);
+        ampCrossoverValueLabel.setBounds (controlRow.removeFromRight (58).reduced (0, 4));
+        controlRow.removeFromRight (4);
+        ampCrossoverSlider.setBounds (controlRow.removeFromRight (120).reduced (2, 10));
+        controlRow.removeFromRight (4);
+        ampCrossoverButton.setBounds (controlRow.removeFromRight (106).reduced (0, 2));
     }
     controlRow.removeFromRight (16);
     blendLabel.setBounds (controlRow.removeFromLeft (104));
@@ -3828,6 +3865,11 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     }
     ampRoutingBox.setSelectedId (parallel ? 2 : 1, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
+    ampCrossoverButton.setVisible (parallel);
+    ampCrossoverSlider.setVisible (parallel);
+    ampCrossoverValueLabel.setVisible (parallel);
+    ampCrossoverValueLabel.setText (juce::String (juce::roundToInt (ampCrossoverSlider.getValue())) + " Hz",
+                                    juce::dontSendNotification);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
         ? "Amp 1 to IR 1 and Amp 2 to IR 2. This controls the Amp 1 share; disabling either amp sends 100% through the other path."

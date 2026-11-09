@@ -388,6 +388,8 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "parallelIRMode", 1 }, "Parallel IR Routing",
         juce::StringArray { "Paired IRs", "Shared IR 1" }, 0));
+    addToggle ("ampCrossoverOn", "Parallel Frequency Split");
+    addFrequency ("ampCrossoverFreq", "Amp Crossover Frequency", 80.0f, 1200.0f, 250.0f);
     for (int slot = 0; slot < numAmpSlots; ++slot)
     {
         const auto number = juce::String (slot + 1);
@@ -397,6 +399,10 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
             juce::ParameterID { ("amp" + number + "EqPosition").toRawUTF8(), 1 },
             ("NAM " + number + " EQ Position").toRawUTF8(),
             juce::StringArray { "Pre", "Post" }, 1));
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { ("amp" + number + "Polarity").toRawUTF8(), 1 },
+            ("NAM " + number + " Polarity").toRawUTF8(),
+            juce::StringArray { "Normal", "Invert" }, 0));
         addKnob (("amp" + number + "EqBass").toRawUTF8(), ("NAM " + number + " EQ Bass").toRawUTF8(), -12.0f, 12.0f, 0.0f);
         addKnob (("amp" + number + "EqMid").toRawUTF8(), ("NAM " + number + " EQ Mid").toRawUTF8(), -12.0f, 12.0f, 0.0f);
         addKnob (("amp" + number + "EqTreble").toRawUTF8(), ("NAM " + number + " EQ Treble").toRawUTF8(), -12.0f, 12.0f, 0.0f);
@@ -1171,6 +1177,10 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         for (auto& channelFilters : slotFilters)
             for (auto& filter : channelFilters)
                 filter = {};
+    for (auto& slotFilters : ampCrossoverFilters)
+        for (auto& channelFilters : slotFilters)
+            for (auto& filter : channelFilters)
+                filter = {};
     for (auto& delayLine : delayLines)
     {
         delayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 1.2) + 2);
@@ -1496,6 +1506,13 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     samples[sample] = filter.process (samples[sample]);
         }
     };
+    const auto invertAmpPolarity = [&] (juce::AudioBuffer<float>& target, int slot)
+    {
+        const auto parameterId = "amp" + juce::String (slot + 1) + "Polarity";
+        if (get (parameterId.toRawUTF8()) >= 0.5f)
+            for (int channel = 0; channel < numChannels; ++channel)
+                target.applyGain (channel, 0, numSamples, -1.0f);
+    };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
         if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
@@ -1514,6 +1531,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 processAmpToneEQ (buffer, slot, true);
                 processAmpSlot (buffer, slot);
                 processAmpToneEQ (buffer, slot, false);
+                invertAmpPolarity (buffer, slot);
                 buffer.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
             }
         }
@@ -1531,6 +1549,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         if (activeCount > 0)
         {
             const auto primaryWeight = juce::jlimit (0.0f, 1.0f, get ("ampParallelBlend", 0.5f));
+            const auto crossoverEnabled = activeCount == 2 && enabled ("ampCrossoverOn");
+            const auto crossoverFrequency = get ("ampCrossoverFreq", 250.0f);
             for (int channel = 0; channel < numChannels; ++channel)
                 ampInputBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
             ampMixBuffer.clear();
@@ -1546,9 +1566,24 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampInputIds[slot])));
+                if (crossoverEnabled)
+                {
+                    const auto highPass = slot == 1;
+                    for (int channel = 0; channel < numChannels; ++channel)
+                    {
+                        auto& filters = ampCrossoverFilters[static_cast<size_t> (slot)][static_cast<size_t> (channel)];
+                        for (auto& filter : filters)
+                            setCutFilterCoefficients (filter, highPass, crossoverFrequency, sampleRate);
+                        auto* samples = branch.getWritePointer (channel);
+                        for (int sample = 0; sample < numSamples; ++sample)
+                            for (auto& filter : filters)
+                                samples[sample] = filter.process (samples[sample]);
+                    }
+                }
                 processAmpToneEQ (branch, slot, true);
                 processAmpSlot (branch, slot);
                 processAmpToneEQ (branch, slot, false);
+                invertAmpPolarity (branch, slot);
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);
