@@ -266,7 +266,8 @@ public:
                            juce::Slider::SliderStyle style, juce::Slider& slider) override
     {
         const auto isModified = processor.isParameterModified (slider.getName());
-        const auto colour = isModified ? accent : knobAccent;
+        const auto colour = slider.isEnabled() ? (isModified ? accent : knobAccent)
+                                               : secondaryText.withAlpha (0.45f);
         const auto oldTrack = slider.findColour (juce::Slider::trackColourId);
         const auto oldThumb = slider.findColour (juce::Slider::thumbColourId);
         slider.setColour (juce::Slider::trackColourId, colour);
@@ -1533,11 +1534,15 @@ public:
                     BinaryData::TONE3000Logo_svg, BinaryData::TONE3000Logo_svgSize));
             }
 
-            fileName.setText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
-                                                        : audioProcessor.getImpulseResponseName (slot),
-                              juce::dontSendNotification);
+            setFileNameText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
+                                                       : audioProcessor.getImpulseResponseName (slot),
+                             juce::dontSendNotification);
             fileName.setFont (namplifiedFontOptions (16.0f, juce::Font::bold));
             fileName.setColour (juce::Label::textColourId, text);
+            fileName.setColour (juce::Label::backgroundColourId, juce::Colour::fromRGB (22, 28, 37));
+            fileName.setColour (juce::Label::outlineColourId, juce::Colour::fromRGB (57, 66, 80));
+            fileName.setBorderSize ({ 1, 8, 1, 8 });
+            fileName.setOpaque (true);
             fileName.setJustificationType (juce::Justification::centredLeft);
             addAndMakeVisible (fileName);
 
@@ -1572,7 +1577,7 @@ public:
                         }
                         else
                             safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
-                        safeThis->fileName.setText (file.getFileName(), juce::dontSendNotification);
+                        safeThis->setFileNameText (file.getFileName(), juce::dontSendNotification);
                     });
             };
             if (loadKind == FileKind::nam || loadKind == FileKind::impulseResponse)
@@ -1714,22 +1719,6 @@ public:
             expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
         }
     }
-    void setCompactMode (bool shouldBeCompact)
-    {
-        if (compactMode == shouldBeCompact)
-            return;
-        compactMode = shouldBeCompact;
-        resized();
-    }
-
-    void setAdaptiveCompactMode (bool shouldBeCompact)
-    {
-        if (adaptiveCompactMode == shouldBeCompact)
-            return;
-        adaptiveCompactMode = shouldBeCompact;
-        resized();
-    }
-
     int getPreferredHeight() const
     {
         if (graphicEq != nullptr)
@@ -1749,8 +1738,7 @@ public:
         }
         const auto columns = selectorCount > 0 ? 4 : 5;
         const auto rows = (knobCount + columns - 1) / columns;
-        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
+        const auto rowPitch = controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
             : (loadKind == FileKind::none || isUsingBuiltInBoost() ? 0 : 46);
@@ -1827,7 +1815,7 @@ public:
             constexpr int loadWidth = 160, browserWidth = 160, navWidth = 64, toneWidth = 210;
             constexpr int gap = 10;
             constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
-            const auto nameWidth = juce::jmax (0, juce::jmin (1000, actionRow.getWidth() - actionWidth - 16));
+            const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
             const auto combinedWidth = actionWidth + (nameWidth > 0 ? 16 + nameWidth : 0);
             auto actions = actionRow.withSizeKeepingCentre (combinedWidth, actionRow.getHeight());
             loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
@@ -1842,10 +1830,9 @@ public:
             if (nameWidth > 0)
             {
                 actions.removeFromLeft (16);
-                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (4, 0));
+                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
             }
-            fileName.setTooltip (fileName.getText());
-            fileName.setJustificationType (juce::Justification::centred);
+            fileName.setJustificationType (juce::Justification::centredLeft);
         }
 
         if (loadKind != FileKind::none && ! isUsingBuiltInBoost())
@@ -1855,7 +1842,8 @@ public:
                 auto fileRow = area.removeFromTop (40);
                 loadButton.setBounds (fileRow.removeFromLeft (130));
                 fileRow.removeFromLeft (10);
-                fileName.setBounds (fileRow);
+                const auto nameWidth = juce::jmin (620, fileRow.getWidth());
+                fileName.setBounds (fileRow.removeFromLeft (nameWidth));
                 area.removeFromTop (3);
             }
         }
@@ -1868,11 +1856,13 @@ public:
 
         if (controlWidgets.empty())
             return;
-        constexpr int maxControlWidth = 1320;
+        // Keep a deliberate gutter around the control grid while letting it
+        // use more of the detail card on wide plugin windows.
+        area = area.reduced (16, 0);
+        constexpr int maxControlWidth = 1480;
         if (area.getWidth() > maxControlWidth)
             area = area.withSizeKeepingCentre (maxControlWidth, area.getHeight());
-        const auto denseControls = compactMode || adaptiveCompactMode || isUsingBuiltInBoost() || stageName == "Delay";
-        const auto rowPitch = adaptiveCompactMode ? 82 : denseControls ? 104 : 148;
+        const auto centeredMeterStage = stageName == "Input" || stageName == "Noise Gate" || stageName == "Output";
         std::vector<int> selectors;
         std::vector<int> knobs;
         for (size_t i = 0; i < controlWidgets.size(); ++i)
@@ -1902,28 +1892,58 @@ public:
 
         if (knobs.empty())
             return;
+        if (centeredMeterStage && selectors.empty() && knobs.size() == 1)
+        {
+            const auto index = static_cast<size_t> (knobs.front());
+            if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
+            {
+                const auto knobSize = rotarySize;
+                const auto labelHeight = 22;
+                const auto valueHeight = 20;
+                const auto labelKnobGap = 10;
+                const auto groupHeight = labelHeight + labelKnobGap + knobSize + valueHeight;
+                auto group = area.withHeight (groupHeight).withCentre (area.getCentre());
+                controlLabels[index]->setBounds (group.removeFromTop (labelHeight));
+                group.removeFromTop (labelKnobGap);
+                auto valueArea = group.removeFromBottom (valueHeight);
+                if (widgetValueLabels[index] != nullptr)
+                    widgetValueLabels[index]->setBounds (valueArea);
+                controlWidgets[index]->setBounds (group.withSizeKeepingCentre (knobSize, knobSize));
+                return;
+            }
+        }
         const auto isNamCapture = stageName.startsWith ("NAM Profile");
         const auto columns = isNamCapture ? juce::jmin (3, static_cast<int> (knobs.size()))
                                          : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
+        const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
+        const auto baseRowPitch = controlRowPitch;
+        const auto distributedRowPitch = rows > 0
+            ? juce::jmin (240, juce::jmax (baseRowPitch, area.getHeight() / rows))
+            : baseRowPitch;
+        const auto gridHeight = rows * distributedRowPitch;
+        const auto gridTop = area.getY() + juce::jmax (0, (area.getHeight() - gridHeight) / 2);
         for (size_t position = 0; position < knobs.size(); ++position)
         {
             const auto index = static_cast<size_t> (knobs[position]);
             const auto row = static_cast<int> (position) / columns;
             const auto column = static_cast<int> (position) % columns;
             auto cell = juce::Rectangle<int> (area.getX() + column * cellWidth,
-                                               area.getY() + row * rowPitch,
+                                               gridTop + row * distributedRowPitch,
                                                column + 1 == columns ? area.getWidth() - column * cellWidth : cellWidth,
-                                               rowPitch - 6).reduced (8, 3);
-            controlLabels[index]->setBounds (cell.removeFromTop (denseControls ? 18 : 22));
+                                               distributedRowPitch - 6).reduced (8, 3);
+            controlLabels[index]->setBounds (cell.removeFromTop (22));
+            if (centeredMeterStage)
+                cell.removeFromTop (8);
             if (dynamic_cast<juce::Slider*> (controlWidgets[index]) != nullptr)
             {
-                auto valueArea = cell.removeFromBottom (denseControls ? 17 : 20);
+                auto valueArea = cell.removeFromBottom (20);
                 if (widgetValueLabels[index] != nullptr)
                     widgetValueLabels[index]->setBounds (valueArea);
-                const auto knobWidth = juce::jmin (adaptiveCompactMode ? 62 : denseControls ? 78 : 102,
+                const auto knobWidth = juce::jmin (rotarySize,
                                                    cell.getWidth());
-                auto knob = cell.withSizeKeepingCentre (knobWidth, adaptiveCompactMode ? 56 : denseControls ? 68 : 94);
+                const auto knobHeight = rotarySize;
+                auto knob = cell.withSizeKeepingCentre (knobWidth, knobHeight);
                 controlWidgets[index]->setBounds (knob);
             }
             else
@@ -2097,7 +2117,7 @@ private:
             return;
         tone3000Button.setEnabled (false);
         tone3000Button.setButtonText ("DOWNLOADING...");
-        fileName.setText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
+        setFileNameText ("Downloading selected capture from TONE3000...", juce::dontSendNotification);
         const juce::Component::SafePointer<StageCard> safeThis (this);
         if (! tone3000Client->downloadModel (model, slot,
             [safeThis, model] (juce::File file, juce::String error)
@@ -2110,8 +2130,8 @@ private:
                 safeThis->nextCaptureButton.setEnabled (true);
                 if (error.isNotEmpty() || ! file.existsAsFile())
                 {
-                    safeThis->fileName.setText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
-                                                juce::dontSendNotification);
+                    safeThis->setFileNameText (safeThis->audioProcessor.getNAMCaptureName (safeThis->slot),
+                                               juce::dontSendNotification);
                     juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                             "TONE3000", error.isNotEmpty() ? error : "Download failed.");
                     return;
@@ -2121,15 +2141,14 @@ private:
                 safeThis->tone3000Attribution = "POWERED BY TONE3000 | " + model.toneTitle + " | " + model.name
                     + (model.creator.isNotEmpty() ? " | " + model.creator : "")
                     + (model.license.isNotEmpty() ? " | " + model.license : "");
-                safeThis->fileName.setText (safeThis->tone3000Attribution, juce::dontSendNotification);
-                safeThis->fileName.setTooltip (safeThis->tone3000Attribution);
+                safeThis->setFileNameText (safeThis->tone3000Attribution, juce::dontSendNotification);
             }))
         {
             tone3000Button.setEnabled (true);
             tone3000Button.setButtonText ({});
             previousCaptureButton.setEnabled (true);
             nextCaptureButton.setEnabled (true);
-            fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
+            setFileNameText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                     "TONE3000", "Could not start the selected capture download.");
         }
@@ -2320,13 +2339,12 @@ private:
         {
             const auto status = audioProcessor.getNAMCaptureStatus (slot);
             if (status == "Loaded")
-                fileName.setText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
+                setFileNameText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
                     : ("LOADED: " + audioProcessor.getNAMCaptureName (slot)).toUpperCase(), juce::dontSendNotification);
             else if (status.isNotEmpty())
-                fileName.setText (status, juce::dontSendNotification);
+                setFileNameText (status, juce::dontSendNotification);
             else
-                fileName.setText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
-            fileName.setTooltip (fileName.getText());
+                setFileNameText (audioProcessor.getNAMCaptureName (slot), juce::dontSendNotification);
         }
         repaint();
     }
@@ -2340,6 +2358,17 @@ private:
         enableButton.setToggleState (ampEnabled != nullptr && ampEnabled->load() >= 0.5f,
                                      juce::dontSendNotification);
         updateEnableTooltip();
+    }
+
+    void setFileNameText (const juce::String& fullText,
+                          juce::NotificationType notification = juce::dontSendNotification)
+    {
+        auto displayText = fullText;
+        if (displayText.length() > 60)
+            displayText = displayText.substring (0, 57) + "...";
+
+        fileName.setText (displayText, notification);
+        fileName.setTooltip (fullText);
     }
 
     void updateEnableTooltip()
@@ -2360,8 +2389,8 @@ private:
     std::function<void (int)> moveHandler;
     std::function<void()> contentSizeChangedHandler;
     std::function<void (bool)> fullscreenHandler;
-    bool compactMode = false;
-    bool adaptiveCompactMode = false;
+    static constexpr int rotarySize = 102;
+    static constexpr int controlRowPitch = 156;
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
@@ -2734,11 +2763,11 @@ private:
         {
             g.drawRoundedRectangle (r.reduced (2.0f, 5.0f), 3.0f, 1.5f);
             const auto mid = r.getCentreY();
-            const auto left = kind == ModuleKind::input;
-            const auto startX = left ? r.getX() + 5.0f : r.getRight() - 5.0f;
-            const auto endX = left ? r.getRight() - 5.0f : r.getX() + 5.0f;
-            const auto tipX = left ? r.getRight() - 4.0f : r.getX() + 4.0f;
-            const auto wingX = left ? tipX - 4.0f : tipX + 4.0f;
+            // The output port points out of the block (180 degrees from input).
+            const auto startX = r.getX() + 5.0f;
+            const auto endX = r.getRight() - 5.0f;
+            const auto tipX = r.getRight() - 4.0f;
+            const auto wingX = tipX - 4.0f;
             g.drawLine (startX, mid, endX, mid, 1.5f);
             g.drawLine (wingX, mid - 3.0f, tipX, mid, 1.5f);
             g.drawLine (wingX, mid + 3.0f, tipX, mid, 1.5f);
@@ -2815,9 +2844,6 @@ public:
         g.setColour (secondaryText);
         if (parallelRouting)
         {
-            const auto tileWidth = juce::jmax (90, juce::jmin (92, juce::roundToInt ((getWidth() - 20) / 8.0f) - 12));
-            const auto postY = 50 + 2 * (tileWidth + 12) + 10 + tileWidth + 8;
-            g.drawText ("POST FX  /  OUTPUT", 10, postY, getWidth() - 20, 18, juce::Justification::centredLeft);
             drawParallelWiring (g, wire);
             return;
         }
@@ -2836,75 +2862,66 @@ public:
         resized();
     }
 
-    int getRequiredWidth() const { return 48 + 8 * 132; }
-    int getRequiredHeight() const { return parallelRouting ? 394 : 300; }
+    int getRequiredWidth() const { return 48 + (parallelRouting ? 12 : 13) * 86; }
+    int getRequiredHeight() const
+    {
+        // The tallest route is the two-row NAM/IR branch. Keep only enough
+        // height for both rows, the branch gap and a little breathing room;
+        // the old fixed 394 px reservation left a large dead band above details.
+        constexpr int tileSize = 96;
+        constexpr int branchTop = 46;
+        constexpr int branchGap = 12;
+        constexpr int bottomPadding = 24;
+        return branchTop + tileSize + branchGap + tileSize + bottomPadding;
+    }
 
     void resized() override
     {
         constexpr int sideInset = 24;
         const auto contentWidth = getWidth() - 2 * sideInset;
-        const auto pitch = static_cast<float> (contentWidth) / 8.0f;
-        const auto maxTileSize = parallelRouting ? 92 : 102;
-        const auto width = juce::jmax (90, juce::jmin (maxTileSize, juce::roundToInt (pitch) - 12));
-        if (parallelRouting)
+        const auto columns = parallelRouting ? 12.0f : 13.0f;
+        const auto pitch = static_cast<float> (contentWidth) / columns;
+        const auto maxTileSize = 96;
+        const auto width = juce::jlimit (70, maxTileSize, juce::roundToInt (pitch) - 20);
+        const auto tileWidth = width;
+        const auto tileHeight = tileWidth;
+        const auto branchPitch = tileHeight + 12;
+        const auto branchY = 46;
+        const auto postRowY = branchY;
+        const auto columnX = [sideInset, pitch, tileWidth] (int column)
         {
-            const auto tileWidth = width;
-            const auto tileHeight = tileWidth;
-            const auto branchPitch = tileHeight + 12;
-            const auto branchY = 50;
-            const auto postRowY = branchY + 2 * branchPitch + 10;
-            const auto branchX = sideInset + juce::roundToInt (contentWidth * 0.63f);
-            const auto irX = sideInset + juce::roundToInt (contentWidth * 0.80f);
-            int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
-            int postCount = 0;
-            for (auto* tile : tiles)
-                if (isPostEffect (tile->getName())) ++postCount;
-            const auto lowerSlots = juce::jmax (1, postCount + 1);
-            const auto lowerSpan = static_cast<float> (contentWidth - tileWidth) / lowerSlots;
-            for (auto* tile : tiles)
-            {
-                const auto name = tile->getName();
-                if (name == "Input")
-                    tile->setBounds (sideInset, 24, tileWidth, tileHeight);
-                else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
-                         || name == "Boost Pedal" || name == "PreEQ")
-                    tile->setBounds (sideInset + juce::roundToInt ((preIndex++ + 1) * pitch), 24, tileWidth, tileHeight);
-                else if (name.startsWith ("NAM Profile"))
-                    tile->setBounds (branchX, branchY + namIndex++ * branchPitch, tileWidth, tileHeight);
-                else if (name.startsWith ("Cab IR"))
-                    tile->setBounds (irX, branchY + irIndex++ * branchPitch, tileWidth, tileHeight);
-                else if (name == "Output")
-                    tile->setBounds (sideInset, postRowY, tileWidth, tileHeight);
-                else
-                {
-                    const auto slot = postCount - postIndex++;
-                    tile->setBounds (sideInset + juce::roundToInt (slot * lowerSpan), postRowY, tileWidth, tileHeight);
-                }
-            }
-            return;
-        }
-        StageTile* input = findTile ("Input");
-        StageTile* output = findTile ("Output");
-        std::vector<StageTile*> pre, nams, irs, post;
+            return sideInset + juce::roundToInt ((static_cast<float> (column) + 0.5f) * pitch
+                                                   - static_cast<float> (tileWidth) * 0.5f);
+        };
+        int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
         for (auto* tile : tiles)
         {
             const auto name = tile->getName();
-            if (name == "Noise Gate" || name == "1176-Style FET Compressor" || name == "Boost Pedal" || name == "PreEQ") pre.push_back (tile);
-            else if (name.startsWith ("NAM Profile")) nams.push_back (tile);
-            else if (name.startsWith ("Cab IR")) irs.push_back (tile);
-            else if (isPostEffect (name)) post.push_back (tile);
+            if (name == "Input")
+                tile->setBounds (columnX (0), branchY, tileWidth, tileHeight);
+            else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
+                     || name == "Boost Pedal" || name == "PreEQ")
+                tile->setBounds (columnX (++preIndex), branchY, tileWidth, tileHeight);
+            else if (name.startsWith ("NAM Profile"))
+            {
+                tile->setBounds (columnX (parallelRouting ? 5 : 5 + namIndex % 2),
+                                 branchY + (parallelRouting ? namIndex : 0) * branchPitch,
+                                 tileWidth, tileHeight);
+                ++namIndex;
+            }
+            else if (name.startsWith ("Cab IR"))
+            {
+                const auto y = parallelRouting && parallelSharedIR
+                    ? branchY + (branchPitch / 2) : branchY + (irIndex % 2) * branchPitch;
+                tile->setBounds (columnX (parallelRouting ? 6 : 7), y, tileWidth, tileHeight);
+                ++irIndex;
+            }
+            else if (name == "Output")
+                tile->setBounds (columnX (parallelRouting ? 11 : 12), postRowY, tileWidth, tileHeight);
+            else
+                tile->setBounds (columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY, tileWidth, tileHeight);
         }
-        if (input != nullptr) input->setBounds (sideInset, 24, width, width);
-        int preColumn = 1;
-        for (auto* tile : pre) tile->setBounds (sideInset + juce::roundToInt (preColumn++ * pitch), 24, width, width);
-        int namColumn = 5;
-        for (auto* tile : nams) tile->setBounds (sideInset + juce::roundToInt (namColumn++ * pitch), 24, width, width);
-        const auto lowerY = 24 + width + 24;
-        int irIndex = 0;
-        for (auto* tile : irs) tile->setBounds (sideInset + juce::roundToInt (7 * pitch), irIndex++ == 0 ? 24 : lowerY, width, width);
-        int postColumn = static_cast<int> (post.size());
-        for (auto* tile : post) tile->setBounds (sideInset + juce::roundToInt (postColumn-- * pitch), lowerY, width, width);
-        if (output != nullptr) output->setBounds (sideInset, lowerY, width, width);
+        return;
     }
 
 private:
@@ -2942,17 +2959,6 @@ private:
         path.lineTo (end);
         g.strokePath (path, juce::PathStrokeType (thickness, juce::PathStrokeType::curved,
                                                    juce::PathStrokeType::rounded));
-        const auto angle = std::atan2 (end.y - start.y, end.x - start.x);
-        constexpr float headLength = 13.0f, halfWidth = 6.2f;
-        const juce::Point<float> base (end.x - headLength * std::cos (angle),
-                                       end.y - headLength * std::sin (angle));
-        const juce::Point<float> normal (-std::sin (angle), std::cos (angle));
-        juce::Path head;
-        head.startNewSubPath (end);
-        head.lineTo (base + normal * halfWidth);
-        head.lineTo (base - normal * halfWidth);
-        head.closeSubPath();
-        g.fillPath (head);
     }
 
     static void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
@@ -2993,42 +2999,34 @@ private:
         for (size_t i = 0; i + 1 < ampChain.size(); ++i)
             drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]), wire);
 
-        const auto irInX = static_cast<float> (irs.front()->getX() - 18);
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 18);
+        const auto irInX = static_cast<float> (irs.front()->getX() - 14);
+        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
         std::vector<float> branchY;
         for (auto* ir : irs)
-        {
-            const auto y = static_cast<float> (ir->getY() + ir->getHeight() / 2);
-            branchY.push_back (y);
-        }
-        const auto splitX = irInX - 14.0f;
+            branchY.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
+        const auto splitX = irInX;
         const auto ampOutput = rightCentre (ampChain.back());
         const auto branchTop = *std::min_element (branchY.begin(), branchY.end());
         const auto branchBottom = *std::max_element (branchY.begin(), branchY.end());
-        auto irBottomEdge = 0.0f;
-        for (auto* ir : irs)
-            irBottomEdge = juce::jmax (irBottomEdge, static_cast<float> (ir->getBottom()));
         drawBus (g, ampOutput, { splitX, ampOutput.y }, wire);
-        drawBus (g, { splitX, branchTop }, { splitX, branchBottom }, wire);
+        drawBus (g, { splitX, juce::jmin (branchTop, ampOutput.y) },
+                 { splitX, juce::jmax (branchBottom, ampOutput.y) }, wire);
         for (auto* ir : irs)
             drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir), wire);
 
-        const auto mergeX = static_cast<float> (getWidth() - 12);
-        drawBus (g, { irOutX, branchTop }, { mergeX, branchTop }, wire);
-        drawBus (g, { irOutX, branchBottom }, { mergeX, branchBottom }, wire);
+        const auto mergeX = irOutX;
+        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop }, wire);
+        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom }, wire);
         drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom }, wire);
         for (auto* ir : irs)
             drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
-        const auto postInput = rightCentre (post.front());
-        const auto routeY = irBottomEdge + 12.0f;
-        const auto postRouteX = static_cast<float> (post.front()->getRight() + 26);
-        drawBus (g, { mergeX, branchBottom }, { mergeX, routeY }, wire);
-        drawBus (g, { postRouteX, routeY }, { mergeX, routeY }, wire);
-        drawBus (g, { postRouteX, routeY }, { postRouteX, postInput.y }, wire);
-        drawArrow (g, { postRouteX, postInput.y }, { postInput.x + 2.0f, postInput.y }, wire);
+        const auto postInput = leftCentre (post.front());
+        const auto routeY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
+        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY }, wire);
+        drawBus (g, { mergeX, routeY }, postInput, wire);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, leftCentre (post[i]), rightCentre (post[i + 1]), wire);
-        drawArrow (g, leftCentre (post.back()), rightCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
+        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
     }
 
     void drawParallelWiring (juce::Graphics& g, juce::Colour wire)
@@ -3049,7 +3047,7 @@ private:
 
         const auto nams = namedTiles ("NAM Profile");
         if (nams.empty()) return;
-        const auto splitX = static_cast<float> (nams.front()->getX() - 20);
+        const auto splitX = static_cast<float> (nams.front()->getX() - 14);
         const auto topY = static_cast<float> (nams.front()->getY() + nams.front()->getHeight() / 2);
         const auto bottomY = static_cast<float> (nams.back()->getY() + nams.back()->getHeight() / 2);
         const auto inputY = static_cast<float> (pre.back()->getY() + pre.back()->getHeight() / 2);
@@ -3071,7 +3069,7 @@ private:
         auto* output = findTile ("Output");
         if (irs.empty() || post.empty() || output == nullptr) return;
 
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 18);
+        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
         std::vector<float> irCentres;
         for (auto* ir : irs)
             irCentres.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
@@ -3080,7 +3078,7 @@ private:
         const auto irMid = (irTop + irBottom) * 0.5f;
         if (parallelSharedIR)
         {
-            const auto joinX = static_cast<float> (irs.front()->getX() - 20);
+            const auto joinX = static_cast<float> (irs.front()->getX() - 14);
             const auto joinTop = juce::jmin (irMid, topY, bottomY);
             const auto joinBottom = juce::jmax (irMid, topY, bottomY);
             for (auto* nam : nams)
@@ -3113,10 +3111,10 @@ private:
 
         const auto lowerY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
         drawBus (g, { irOutX, irMid }, { irOutX, lowerY }, wire);
-        drawArrow (g, { irOutX, lowerY }, { rightCentre (post.front()).x + 2.0f, lowerY }, wire);
+        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()), wire);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, leftCentre (post[i]), rightCentre (post[i + 1]), wire);
-        drawArrow (g, leftCentre (post.back()), rightCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
+        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
     }
 
     std::vector<StageTile*> tiles;
@@ -3273,15 +3271,11 @@ public:
         tileList->setSize (juce::jmax (chainViewport.getWidth(), tileList->getRequiredWidth()),
                            tileList->getRequiredHeight());
         area.removeFromTop (12);
-        detailsViewport.setBounds (area);
+        detailsViewport.setBounds (area.withTrimmedLeft (58).withTrimmedRight (58));
         if (selectedStage != nullptr)
         {
             if (detailsViewport.getViewedComponent() != selectedStage)
                 detailsViewport.setViewedComponent (selectedStage, false);
-            // Use the available detail area first. Compact the control grid
-            // only when this stage would otherwise force immediate scrolling.
-            selectedStage->setAdaptiveCompactMode (
-                selectedStage->getPreferredHeight() > detailsViewport.getHeight());
             selectedStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
                                     juce::jmax (selectedStage->getPreferredHeight(),
                                                 detailsViewport.getHeight()));
@@ -3292,8 +3286,6 @@ public:
     void setParallelRouting (bool parallel, bool sharedIR)
     {
         tileList->setParallelRouting (parallel, sharedIR);
-        for (auto& card : cards)
-            card->setCompactMode (parallel);
         if (parallel && sharedIR && selectedStage != nullptr
             && selectedStage->getStageName() == "Cab IR 2")
             selectStage (findCard ("Cab IR 1"));
@@ -3311,9 +3303,14 @@ private:
 
     void drawLevelMeter (juce::Graphics& g, float x, float peak, const juce::String& label, bool clipped)
     {
+        if (! chainViewport.isVisible() || ! detailsViewport.isVisible())
+            return;
         const auto chainBounds = chainViewport.getBounds().toFloat();
-        const auto height = juce::jmax (36.0f, chainBounds.getHeight() - 32.0f);
-        const juce::Rectangle<float> track (x, chainBounds.getY() + 16.0f, 16.0f, height);
+        const auto trackTop = chainBounds.getY() + 16.0f;
+        const auto trackBottom = static_cast<float> (detailsViewport.getBottom());
+        const juce::Rectangle<float> track (x, trackTop, 16.0f, juce::jmax (0.0f, trackBottom - trackTop));
+        if (track.isEmpty())
+            return;
         g.setColour (juce::Colour::fromRGB (35, 43, 53));
         g.fillRoundedRectangle (track, 5.0f);
         const auto teal = knobAccent;
@@ -3341,17 +3338,15 @@ private:
         drawZone (-60.0f, -18.0f, teal);
         drawZone (-18.0f, -3.0f, orange);
         drawZone (-3.0f, 6.0f, red);
+        if (clipped)
+        {
+            g.setColour (red);
+            g.drawRoundedRectangle (track.expanded (2.0f), 5.0f, 2.0f);
+        }
         g.setColour (secondaryText);
         g.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
         g.drawText (label, juce::Rectangle<int> (juce::roundToInt (x - 22.0f), juce::roundToInt (chainBounds.getY() - 8.0f),
                                                   60, 18), juce::Justification::centred);
-        if (clipped)
-        {
-            g.setColour (red);
-            g.drawText ("CLIP", juce::Rectangle<int> (juce::roundToInt (x - 22.0f),
-                                                       juce::roundToInt (chainBounds.getY() - 25.0f),
-                                                       60, 16), juce::Justification::centred);
-        }
     }
 
     std::function<void (int)> mover (bool pre, int stageId)
