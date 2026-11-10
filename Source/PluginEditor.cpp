@@ -266,7 +266,8 @@ public:
                            juce::Slider::SliderStyle style, juce::Slider& slider) override
     {
         const auto isModified = processor.isParameterModified (slider.getName());
-        const auto colour = isModified ? accent : knobAccent;
+        const auto colour = slider.isEnabled() ? (isModified ? accent : knobAccent)
+                                               : secondaryText.withAlpha (0.45f);
         const auto oldTrack = slider.findColour (juce::Slider::trackColourId);
         const auto oldThumb = slider.findColour (juce::Slider::thumbColourId);
         slider.setColour (juce::Slider::trackColourId, colour);
