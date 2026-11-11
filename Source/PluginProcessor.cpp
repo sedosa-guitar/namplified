@@ -793,6 +793,11 @@ juce::File NAMplifiedAudioProcessor::getUserPresetFile (const juce::String& name
     return getUserPresetDirectory().getChildFile (safeName).withFileExtension (".tlpreset");
 }
 
+juce::File NAMplifiedAudioProcessor::getUserPresetLibraryDirectory() const
+{
+    return getUserPresetDirectory().getChildFile ("Library");
+}
+
 juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
 {
     juce::StringArray names;
@@ -1144,9 +1149,129 @@ bool NAMplifiedAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
 }
 #endif
 
+bool NAMplifiedAudioProcessor::renderAudition (const juce::MemoryBlock& state,
+                                               const juce::AudioBuffer<float>& input,
+                                               double sampleRate, juce::AudioBuffer<float>& output,
+                                               const std::function<bool()>& cancelled)
+{
+    constexpr int blockSize = 512;
+    NAMplifiedAudioProcessor renderer;
+    renderer.modelSampleRate.store (sampleRate);
+    renderer.modelMaxBlockSize.store (blockSize);
+    renderer.setStateInformation (state.getData(), static_cast<int> (state.getSize()));
+    while (renderer.modelLoader.getNumJobs() > 0)
+    {
+        if (cancelled())
+            return false;
+        juce::Thread::sleep (10);
+    }
+    const auto enabled = [&renderer] (const juce::String& id)
+    {
+        return renderer.parameters.getRawParameterValue (id)->load() >= 0.5f;
+    };
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+        if (enabled ("amp" + juce::String (slot + 1) + "On")
+            && renderer.namFilePaths[slot].isNotEmpty() && renderer.getNAMCaptureStatus (slot) != "Loaded")
+            return false;
+    if (enabled ("boostOn") && enabled ("boostSource") && renderer.boostNAMFilePath.isNotEmpty()
+        && renderer.getNAMCaptureStatus (boostNAMSlot) != "Loaded")
+        return false;
+    renderer.prepareToPlay (sampleRate, blockSize);
+    output.setSize (2, input.getNumSamples() + juce::roundToInt (sampleRate));
+    juce::MidiBuffer midi;
+    juce::AudioBuffer<float> block (2, blockSize);
+    for (int offset = 0; offset < output.getNumSamples(); offset += blockSize)
+    {
+        if (cancelled())
+            return false;
+        block.clear();
+        const auto available = juce::jlimit (0, blockSize, input.getNumSamples() - offset);
+        if (available > 0)
+            for (int channel = 0; channel < 2; ++channel)
+                block.copyFrom (channel, 0, input, juce::jmin (channel, input.getNumChannels() - 1), offset, available);
+        renderer.processBlock (block, midi);
+        for (int channel = 0; channel < 2; ++channel)
+            output.copyFrom (channel, offset, block, channel, 0,
+                             juce::jmin (blockSize, output.getNumSamples() - offset));
+    }
+    return true;
+}
+
+void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate)
+{
+    const juce::SpinLock::ScopedLockType lock (auditionLock);
+    auditionAudio = std::move (audio);
+    auditionRate = sampleRate;
+    auditionPosition = 0;
+}
+
+void NAMplifiedAudioProcessor::stopAudition()
+{
+    playAudition ({}, 0.0);
+}
+
+bool NAMplifiedAudioProcessor::startDIRecording (double sampleRate)
+{
+    if (getTotalNumInputChannels() == 0 || sampleRate < 8000.0 || sampleRate > 384000.0
+        || ! std::isfinite (sampleRate))
+        return false;
+
+    juce::AudioBuffer<float> storage (1, juce::roundToInt (20.0 * sampleRate));
+    const juce::SpinLock::ScopedLockType lock (recordingLock);
+    recordingAudio = std::move (storage);
+    recordingPosition = 0;
+    recordingRate = sampleRate;
+    recordingActive.store (true);
+    return true;
+}
+
+int NAMplifiedAudioProcessor::stopDIRecording (juce::AudioBuffer<float>& destination)
+{
+    const juce::SpinLock::ScopedLockType lock (recordingLock);
+    recordingActive.store (false);
+    destination = std::move (recordingAudio);
+    const auto samples = recordingPosition;
+    recordingPosition = 0;
+    return samples;
+}
+
 void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (recordingActive.load())
+    {
+        const juce::SpinLock::ScopedTryLockType lock (recordingLock);
+        if (lock.isLocked() && recordingActive.load())
+        {
+            if (recordingRate != modelSampleRate.load() || getTotalNumInputChannels() == 0
+                || buffer.getNumChannels() == 0)
+                recordingActive.store (false);
+            else
+            {
+                const auto count = juce::jmin (buffer.getNumSamples(),
+                                              recordingAudio.getNumSamples() - recordingPosition);
+                recordingAudio.copyFrom (0, recordingPosition, buffer, 0, 0, count);
+                recordingPosition += count;
+                if (recordingPosition == recordingAudio.getNumSamples())
+                    recordingActive.store (false);
+            }
+        }
+    }
+
+    {
+        const juce::SpinLock::ScopedTryLockType lock (auditionLock);
+        if (lock.isLocked() && auditionRate == modelSampleRate.load()
+            && auditionPosition < auditionAudio.getNumSamples())
+        {
+            buffer.clear();
+            const auto count = juce::jmin (buffer.getNumSamples(), auditionAudio.getNumSamples() - auditionPosition);
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+                buffer.copyFrom (channel, 0, auditionAudio, juce::jmin (channel, 1), auditionPosition, count);
+            auditionPosition += count;
+            outputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, count) : 0.0f);
+            return;
+        }
+    }
     for (const auto metadata : midiMessages)
     {
         const auto message = metadata.getMessage();

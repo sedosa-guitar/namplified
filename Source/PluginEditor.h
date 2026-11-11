@@ -4,6 +4,7 @@
 #include "PluginProcessor.h"
 
 class ChainControls;
+class PresetBuilderDialog;
 
 class NAMplifiedAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
                                     private juce::ComboBox::Listener
@@ -24,6 +25,7 @@ private:
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
     void showAboutDialog();
+    void showPresetBuilder();
     void showHeaderMenu();
     void timerCallback() override;
     void comboBoxChanged (juce::ComboBox*) override;
@@ -41,6 +43,9 @@ private:
     juce::TextButton savePresetButton { "Save" };
     juce::TextButton deletePresetButton { "Delete" };
     juce::TextButton resetChainButton { "Reset Chain" };
+    juce::TextButton presetBuilderButton { "BUILD PRESET" };
+    std::unique_ptr<PresetBuilderDialog> presetBuilder;
+    std::unique_ptr<juce::Component> aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;
