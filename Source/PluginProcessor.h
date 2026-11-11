@@ -68,6 +68,14 @@ public:
     bool hasUnsavedParameterChanges() const;
     bool isParameterModified (const juce::String& parameterId) const;
     juce::StringArray getUserPresetNames() const;
+    juce::File getUserPresetLibraryDirectory() const;
+    double getAuditionSampleRate() const noexcept { return modelSampleRate.load(); }
+    bool renderAudition (const juce::MemoryBlock& state, const juce::AudioBuffer<float>& input,
+                         double sampleRate, juce::AudioBuffer<float>& output,
+                         const std::function<bool()>& cancelled);
+    void playAudition (juce::AudioBuffer<float> audio, double sampleRate);
+    void stopAudition();
+
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name);
     bool deleteUserPreset (const juce::String& name);
@@ -140,6 +148,10 @@ private:
     struct NAMModel;
     std::unique_ptr<NAMModel> namModels[numAmpSlots];
     std::unique_ptr<NAMModel> boostNAMModel;
+    juce::SpinLock auditionLock;
+    juce::AudioBuffer<float> auditionAudio;
+    int auditionPosition = 0;
+    double auditionRate = 0.0;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];
