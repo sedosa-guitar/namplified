@@ -12,6 +12,15 @@ NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to
 
 See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
+## Key features
+
+- **A complete guitar rig around NAM captures.** See the signal flow from input to output and edit each block in place. Move pre-amp and post-amp effects within their sections.
+- **Dual amps and flexible cabinet routing.** Run two NAM captures in series or blend them in parallel, with an optional frequency split. Pair each amp with its own IR or route the blend through a shared IR. Shape each cabinet independently.
+- **A dedicated NAM pedal slot.** Use a captured pedal before the amps or choose the built-in Clean Boost or 808 Drive.
+- **Local AI Preset Builder with audio A/B.** Describe a sound, then record or import a dry DI to compare the original chain with two generated variants at matched levels. After setup, generation runs on your Mac. If a suitable capture is missing, the builder can suggest a TONE3000 search.
+- **A reusable capture and IR library.** Presets share files, Prev/Next steps through capture families, and the integrated TONE3000 browser loads individual captures you choose.
+- **Standalone and DAW workflows.** Use the same rig in the macOS standalone app, AU or VST3, with MIDI CC Learn for hands-on control.
+
 ## Features
 
 ### Build a signal chain
@@ -56,13 +65,13 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Chorus:** rate, depth, and mix controls.
 - **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −24 to +24 semitones.
 
-### Preset Builder prototype (macOS)
+### Preset Builder (Beta, macOS)
 
-On macOS, open **Build Preset**, describe the sound, and select **Build**. The first build asks for confirmation before downloading and verifying the pinned llama.cpp runtime and Qwen GGUF model (about 2.5 GB). Subsequent builds run locally with the cached files. **Close** stops the server. Use **Save** in the main window to keep the result.
+Open **Build Preset**, describe the sound, and select **Build**. The first build asks before downloading llama.cpp and the Qwen model (about 2.5 GB). NAMplified verifies each download with SHA-256 and reuses the local files for later builds. **Open Model Folder** reveals them in Finder. **Close** stops the local server.
 
-Save a NAMplified preset with a capture and, if needed, an IR to populate `Presets/Library`.
+Use **Open Library** to find the shared `Captures` and `IRs` folders. Saving a NAMplified preset also imports its referenced assets into the library. When the builder suggests a capture to look for, **Search on TONE3000** opens the website with that search term.
 
-To refine the current chain, choose **Load DI WAV**, describe the change and click **Build**. NAMplified renders the first 12 seconds through the original chain and two proposed variations. Listen to **Original**, **A** and **B** at matched levels, then choose **Use A** or **Use B** to apply the settings. Use a mono WAV or put the DI in the left channel of a stereo WAV.
+For audio comparison, load a dry DI WAV (up to 12 seconds are used) or record up to 20 seconds. Use a mono WAV or put the DI in the left channel of a stereo WAV. After building, listen to **Original**, **A** and **B** at matched levels, then choose **Use A** or **Use B**. A build without DI applies the generated chain directly when a usable local capture is available. Use **Save** in the main window to keep the result.
 
 ## Signal flow
 
@@ -75,7 +84,7 @@ The exact route depends on which blocks are enabled and whether the amp section 
 
 ## MIDI control
 
-NAMplified accepts MIDI input. In the standalone app, choose a MIDI input device in **Options → Audio/MIDI Settings**; in a DAW, enable the track's MIDI input for NAMplified. Click **MIDI Learn**, click a slider, knob, selector, or block enable switch, and send a MIDI CC from the controller. The assigned CC controls that parameter across presets. MIDI assignments are stored separately from presets on the current computer.
+NAMplified accepts MIDI input. In the standalone app, choose a MIDI input device in **Options → Audio/MIDI Settings**; in a DAW, enable the track's MIDI input for NAMplified. Choose **MIDI Learn** from the main menu, click a slider, knob, selector, or block enable switch, and send a MIDI CC from the controller. The assigned CC controls that parameter across presets. MIDI assignments are stored separately from presets on the current computer.
 
 ## NAM compatibility
 
@@ -140,7 +149,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 > **Placeholder:** Release builds and verified installation steps are not published yet. These sections will be completed when distributable packages are available.
 
-> **Release reminder:** Before preparing installer files, recheck the current TONE3000 free-tier terms, confirm the published build contains no secret key, and verify the required logo, attribution, creator, and license details.
+> **Release preparation:** Use the [public release checklist](docs/RELEASE_CHECKLIST.md) when preparing installers and publishing downloads.
 
 ### macOS standalone
 
@@ -160,7 +169,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 ## Third-party software and licenses
 
-Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), and bundled fonts (SIL OFL 1.1). JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
+Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), and bundled fonts (SIL OFL 1.1). The optional Preset Builder downloads the MIT-licensed llama.cpp runtime and a GGUF quantization of the Apache-2.0-licensed Qwen model from their respective publishers. JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
 
 **NAMplified's own code is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only).** See [`LICENSE`](LICENSE). Third-party components retain their own licenses and notices listed above and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 

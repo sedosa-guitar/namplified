@@ -63,6 +63,13 @@ The bundled Inter and Space Grotesk font files are distributed under the SIL
 Open Font License 1.1. The corresponding license texts are kept alongside the
 font files in `Assets/Fonts/OFL.txt` and `Assets/Fonts/SpaceGrotesk-OFL.txt`.
 
+## Preset Builder downloads (macOS)
+
+- **llama.cpp b8648** by the ggml authors, under the MIT License. NAMplified downloads the official architecture-specific archive directly from the [upstream release](https://github.com/ggml-org/llama.cpp/releases/tag/b8648). The archive includes the [upstream license](https://github.com/ggml-org/llama.cpp/blob/b8648/LICENSE), which is retained when the runtime is unpacked.
+- **Qwen3-4B-Instruct-2507** by Qwen, under [Apache License 2.0](https://huggingface.co/Qwen/Qwen3-4B-Instruct-2507/blob/main/LICENSE). NAMplified uses the [LM Studio Community Q4_K_M GGUF conversion](https://huggingface.co/lmstudio-community/Qwen3-4B-Instruct-2507-GGUF/blob/dc2e722/Qwen3-4B-Instruct-2507-Q4_K_M.gguf), pinned to revision `dc2e722` and verified by SHA-256.
+
+The runtime and model are fetched on demand from GitHub and Hugging Face after user confirmation. They are separate from NAMplified's app bundle. If a future installer bundles or mirrors either artifact, review the exact artifact's redistribution requirements and include the applicable license and notices.
+
 ## TONE3000 brand asset
 
 `Assets/Branding/TONE3000Logo.svg` is the unmodified TONE3000 logo downloaded
