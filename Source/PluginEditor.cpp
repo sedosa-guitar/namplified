@@ -142,9 +142,69 @@ public:
         return juce::Font (namplifiedFontOptions (juce::jlimit (16.0f, 20.0f, buttonHeight * 0.50f)));
     }
 
+    static constexpr float fieldRadius = 7.0f;
+
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
         return juce::Font (namplifiedFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
+    }
+
+    void drawComboBox (juce::Graphics& g, int width, int height, bool,
+                       int, int, int, int, juce::ComboBox& box) override
+    {
+        const auto bounds = box.getLocalBounds().toFloat();
+        g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+        g.fillRoundedRectangle (bounds, fieldRadius);
+        g.setColour (box.findColour (juce::ComboBox::outlineColourId));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), fieldRadius, 1.0f);
+
+        const auto x = static_cast<float> (width) - 20.0f;
+        const auto y = static_cast<float> (height) * 0.5f;
+        juce::Path arrow;
+        arrow.startNewSubPath (x - 7.0f, y - 2.0f);
+        arrow.lineTo (x, y + 3.0f);
+        arrow.lineTo (x + 7.0f, y - 2.0f);
+        g.setColour (box.findColour (juce::ComboBox::arrowColourId).withAlpha (box.isEnabled() ? 0.9f : 0.2f));
+        g.strokePath (arrow, juce::PathStrokeType (2.0f));
+    }
+
+    void fillTextEditorBackground (juce::Graphics& g, int width, int height, juce::TextEditor& editor) override
+    {
+        g.setColour (editor.findColour (juce::TextEditor::backgroundColourId));
+        g.fillRoundedRectangle (juce::Rectangle<int> (width, height).toFloat(), fieldRadius);
+    }
+
+    void drawTextEditorOutline (juce::Graphics& g, int width, int height, juce::TextEditor& editor) override
+    {
+        if (! editor.isEnabled())
+            return;
+        const auto focused = editor.hasKeyboardFocus (true) && ! editor.isReadOnly();
+        const auto thickness = focused ? 2.0f : 1.0f;
+        g.setColour (editor.findColour (focused ? juce::TextEditor::focusedOutlineColourId
+                                               : juce::TextEditor::outlineColourId));
+        g.drawRoundedRectangle (juce::Rectangle<int> (width, height).toFloat().reduced (thickness * 0.5f),
+                                fieldRadius, thickness);
+    }
+
+    void drawLabel (juce::Graphics& g, juce::Label& label) override
+    {
+        if (label.findColour (juce::Label::backgroundColourId).isTransparent())
+        {
+            juce::LookAndFeel_V4::drawLabel (g, label);
+            return;
+        }
+
+        const auto bounds = label.getLocalBounds().toFloat();
+        {
+            const juce::Graphics::ScopedSaveState saved (g);
+            juce::Path clip;
+            clip.addRoundedRectangle (bounds, fieldRadius);
+            g.reduceClipRegion (clip);
+            juce::LookAndFeel_V4::drawLabel (g, label);
+        }
+        g.setColour (label.findColour (juce::Label::outlineColourId)
+                          .withMultipliedAlpha (label.isEnabled() ? 1.0f : 0.5f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), fieldRadius, 1.0f);
     }
 
     juce::Font getPopupMenuFont() override
@@ -158,6 +218,30 @@ public:
                             const juce::Drawable* icon, const juce::Colour* itemTextColour) override
     {
         juce::ignoreUnused (shortcutKeyText, icon);
+        drawMenuRow (g, area, isSeparator, isActive, isHighlighted, isTicked,
+                     hasSubMenu, itemText, itemTextColour, false);
+    }
+
+    void drawPopupMenuItemWithOptions (juce::Graphics& g, const juce::Rectangle<int>& area,
+                                       bool isHighlighted, const juce::PopupMenu::Item& item,
+                                       const juce::PopupMenu::Options& options) override
+    {
+        if (dynamic_cast<juce::DrawableButton*> (options.getTargetComponent()) == nullptr)
+        {
+            juce::LookAndFeel_V4::drawPopupMenuItemWithOptions (g, area, isHighlighted, item, options);
+            return;
+        }
+
+        const auto* colour = item.colour != juce::Colour() ? &item.colour : nullptr;
+        drawMenuRow (g, area, item.isSeparator, item.isEnabled, isHighlighted, item.isTicked,
+                     item.subMenu != nullptr, item.text, colour, true);
+    }
+
+    void drawMenuRow (juce::Graphics& g, const juce::Rectangle<int>& area, bool isSeparator,
+                      bool isActive, bool isHighlighted, bool isTicked, bool hasSubMenu,
+                      const juce::String& itemText, const juce::Colour* itemTextColour,
+                      bool headerMenu)
+    {
         if (isSeparator)
         {
             g.setColour (juce::Colour::fromRGB (55, 64, 76));
@@ -165,7 +249,7 @@ public:
             return;
         }
 
-        auto itemArea = area.reduced (5, 2);
+        auto itemArea = area.reduced (headerMenu ? 7 : 5, headerMenu ? 3 : 2);
         if (isTicked || isHighlighted)
         {
             const auto selectedFill = isHighlighted ? juce::Colour::fromRGB (47, 66, 78)
@@ -173,9 +257,9 @@ public:
             g.setColour (selectedFill);
             g.fillRoundedRectangle (itemArea.toFloat(), 6.0f);
         }
-        if (isTicked)
+        if (isTicked || (headerMenu && isHighlighted))
         {
-            g.setColour (knobAccent);
+            g.setColour (headerMenu ? selectionAccent : knobAccent);
             g.fillRoundedRectangle (juce::Rectangle<float> (static_cast<float> (itemArea.getX() + 7),
                                                               static_cast<float> (itemArea.getY() + 7),
                                                               3.0f, static_cast<float> (itemArea.getHeight() - 14)), 1.5f);
@@ -187,8 +271,8 @@ public:
         else if (isTicked)
             colour = juce::Colour (0xff7be0bd);
         g.setColour (colour);
-        g.setFont (getPopupMenuFont());
-        auto textArea = itemArea.reduced (isTicked ? 20 : 12, 0);
+        g.setFont (headerMenu ? juce::Font (namplifiedFontOptions (18.0f)) : getPopupMenuFont());
+        auto textArea = itemArea.reduced (headerMenu || isTicked ? 20 : 12, 0);
         if (hasSubMenu)
             textArea.removeFromRight (18);
         g.drawFittedText (itemText, textArea, juce::Justification::centredLeft, 1);
@@ -1545,7 +1629,7 @@ public:
             fileName.setColour (juce::Label::backgroundColourId, juce::Colour::fromRGB (22, 28, 37));
             fileName.setColour (juce::Label::outlineColourId, juce::Colour::fromRGB (57, 66, 80));
             fileName.setBorderSize ({ 1, 8, 1, 8 });
-            fileName.setOpaque (true);
+            fileName.setOpaque (false);
             fileName.setJustificationType (juce::Justification::centredLeft);
             addAndMakeVisible (fileName);
 
@@ -3540,10 +3624,14 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     title.setFont (juce::Font (juce::FontOptions().withTypeface (getBrandTypeface()).withHeight (29.0f).withStyle ("Bold")));
     title.setColour (juce::Label::textColourId, text);
     addAndMakeVisible (title);
-    subtitle.setText ("CAPTURE SIGNAL WORKSTATION", juce::dontSendNotification);
+    subtitle.setText ("NEURAL AMP MODELING WORKSTATION", juce::dontSendNotification);
     subtitle.setFont (namplifiedFontOptions (9.0f, juce::Font::bold));
     subtitle.setColour (juce::Label::textColourId, secondaryText);
     addAndMakeVisible (subtitle);
+    const auto titleWidth = juce::GlyphArrangement::getStringWidth (title.getFont(), title.getText());
+    const auto subtitleWidth = juce::GlyphArrangement::getStringWidth (subtitle.getFont(), subtitle.getText());
+    if (titleWidth > 0.0f)
+        title.setFont (title.getFont().withHorizontalScale (subtitleWidth / titleWidth));
 
     presetLabel.setText ("PRESET", juce::dontSendNotification);
     presetLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
@@ -3554,9 +3642,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     savePresetButton.setButtonText ("SAVE");
     deletePresetButton.setButtonText ("DELETE");
     resetChainButton.setButtonText ("NEW CHAIN");
-    aboutButton.setButtonText ("ABOUT");
     resetChainButton.setTooltip ("Start a new chain with the default settings");
-    aboutButton.setTooltip ("About NAMplified");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
     pitchLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
@@ -3621,33 +3707,20 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (savePresetButton);
     addAndMakeVisible (deletePresetButton);
     addAndMakeVisible (resetChainButton);
-    addAndMakeVisible (aboutButton);
-    audioSettingsButton.setButtonText ("AUDIO");
-    audioSettingsButton.setTooltip ("Open audio and MIDI device settings");
-    audioSettingsButton.setVisible (audioProcessor.hasAudioSettingsCallback());
-    audioSettingsButton.onClick = [this] { audioProcessor.showAudioSettings(); };
-    addAndMakeVisible (audioSettingsButton);
-    midiLearnButton.setButtonText ("MIDI LEARN");
-    midiLearnButton.setTooltip ("Click MIDI Learn, then a control, then move a hardware MIDI CC knob.");
-    midiLearnButton.onClick = [this]
-    {
-        if (midiLearnArmed)
-        {
-            audioProcessor.cancelMidiLearn();
-            midiLearnArmed = midiTargetArmed = false;
-            midiLearnButton.setButtonText ("MIDI LEARN");
-            midiLearnButton.setTooltip ("Click MIDI Learn, then a control, then move a hardware MIDI CC knob.");
-        }
-        else
-        {
-            midiLearnArmed = true;
-            midiTargetArmed = false;
-            audioProcessor.armMidiLearn();
-            midiLearnButton.setButtonText ("CLICK CONTROL");
-            midiLearnButton.setTooltip ("Now click the parameter you want to control, then send a MIDI CC.");
-        }
-    };
-    addAndMakeVisible (midiLearnButton);
+    juce::Path menuLines;
+    for (int y = 0; y < 3; ++y)
+        menuLines.addRoundedRectangle (0.0f, static_cast<float> (y) * 5.0f, 18.0f, 2.0f, 1.0f);
+    juce::DrawablePath menuIcon, armedMenuIcon;
+    menuIcon.setPath (menuLines);
+    menuIcon.setFill (text);
+    armedMenuIcon.setPath (menuLines);
+    armedMenuIcon.setFill (knobAccent);
+    headerMenuButton.setEdgeIndent (11);
+    headerMenuButton.setColour (juce::DrawableButton::backgroundOnColourId, juce::Colours::transparentBlack);
+    headerMenuButton.setImages (&menuIcon, nullptr, nullptr, nullptr, &armedMenuIcon);
+    headerMenuButton.setTooltip ("Open menu");
+    headerMenuButton.onClick = [this] { showHeaderMenu(); };
+    addAndMakeVisible (headerMenuButton);
     refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     presetBox.onChange = [this]
     {
@@ -3673,7 +3746,6 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         refreshUserPresets();
         updateRoutingDisplay();
     };
-    aboutButton.onClick = [this] { showAboutDialog(); };
 
     ampRoutingBox.addItem ("SERIES", 1);
     ampRoutingBox.addItem ("PARALLEL BLEND", 2);
@@ -3772,19 +3844,12 @@ void NAMplifiedAudioProcessorEditor::resized()
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (42);
     auto titleArea = top.removeFromLeft (240);
-    brandIcon.setBounds (titleArea.removeFromLeft (34).withSizeKeepingCentre (32, 32));
+    brandIcon.setBounds (titleArea.removeFromLeft (40).withSizeKeepingCentre (40, 40));
     titleArea.removeFromLeft (8);
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
-    auto aboutArea = top.removeFromRight (76);
+    headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     top.removeFromRight (8);
-    aboutButton.setBounds (aboutArea.reduced (0, 4));
-    auto audioSettingsArea = top.removeFromRight (76);
-    top.removeFromRight (8);
-    audioSettingsButton.setBounds (audioSettingsArea.reduced (0, 4));
-    auto midiArea = top.removeFromRight (108);
-    top.removeFromRight (8);
-    midiLearnButton.setBounds (midiArea.reduced (0, 4));
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 920;
     const auto presetWidth = compactHeader ? 145 : 165;
@@ -3855,9 +3920,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     savePresetButton.setVisible (showChrome);
     deletePresetButton.setVisible (showChrome);
     resetChainButton.setVisible (showChrome);
-    aboutButton.setVisible (showChrome);
-    audioSettingsButton.setVisible (showChrome && audioProcessor.hasAudioSettingsCallback());
-    midiLearnButton.setVisible (showChrome);
+    headerMenuButton.setVisible (showChrome);
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
@@ -3905,7 +3968,6 @@ void NAMplifiedAudioProcessorEditor::timerCallback()
     if (midiLearnArmed && audioProcessor.hasMidiLearnTarget())
     {
         midiTargetArmed = true;
-        midiLearnButton.setButtonText ("SEND MIDI CC");
     }
     int learnedCC = -1;
     juce::String learnedParameter;
@@ -3913,8 +3975,8 @@ void NAMplifiedAudioProcessorEditor::timerCallback()
     {
         midiLearnArmed = midiTargetArmed = false;
         audioProcessor.saveMidiMappings();
-        midiLearnButton.setButtonText ("MIDI LEARN");
-        midiLearnButton.setTooltip ("CC " + juce::String (learnedCC) + " now controls " + learnedParameter
+        headerMenuButton.setToggleState (false, juce::dontSendNotification);
+        headerMenuButton.setTooltip ("CC " + juce::String (learnedCC) + " now controls " + learnedParameter
                                     + ". Click to learn another mapping. "
                                     + juce::String (audioProcessor.getMidiMappingCount()) + " mappings saved.");
     }
@@ -3958,8 +4020,7 @@ void NAMplifiedAudioProcessorEditor::mouseDown (const juce::MouseEvent& event)
             && audioProcessor.setMidiLearnTarget (id))
         {
             midiTargetArmed = true;
-            midiLearnButton.setButtonText ("SEND MIDI CC");
-            midiLearnButton.setTooltip ("Move the MIDI controller now to assign it to " + id + ".");
+            headerMenuButton.setTooltip ("Move the MIDI controller now to assign it to " + id + ".");
             return;
         }
         component = component->getParentComponent();
@@ -4055,7 +4116,8 @@ void NAMplifiedAudioProcessorEditor::updateBlendValue()
 void NAMplifiedAudioProcessorEditor::showSavePresetPrompt()
 {
     auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
-                                         juce::MessageBoxIconType::NoIcon);
+                                         juce::MessageBoxIconType::NoIcon, this);
+    alert->setLookAndFeel (editorLookAndFeel.get());
     const auto currentName = selectedPresetName();
     alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "My Preset", "Preset name:");
     alert->addButton ("Save", 1);
@@ -4063,6 +4125,7 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt()
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
     alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert] (int result)
     {
+        alert->setLookAndFeel (nullptr);
         if (result != 1 || safeThis == nullptr)
             return;
         const auto name = alert->getTextEditorContents ("presetName").trim();
@@ -4125,4 +4188,40 @@ void NAMplifiedAudioProcessorEditor::showAboutDialog()
     {
         alert->setLookAndFeel (nullptr);
     }), true);
+}
+
+void NAMplifiedAudioProcessorEditor::showHeaderMenu()
+{
+    juce::PopupMenu menu;
+    menu.setLookAndFeel (editorLookAndFeel.get());
+    menu.addItem (1, midiLearnArmed ? "Cancel MIDI Learn" : "MIDI Learn");
+    if (audioProcessor.hasAudioSettingsCallback())
+        menu.addItem (2, "Audio");
+    menu.addItem (3, "About");
+
+    juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&headerMenuButton)
+                                              .withStandardItemHeight (42).withMinimumWidth (220),
+                        [safeThis] (int result)
+    {
+        if (auto* editor = safeThis.getComponent())
+        {
+            if (result == 1)
+            {
+                editor->midiLearnArmed = ! editor->midiLearnArmed;
+                editor->midiTargetArmed = false;
+                if (editor->midiLearnArmed)
+                    editor->audioProcessor.armMidiLearn();
+                else
+                    editor->audioProcessor.cancelMidiLearn();
+                editor->headerMenuButton.setToggleState (editor->midiLearnArmed, juce::dontSendNotification);
+                editor->headerMenuButton.setTooltip (editor->midiLearnArmed
+                    ? "Click a control, then move a MIDI controller." : "Open menu");
+            }
+            else if (result == 2)
+                editor->audioProcessor.showAudioSettings();
+            else if (result == 3)
+                editor->showAboutDialog();
+        }
+    });
 }
