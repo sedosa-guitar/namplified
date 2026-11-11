@@ -3710,21 +3710,41 @@ class PresetBuilderDialog final : public NAMplifiedDialog, private juce::Thread,
 public:
     PresetBuilderDialog (NAMplifiedAudioProcessor& processor, juce::Component& parent,
                          std::function<void()> onClose)
-        : NAMplifiedDialog (parent, "Preset Builder (Beta)", 720, 606),
+        : NAMplifiedDialog (parent, "Preset Builder (Beta)", 720, 650),
           juce::Thread ("NAMplified Preset Builder"), audioProcessor (processor), closeDialog (std::move (onClose))
     {
-        styleLabel (modelLabel, "GGUF model path", 15.0f, juce::Colour (0xffeef2f7), true);
-        styleLabel (promptLabel, "Describe your guitar sound", 15.0f, juce::Colour (0xffeef2f7), true);
-        styleLabel (diLabel, "DI INPUT", 13.0f, knobAccent, true);
+        styleLabel (modelLabel, "LOCAL AI MODEL", 15.0f, knobAccent, true);
+        styleLabel (setupNotice, managedModel().getSize() == modelBytes && managedServer().existsAsFile()
+            ? "Local files: ~/Library/Application Support/NAMplified/Preset Builder"
+            : "Your first Build asks to download the local model and runtime (about 2.5 GB).",
+            16.0f);
+        setupNotice.setTooltip (setupFolder().getFullPathName());
+        addChildComponent (modelFolderButton);
+        modelFolderButton.setVisible (managedModel().getSize() == modelBytes && managedServer().existsAsFile());
+        modelFolderButton.onClick = []
+        {
+            if (! setupFolder().startAsProcess())
+                setupFolder().revealToUser();
+        };
+        styleLabel (promptLabel, "Describe your guitar sound", 16.0f, juce::Colour (0xffeef2f7), true);
+        styleLabel (diLabel, "DI INPUT", 14.0f, knobAccent, true);
         styleLabel (help, "Record up to 20 seconds or load a dry DI guitar WAV without amp, cab or effects. "
-                          "Open Library to find the Captures and IRs folders.", 15.0f);
-        styleLabel (auditionLabel, "AUDITION", 13.0f, knobAccent, true);
-        styleLabel (status, "Build starts a local AI server. Closing this window stops it.", 15.0f);
-        styleLabel (durationHint, "Building locally can take several minutes.", 14.0f);
+                          "Open Library to find the Captures and IRs folders.", 16.0f);
+        styleLabel (auditionLabel, "AUDITION", 14.0f, knobAccent, true);
+        styleLabel (status, "Build starts a local AI server. Closing this window stops it.", 17.0f, knobAccent, true);
+        styleLabel (durationHint, "Building locally can take several minutes.", 15.0f);
+        styleLabel (recommendationLabel, {}, 15.0f);
+        recommendationLabel.setVisible (false);
+        addChildComponent (searchToneButton);
+        searchToneButton.onClick = [this]
+        {
+            juce::URL ("https://www.tone3000.com/search").withParameter ("q", suggestedSearch).launchInDefaultBrowser();
+        };
+        searchToneButton.setTooltip ("Search TONE3000 for the suggested capture");
         styleLabel (elapsedLabel, {}, 14.0f, knobAccent);
         elapsedLabel.setJustificationType (juce::Justification::centredRight);
         elapsedLabel.setVisible (false);
-        for (auto* field : { &modelEditor, &promptEditor })
+        for (auto* field : { &promptEditor })
         {
             field->setFont (namplifiedFontOptions (16.0f));
             field->setIndents (12, 8);
@@ -3733,8 +3753,6 @@ public:
             field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
             addAndMakeVisible (*field);
         }
-        modelEditor.setText (namplifiedSettings().getValue ("presetBuilderModel"), false);
-        modelEditor.setTextToShowWhenEmpty ("/path/to/model.gguf", juce::Colour (0xff9baabb));
         promptEditor.setMultiLine (true, true);
         promptEditor.setReturnKeyStartsNewLine (true);
         promptEditor.setTextToShowWhenEmpty ("Warm clean tone with a little chorus", juce::Colour (0xff9baabb));
@@ -3818,7 +3836,8 @@ public:
         NAMplifiedDialog::resized();
         const auto origin = panel().getPosition();
         modelLabel.setBounds (juce::Rectangle<int> (24, 103, 672, 22) + origin);
-        modelEditor.setBounds (juce::Rectangle<int> (24, 129, 672, 38) + origin);
+        setupNotice.setBounds (juce::Rectangle<int> (24, 129, 482, 38) + origin);
+        modelFolderButton.setBounds (juce::Rectangle<int> (526, 131, 170, 34) + origin);
         promptLabel.setBounds (juce::Rectangle<int> (24, 178, 672, 22) + origin);
         promptEditor.setBounds (juce::Rectangle<int> (24, 204, 672, 64) + origin);
         diLabel.setBounds (juce::Rectangle<int> (24, 283, 672, 19) + origin);
@@ -3828,11 +3847,13 @@ public:
         durationHint.setBounds (juce::Rectangle<int> (24, 545, 470, 22) + origin);
         elapsedLabel.setBounds (juce::Rectangle<int> (504, 545, 192, 22) + origin);
         progressBar.setBounds (juce::Rectangle<int> (24, 573, 672, 6) + origin);
+        recommendationLabel.setBounds (juce::Rectangle<int> (24, 589, 424, 44) + origin);
+        searchToneButton.setBounds (juce::Rectangle<int> (460, 594, 236, 34) + origin);
         actionPanel.setBounds (juce::Rectangle<int> (24, 354, 672, 180) + origin);
     }
 
 private:
-    enum class JobStage { starting, generating, retrying, rendering };
+    enum class JobStage { starting, downloadingRuntime, downloadingModel, verifyingDownload, generating, retrying, rendering };
 
     void interruptJob()
     {
@@ -3846,9 +3867,9 @@ private:
     void stopServer()
     {
         interruptJob();
+        stopThread (-1);
         if (server.isRunning())
             server.kill();
-        stopThread (-1);
     }
 
     void dismiss() override
@@ -3873,8 +3894,6 @@ private:
         getButton ("Cancel")->setEnabled (false);
         setMessage ("Cancelling...");
         interruptJob();
-        if (server.isRunning())
-            server.kill();
     }
 
     void startJob()
@@ -3885,11 +3904,18 @@ private:
         elapsedLabel.setVisible (true);
         jobError.clear();
         jobProposal = juce::var();
+        suggestedSearch = originalOnly ? juce::String() : explicitMissingAmp;
+        status.setTooltip ({});
+        recommendationLabel.setVisible (false);
+        searchToneButton.setVisible (false);
         stage.store (originalOnly ? JobStage::rendering : JobStage::starting);
         displayedStage = stage.load();
         getButton ("Build")->setVisible (false);
         getButton ("Cancel")->setEnabled (true);
         getButton ("Cancel")->setVisible (true);
+        progress = -1.0;
+        downloadProgress.store (-1.0);
+        progressBar.setPercentageDisplay (false);
         progressBar.setVisible (true);
         if (! startThread())
         {
@@ -3911,10 +3937,29 @@ private:
         for (const auto* name : { "Build", "Load DI WAV", "Record DI" })
             getButton (name)->setEnabled (true);
 
+        if (cancelling && server.isRunning())
+            server.kill();
+        if (managedModel().getSize() == modelBytes && managedServer().existsAsFile())
+        {
+            const auto justInstalled = ! modelFolderButton.isVisible();
+            setupNotice.setText (juce::String (justInstalled ? "Download complete. Saved in " : "Local files: ")
+                + "~/Library/Application Support/NAMplified/Preset Builder", juce::dontSendNotification);
+            modelFolderButton.setVisible (true);
+        }
+
         if (closeWhenDone)
         {
             dismiss();
             return;
+        }
+
+        if (! cancelling && suggestedSearch.isNotEmpty())
+        {
+            recommendationLabel.setText (! originalOnly && explicitMissingAmp.isNotEmpty()
+                ? "No matching local capture: " + explicitMissingAmp
+                : "Suggested TONE3000 search: " + suggestedSearch, juce::dontSendNotification);
+            recommendationLabel.setVisible (true);
+            searchToneButton.setVisible (true);
         }
 
         if (cancelling || jobError.isNotEmpty())
@@ -3925,7 +3970,12 @@ private:
             return;
         }
 
-        if (originalOnly)
+        if (! originalOnly && searchOnly)
+        {
+            enableAuditionButtons (false, hasDI());
+            setMessage ("No local amp capture found. Add a capture to your library to build a preview.");
+        }
+        else if (originalOnly)
         {
             originalReady = true;
             enableAuditionButtons (false, true);
@@ -4005,10 +4055,21 @@ private:
             else if (! cancelling)
             {
                 const auto current = stage.load();
+                const auto downloading = current == JobStage::downloadingRuntime || current == JobStage::downloadingModel;
+                progress = downloading ? downloadProgress.load() : -1.0;
+                progressBar.setPercentageDisplay (downloading && progress >= 0.0);
                 if (current != displayedStage)
                 {
                     displayedStage = current;
-                    if (current == JobStage::generating)
+                    if (current == JobStage::downloadingRuntime)
+                        setMessage ("Downloading the local runtime...");
+                    else if (current == JobStage::downloadingModel)
+                        setMessage ("Downloading the local model (about 2.5 GB)...");
+                    else if (current == JobStage::verifyingDownload)
+                        setMessage ("Verifying the download (SHA-256)...");
+                    else if (current == JobStage::starting)
+                        setMessage ("Waiting for the local AI server...");
+                    else if (current == JobStage::generating)
                         setMessage ("Generating settings with the local model...");
                     else if (current == JobStage::retrying)
                         setMessage ("The model response was incomplete. Retrying...");
@@ -4096,12 +4157,37 @@ private:
         startJob();
     }
 
-    void enableLoadedIRs()
+    static bool captureIncludesCab (const juce::File& file)
+    {
+        if (file == juce::File())
+            return false;
+        const auto name = file.getFileNameWithoutExtension().toLowerCase();
+        const auto words = juce::StringArray::fromTokens (name, " _-.+()[]", "");
+        for (int i = 1; i < words.size(); ++i)
+            if ((words[i] == "cab" || words[i] == "cabinet") && (words[i - 1] == "no" || words[i - 1] == "without"))
+                return false;
+        if (name.contains ("cabless") || name.contains ("nocab"))
+            return false;
+        return words.contains ("cab") || words.contains ("cabinet");
+    }
+
+    bool activeCaptureIncludesCab()
     {
         for (int slot = 0; slot < 2; ++slot)
-            if (audioProcessor.getImpulseResponseName (slot).isNotEmpty())
+            if (const auto* enabled = audioProcessor.parameters.getRawParameterValue (slot == 0 ? "amp1On" : "amp2On");
+                enabled != nullptr && enabled->load() >= 0.5f
+                && captureIncludesCab (audioProcessor.getNAMCaptureFile (slot)))
+                return true;
+        return false;
+    }
+
+    void updateBuilderIRs()
+    {
+        const auto bypassIRs = activeCaptureIncludesCab();
+        for (int slot = 0; slot < 2; ++slot)
+            if (bypassIRs || audioProcessor.getImpulseResponseName (slot).isNotEmpty())
                 if (auto* parameter = audioProcessor.parameters.getParameter (slot == 0 ? "ir1On" : "ir2On"))
-                    parameter->setValueNotifyingHost (1.0f);
+                    parameter->setValueNotifyingHost (bypassIRs ? 0.0f : 1.0f);
     }
 
     using ParameterChanges = std::vector<std::pair<juce::String, float>>;
@@ -4301,7 +4387,9 @@ private:
         for (size_t variant = 0; variant < auditionCaptures.size(); ++variant)
         {
             const auto settings = proposal.getProperty (variant == 0 ? "a" : "b", {});
-            const auto selected = getCatalogFile (settings.getProperty ("capture", {}), captures);
+            auto selected = getCatalogFile (settings.getProperty ("capture", {}), captures);
+            if (ac20Requested && selected == juce::File() && ! captures.contains (originalAmp))
+                selected = captures[static_cast<int> (variant) % captures.size()];
             auditionCaptures[variant] = selected != originalAmp ? selected : juce::File();
         }
 
@@ -4340,6 +4428,20 @@ private:
                     toggle->second = 1.0f;
             }
 
+        if (ac20Requested)
+        {
+            const auto* otherAmp = auditionAmpSlot == 0 ? "amp2On" : "amp1On";
+            for (auto& changes : auditionChanges)
+            {
+                changes.erase (std::remove_if (changes.begin(), changes.end(), [otherAmp](const auto& change)
+                {
+                    return change.first == otherAmp;
+                }), changes.end());
+                changes.emplace_back (otherAmp, 0.0f);
+            }
+        }
+
+        auditionBypassIRs.fill (false);
         juce::File firstCab;
         for (size_t variant = 0; variant < auditionIRs.size(); ++variant)
         {
@@ -4350,6 +4452,19 @@ private:
                         return value;
                 return static_cast<float> (originalTree.getChildWithProperty ("id", id).getProperty ("value"));
             };
+            for (int amp = 0; amp < 2; ++amp)
+            {
+                const auto file = amp == auditionAmpSlot && auditionCaptures[variant] != juce::File()
+                    ? auditionCaptures[variant]
+                    : juce::File (originalTree.getProperty ("ampFile" + juce::String (amp + 1)).toString());
+                if (setting (amp == 0 ? "amp1On" : "amp2On") >= 0.5f && captureIncludesCab (file))
+                    auditionBypassIRs[variant] = true;
+            }
+            if (auditionBypassIRs[variant])
+            {
+                auditionIRs[variant] = {};
+                continue;
+            }
             const auto current = effectiveIRs (variant);
             const auto parallel = setting ("ampRouting") >= 0.5f;
             const auto useSecondSlot = parallel
@@ -4411,10 +4526,10 @@ private:
                     const auto& file = auditionIRs[i - 1][static_cast<size_t> (slot)];
                     if (file != juce::File())
                         tree.setProperty (pathKey, file.getFullPathName(), nullptr);
-                    if (tree.getProperty (pathKey).toString().isNotEmpty())
+                    if (auditionBypassIRs[i - 1] || tree.getProperty (pathKey).toString().isNotEmpty())
                         if (auto parameter = tree.getChildWithProperty ("id", slot == 0 ? "ir1On" : "ir2On");
                             parameter.isValid())
-                            parameter.setProperty ("value", 1.0f, nullptr);
+                            parameter.setProperty ("value", auditionBypassIRs[i - 1] ? 0.0f : 1.0f, nullptr);
                 }
                 for (const auto& [id, value] : auditionChanges[i - 1])
                 {
@@ -4458,7 +4573,7 @@ private:
         if (const auto& pedal = auditionPedals[variant]; pedal != juce::File())
             audioProcessor.loadNAMCapture (NAMplifiedAudioProcessor::boostNAMSlot, pedal);
         applyParameterChanges (auditionChanges[variant]);
-        enableLoadedIRs();
+        updateBuilderIRs();
         dismiss();
     }
 
@@ -4530,22 +4645,23 @@ private:
             changes.emplace_back ("preEqOn", 1.0f);
     }
 
-    void build()
+    void build (bool approved = false)
     {
         if (busy || recording)
             return;
 
-        const auto modelPath = modelEditor.getText().trim().unquoted();
         prompt = promptEditor.getText().trim().substring (0, 1000);
-        if (! juce::File::isAbsolutePath (modelPath) || ! juce::File (modelPath).existsAsFile()
-            || ! juce::File (modelPath).hasFileExtension ("gguf") || prompt.isEmpty())
+        if (prompt.isEmpty())
         {
-            setMessage ("Enter the full path to a GGUF model and describe the sound.");
+            setMessage ("Describe the guitar sound you want to build.");
             return;
         }
 
         const auto library = audioProcessor.getUserPresetLibraryDirectory();
         captures = library.getChildFile ("Captures").findChildFiles (juce::File::findFiles, true, "*.nam");
+        for (int slot = 0; slot < NAMplifiedAudioProcessor::numAmpSlots; ++slot)
+            if (const auto file = audioProcessor.getNAMCaptureFile (slot); file.existsAsFile())
+                captures.addIfNotAlreadyThere (file);
         pedals.clear();
         for (int index = captures.size(); --index >= 0;)
         {
@@ -4565,53 +4681,78 @@ private:
             pedals.removeLast();
         collectIRs (library);
         captures.sort();
+        explicitMissingAmp.clear();
+        const auto compactName = [](const juce::String& name)
+        {
+            return name.toLowerCase().retainCharacters ("abcdefghijklmnopqrstuvwxyz0123456789");
+        };
+        const auto compactPrompt = compactName (prompt);
+        const auto promptWords = juce::StringArray::fromTokens (prompt.toLowerCase(), " ,.-/;:!?()\t\r\n", "");
+        ac20Requested = compactPrompt.contains ("morganac20") || promptWords.contains ("ac20")
+            || compactPrompt.contains ("ac20sound");
+        if (ac20Requested)
+        {
+            juce::Array<juce::File> exactMatches, alternatives;
+            for (const auto& file : captures)
+            {
+                const auto name = compactName (file.getParentDirectory().getFileName() + " "
+                                               + file.getFileNameWithoutExtension());
+                if (name.contains ("morgan") && name.contains ("ac20"))
+                    exactMatches.add (file);
+                else if (name.contains ("morganac") || name.contains ("voxac15") || name.contains ("voxac30"))
+                    alternatives.add (file);
+            }
+            if (exactMatches.isEmpty())
+                explicitMissingAmp = "Morgan AC20";
+            captures = exactMatches.isEmpty() ? std::move (alternatives) : std::move (exactMatches);
+            if (captures.isEmpty())
+            {
+                suggestedSearch = explicitMissingAmp;
+                recommendationLabel.setText ("No matching local capture: Morgan AC20", juce::dontSendNotification);
+                recommendationLabel.setVisible (true);
+                searchToneButton.setVisible (true);
+                setMessage ("No suitable local AC20-style amp found. Search TONE3000 or add a capture to your library.");
+                return;
+            }
+        }
         while (captures.size() > 100)
             captures.removeLast();
-        if (captures.isEmpty() && ! diFile.existsAsFile() && recordedSamples == 0)
+        searchOnly = captures.isEmpty();
+
+       #if JUCE_MAC
+        const auto needsModel = managedModel().getSize() != modelBytes;
+        const auto needsRuntime = ! managedServer().existsAsFile();
+        if (! approved && (needsModel || needsRuntime))
         {
-            setMessage ("Save a NAMplified preset with a loaded capture to add it to your Library.");
+            juce::String message = "NAMplified will download the missing files for local preset generation.\n\n";
+            if (needsRuntime)
+                message << "llama.cpp " << runtimeVersion << " runtime from GitHub\n";
+            if (needsModel)
+                message << "Qwen3-4B-Instruct-2507 Q4_K_M model from Hugging Face (about 2.5 GB)\n";
+            message << "\nNAMplified checks each download against its SHA-256 checksum and stores it "
+                       "locally for future builds.";
+            juce::Component::SafePointer<PresetBuilderDialog> safeThis (this);
+            auto* alert = new juce::AlertWindow ("Download local AI files", message,
+                                                juce::MessageBoxIconType::NoIcon, this);
+            alert->setLookAndFeel (&getLookAndFeel());
+            alert->addButton ("OK", 1);
+            alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+            alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert](int result)
+            {
+                alert->setLookAndFeel (nullptr);
+                if (result == 1 && safeThis != nullptr && safeThis->isShowing())
+                    safeThis->build (true);
+            }), true);
             return;
         }
-
-        if (! server.isRunning() || activeModel != modelPath)
-        {
-            stopServer();
-            juce::File executable ("/opt/homebrew/bin/llama-server");
-            if (! executable.existsAsFile())
-                executable = juce::File ("/usr/local/bin/llama-server");
-            if (! executable.existsAsFile())
-            {
-                setMessage ("Install llama.cpp with Homebrew to use the Preset Builder.");
-                return;
-            }
-
-            juce::StreamingSocket portProbe;
-            if (! portProbe.createListener (0, "127.0.0.1"))
-            {
-                setMessage ("Could not reserve a local port.");
-                return;
-            }
-            port = portProbe.getBoundPort();
-            portProbe.close();
-            apiKey = juce::Uuid().toString();
-            if (! server.start ({ executable.getFullPathName(), "-m", modelPath,
-                                  "--host", "127.0.0.1", "--port", juce::String (port),
-                                  "--api-key", apiKey, "--ctx-size", "12288", "--parallel", "1" }, 0))
-            {
-                setMessage ("Could not start llama-server.");
-                return;
-            }
-            activeModel = modelPath;
-            auto& settings = namplifiedSettings();
-            settings.setValue ("presetBuilderModel", modelPath);
-            settings.saveIfNeeded();
-        }
+       #endif
+        downloadApproved = approved;
 
         audioProcessor.stopAudition();
         enableAuditionButtons (false);
         originalOnly = false;
         originalReady = false;
-        comparison = hasDI();
+        comparison = hasDI() && ! searchOnly;
         audioProcessor.getStateInformation (auditionState);
         if (const auto xml = juce::AudioProcessor::getXmlFromBinary (
                 auditionState.getData(), static_cast<int> (auditionState.getSize())))
@@ -4652,6 +4793,175 @@ private:
         return response;
     }
 
+    static constexpr juce::int64 modelBytes = 2497280448LL;
+    static constexpr auto runtimeVersion = "b8648";
+    static constexpr auto modelFilename = "Qwen3-4B-Instruct-2507-Q4_K_M.gguf";
+    static constexpr auto modelHash = "8cdb57cbb880d313736a9bc4e3d3d2485f145b5e19cf33783746e753e82641fc";
+
+    static juce::File setupFolder()
+    {
+        return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
+            .getChildFile ("Application Support/NAMplified/Preset Builder");
+    }
+
+    static juce::File managedModel() { return setupFolder().getChildFile (modelFilename); }
+
+    static juce::File runtimeFolder()
+    {
+       #if JUCE_ARM
+        return setupFolder().getChildFile (juce::String (runtimeVersion) + "-arm64");
+       #else
+        return setupFolder().getChildFile (juce::String (runtimeVersion) + "-x64");
+       #endif
+    }
+
+    static juce::File findServer (const juce::File& folder)
+    {
+        const auto servers = folder.findChildFiles (juce::File::findFiles, true, "llama-server");
+        return servers.isEmpty() ? juce::File() : servers[0];
+    }
+
+    static juce::File managedServer() { return findServer (runtimeFolder()); }
+
+    bool downloadSetupFile (const juce::URL& url, const juce::File& destination, const juce::String& expectedHash,
+                            juce::int64 expectedSize = -1)
+    {
+        {
+            const juce::ScopedLock lock (requestLock);
+            if (threadShouldExit())
+                return false;
+            request = std::make_unique<juce::WebInputStream> (url, false);
+            request->withConnectionTimeout (60000).withNumRedirectsToFollow (8);
+        }
+
+        bool complete = false;
+        {
+            auto output = destination.createOutputStream();
+            if (output != nullptr && output->openedOk() && request->connect (nullptr) && request->getStatusCode() == 200)
+            {
+                const auto total = expectedSize > 0 ? expectedSize : request->getTotalLength();
+                juce::int64 received = 0;
+                if (total > 0)
+                    downloadProgress.store (0.0);
+                juce::HeapBlock<char> buffer (256 * 1024);
+                while (! threadShouldExit())
+                {
+                    const auto count = request->read (buffer.getData(), 256 * 1024);
+                    if (count <= 0)
+                    {
+                        complete = request->isExhausted() && ! request->isError();
+                        break;
+                    }
+                    if (! output->write (buffer.getData(), static_cast<size_t> (count)))
+                        break;
+                    received += count;
+                    if (total > 0)
+                        downloadProgress.store (juce::jmin (1.0, static_cast<double> (received) / static_cast<double> (total)));
+                }
+                output->flush();
+                complete = complete && output->getStatus().wasOk();
+            }
+        }
+        {
+            const juce::ScopedLock lock (requestLock);
+            request.reset();
+        }
+        if (! complete || threadShouldExit())
+            return false;
+        stage.store (JobStage::verifyingDownload);
+        return juce::SHA256 (destination).toHexString() == expectedHash && ! threadShouldExit();
+    }
+
+    juce::String startManagedServer()
+    {
+       #if JUCE_MAC
+        if (server.isRunning())
+            return {};
+
+        auto executable = managedServer();
+        const auto model = managedModel();
+        if (! executable.existsAsFile() || model.getSize() != modelBytes)
+        {
+            if (! downloadApproved)
+                return "Local AI files are missing. Select Build to approve the download.";
+
+            juce::InterProcessLock setupLock ("NAMplifiedPresetBuilderSetup");
+            if (! setupLock.enter (0))
+                return "Another NAMplified window is setting up the local model. Try again when it finishes.";
+
+            if (setupFolder().createDirectory().failed())
+                return "Could not create the Preset Builder download folder.";
+
+            executable = managedServer();
+            if (! executable.existsAsFile())
+            {
+                downloadProgress.store (-1.0);
+                stage.store (JobStage::downloadingRuntime);
+               #if JUCE_ARM
+                constexpr auto architecture = "arm64";
+                constexpr auto hash = "48dfe3a3a3f5c07f95c8a7349474044d99d0f01638e4c0ea461a8894803f573f";
+               #else
+                constexpr auto architecture = "x64";
+                constexpr auto hash = "f6f80d931a935fd28dcf68956681ad76f8dabcb055f5cf7b446fe22361075ddc";
+               #endif
+                const auto archiveName = juce::String ("llama-") + runtimeVersion + "-bin-macos-" + architecture + ".tar.gz";
+                const juce::TemporaryFile archive (setupFolder().getChildFile (archiveName));
+                if (! downloadSetupFile (juce::URL (juce::String ("https://github.com/ggml-org/llama.cpp/releases/download/")
+                                                        + runtimeVersion + "/" + archiveName),
+                                         archive.getFile(), hash))
+                    return "Could not download or verify the local runtime. Check your connection and try Build again.";
+
+                const auto staging = setupFolder().getNonexistentChildFile ("runtime-install", {});
+                const auto cleanup = juce::ScopeGuard { [&staging] { staging.deleteRecursively(); } };
+                juce::ChildProcess unpack;
+                if (staging.createDirectory().failed() || ! unpack.start (
+                        { "/usr/bin/tar", "-xzf", archive.getFile().getFullPathName(), "-C", staging.getFullPathName() }, 0))
+                    return "Could not unpack the local runtime.";
+                while (! unpack.waitForProcessToFinish (50))
+                    if (threadShouldExit())
+                    {
+                        unpack.kill();
+                        return {};
+                    }
+                if (unpack.getExitCode() != 0 || ! findServer (staging).existsAsFile()
+                    || ! staging.moveFileTo (runtimeFolder()))
+                    return "Could not install the local runtime.";
+                executable = managedServer();
+            }
+
+            if (model.getSize() != modelBytes)
+            {
+                downloadProgress.store (-1.0);
+                stage.store (JobStage::downloadingModel);
+                const juce::TemporaryFile download (model);
+                const auto url = juce::URL (juce::String (
+                    "https://huggingface.co/lmstudio-community/Qwen3-4B-Instruct-2507-GGUF/resolve/dc2e722/")
+                    + modelFilename);
+                if (! downloadSetupFile (url, download.getFile(), modelHash, modelBytes)
+                    || ! download.overwriteTargetFileWithTemporary())
+                    return "Could not download or verify the local model. Check your connection and disk space, then retry.";
+            }
+        }
+
+        if (threadShouldExit())
+            return {};
+        stage.store (JobStage::starting);
+        juce::StreamingSocket portProbe;
+        if (! portProbe.createListener (0, "127.0.0.1"))
+            return "Could not reserve a local port.";
+        port = portProbe.getBoundPort();
+        portProbe.close();
+        apiKey = juce::Uuid().toString();
+        if (! server.start ({ executable.getFullPathName(), "-m", model.getFullPathName(),
+                             "--host", "127.0.0.1", "--port", juce::String (port),
+                             "--api-key", apiKey, "--ctx-size", "12288", "--parallel", "1" }, 0))
+            return "Could not start the local runtime.";
+        return {};
+       #else
+        return "Automatic Preset Builder setup is currently available on macOS.";
+       #endif
+    }
+
     void run() override
     {
         if (originalOnly)
@@ -4659,6 +4969,10 @@ private:
             jobError = prepareAudition ({});
             return;
         }
+
+        jobError = startManagedServer();
+        if (jobError.isNotEmpty() || threadShouldExit())
+            return;
 
         bool ready = false;
         for (int attempt = 0; attempt < 120 && ! threadShouldExit(); ++attempt)
@@ -4711,6 +5025,17 @@ private:
                 + " Use boost only if it suits the request. For a built-in boost set boostOn=1, boostSource=0, "
                   "boostModel=0 for clean or 1 for Tube Screamer. For a pedal capture use boostCapture with "
                   "a Boost pedal catalog ID in the variant or in the top-level preset object. Pedal IDs never go in capture.");
+            system->setProperty ("content", searchOnly
+                ? juce::String ("No local amp is available. Return JSON with searchQuery, a concise TONE3000 amp search "
+                                "for the requested sound. Suggest a plausible amp family without claiming artist gear facts.")
+                : system->getProperty ("content").toString()
+                    + " Always build a usable local preset or A/B variants using the closest available captures. "
+                      "If the library lacks a materially closer amp, also include an optional top-level searchQuery "
+                      "with a concise TONE3000 amp search. Omit it if the local match is close. Do not invent links.");
+            system->setProperty ("content", system->getProperty ("content").toString()
+                + " Output one compact JSON object only. No explanation or markdown. "
+                  "Use at most eight changed sound parameters per preset or variant. "
+                  "Keep searchQuery under five words.");
             user->setProperty ("role", "user");
             user->setProperty ("content", "Requested sound: " + prompt + "\n\n" + auditionSettings
                                 + "\nCatalog:\n" + catalog);
@@ -4748,7 +5073,7 @@ private:
                         content = content.fromFirstOccurrenceOf ("\n", false, false).dropLastCharacters (3).trim();
                     proposal = juce::JSON::parse (content);
                     if (comparison ? proposal.getProperty ("a", {}).isObject() && proposal.getProperty ("b", {}).isObject()
-                                   : proposal.isObject())
+                                   : proposal.isObject() && (! searchOnly || explicitMissingAmp.isNotEmpty() || proposal.getProperty ("searchQuery", {}).isString()))
                     {
                         jobError.clear();
                         break;
@@ -4762,10 +5087,22 @@ private:
 
                 stage.store (JobStage::retrying);
                 payload->setProperty ("temperature", 0.0);
+                user->setProperty ("content", "Requested sound: " + prompt + "\n\n" + auditionSettings
+                    + "\nCatalog:\n" + catalog
+                    + "\nReturn compact JSON only, with at most three changed sound parameters per preset or variant.");
+
             }
         }
 
         if (threadShouldExit() || jobError.isNotEmpty())
+            return;
+
+        const auto search = proposal.getProperty ("searchQuery", {});
+        if (search.isString())
+            suggestedSearch = search.toString().replaceCharacters ("\r\n\t", "   ").trim().substring (0, 100);
+        if (explicitMissingAmp.isNotEmpty())
+            suggestedSearch = explicitMissingAmp;
+        if (searchOnly)
             return;
 
         if (comparison)
@@ -4808,8 +5145,7 @@ private:
             if (alternative != irs.end())
                 selectedIR = *alternative;
         }
-        if (selectedIR != juce::File())
-            audioProcessor.loadImpulseResponse (0, selectedIR);
+
         const auto pedal = getCatalogFile (proposal.getProperty ("boostCapture", {}), pedals);
         if (pedal != juce::File())
             audioProcessor.loadNAMCapture (NAMplifiedAudioProcessor::boostNAMSlot, pedal);
@@ -4817,8 +5153,16 @@ private:
         enableChangedPreEq (changes);
         applyParameterChanges (changes);
         setParameter ("amp1On", 1.0f);
-        enableLoadedIRs();
-        setMessage ("Preview loaded. Close this window and use Save to keep it.");
+        if (ac20Requested)
+            setParameter ("amp2On", 0.0f);
+        if (! activeCaptureIncludesCab() && selectedIR != juce::File())
+            audioProcessor.loadImpulseResponse (0, selectedIR);
+        updateBuilderIRs();
+        const auto ampName = captures[capture - 1].getFileNameWithoutExtension();
+        const auto irName = audioProcessor.getImpulseResponseName (0);
+        status.setTooltip ("Amp: " + ampName + (irName.isNotEmpty() ? "\nIR 1: " + irName : juce::String()));
+        setMessage ("Applied: " + ampName.substring (0, 46)
+                    + "\nLoad or record a DI for A/B. Close and Save to keep this sound.");
     }
 
     NAMplifiedAudioProcessor& audioProcessor;
@@ -4827,15 +5171,22 @@ private:
     bool cancelling = false;
     bool closeWhenDone = false;
     double progress = -1.0;
+    std::atomic<double> downloadProgress { -1.0 };
+    bool downloadApproved = false;
     juce::ProgressBar progressBar { progress };
     std::atomic<JobStage> stage { JobStage::starting };
     JobStage displayedStage = JobStage::starting;
-    juce::String jobError;
+    juce::String jobError, suggestedSearch, explicitMissingAmp;
+    juce::Label recommendationLabel;
+    juce::TextButton modelFolderButton { "Open Model Folder" };
+    bool ac20Requested = false;
+    juce::TextButton searchToneButton { "Search on TONE3000" };
+    bool searchOnly = false;
     juce::var jobProposal;
     juce::File diFile;
-    juce::Label modelLabel, promptLabel, diLabel, help, auditionLabel, status, durationHint, elapsedLabel;
+    juce::Label modelLabel, setupNotice, promptLabel, diLabel, help, auditionLabel, status, durationHint, elapsedLabel;
     juce::uint32 jobStarted = 0;
-    juce::TextEditor modelEditor, promptEditor;
+    juce::TextEditor promptEditor;
     juce::Component actionPanel;
     juce::OwnedArray<juce::TextButton> actions;
     juce::TextButton* recordButton = nullptr;
@@ -4850,6 +5201,7 @@ private:
     std::array<juce::AudioBuffer<float>, 3> auditionRenders;
     std::array<ParameterChanges, 2> auditionChanges;
     std::array<std::array<juce::File, 2>, 2> auditionIRs;
+    std::array<bool, 2> auditionBypassIRs {};
     std::array<juce::File, 2> auditionCaptures, auditionPedals;
     int auditionAmpSlot = 0;
     juce::String auditionSettings;
@@ -4862,7 +5214,7 @@ private:
     juce::CriticalSection requestLock;
     std::unique_ptr<juce::WebInputStream> request;
     juce::Array<juce::File> captures, irs, pedals;
-    juce::String activeModel, apiKey, prompt;
+    juce::String apiKey, prompt;
     int port = 0;
 };
 

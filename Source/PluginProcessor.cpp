@@ -2022,7 +2022,7 @@ void NAMplifiedAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
             return;
         boostNAMFilePath = file.getFullPathName();
         boostNAMDisplayName = file.getFileName();
-        boostNAMModel->setStatus ("Loading NAM capture…");
+        boostNAMModel->setStatus ("Loading NAM capture...");
         modelLoader.addJob ([this, file]
         {
             juce::String error;
@@ -2034,7 +2034,7 @@ void NAMplifiedAudioProcessor::loadNAMCapture (int slot, const juce::File& file)
         return;
     namFilePaths[slot] = file.getFullPathName();
     namDisplayNames[slot] = file.getFileName();
-    namModels[slot]->setStatus ("Loading NAM capture…");
+    namModels[slot]->setStatus ("Loading NAM capture...");
     modelLoader.addJob ([this, slot, file]
     {
         juce::String error;
