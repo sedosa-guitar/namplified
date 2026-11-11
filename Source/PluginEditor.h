@@ -24,6 +24,7 @@ private:
     void showSavePresetPrompt();
     void showDeletePresetPrompt();
     void showAboutDialog();
+    void showHeaderMenu();
     void timerCallback() override;
     void comboBoxChanged (juce::ComboBox*) override;
     void mouseDown (const juce::MouseEvent&) override;
@@ -40,9 +41,7 @@ private:
     juce::TextButton savePresetButton { "Save" };
     juce::TextButton deletePresetButton { "Delete" };
     juce::TextButton resetChainButton { "Reset Chain" };
-    juce::TextButton aboutButton { "About" };
-    juce::TextButton midiLearnButton { "MIDI LEARN" };
-    juce::TextButton audioSettingsButton { "AUDIO" };
+    juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;
     juce::Slider masterVolumeSlider;
