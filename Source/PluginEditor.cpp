@@ -128,6 +128,9 @@ public:
         setColour (juce::PopupMenu::textColourId, text);
         setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour::fromRGB (40, 52, 64));
         setColour (juce::PopupMenu::highlightedTextColourId, text);
+        setColour (juce::AlertWindow::backgroundColourId, panel);
+        setColour (juce::AlertWindow::textColourId, text);
+        setColour (juce::AlertWindow::outlineColourId, juce::Colour::fromRGB (62, 73, 86));
     }
 
     juce::Font getTextButtonFont (juce::TextButton& button, int buttonHeight) override
@@ -2340,7 +2343,7 @@ private:
             const auto status = audioProcessor.getNAMCaptureStatus (slot);
             if (status == "Loaded")
                 setFileNameText (tone3000Attribution.isNotEmpty() ? tone3000Attribution
-                    : ("LOADED: " + audioProcessor.getNAMCaptureName (slot)).toUpperCase(), juce::dontSendNotification);
+                    : audioProcessor.getNAMCaptureName (slot).toUpperCase(), juce::dontSendNotification);
             else if (status.isNotEmpty())
                 setFileNameText (status, juce::dontSendNotification);
             else
@@ -3550,9 +3553,9 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetBox.setTextWhenNothingSelected ("CHOOSE PRESET");
     savePresetButton.setButtonText ("SAVE");
     deletePresetButton.setButtonText ("DELETE");
-    resetChainButton.setButtonText ("RESET CHAIN");
+    resetChainButton.setButtonText ("NEW CHAIN");
     aboutButton.setButtonText ("ABOUT");
-    resetChainButton.setTooltip ("Restore the default signal chain and default parameter values");
+    resetChainButton.setTooltip ("Start a new chain with the default settings");
     aboutButton.setTooltip ("About NAMplified");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
@@ -4082,12 +4085,16 @@ void NAMplifiedAudioProcessorEditor::showDeletePresetPrompt()
     const auto name = selectedPresetName();
     if (name.isEmpty()) return;
     auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your user presets?",
-                                         juce::MessageBoxIconType::WarningIcon);
+                                         juce::MessageBoxIconType::NoIcon, this);
+    alert->setLookAndFeel (editorLookAndFeel.get());
     alert->addButton ("Delete", 1);
     alert->addButton ("Cancel", 0);
+    alert->getButton ("Delete")->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (91, 43, 49));
+    alert->getButton ("Cancel")->setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (40, 45, 54));
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
-    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, name] (int result)
+    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, name, alert] (int result)
     {
+        alert->setLookAndFeel (nullptr);
         if (result != 1 || safeThis == nullptr) return;
         if (! safeThis->audioProcessor.deleteUserPreset (name))
         {
