@@ -58,9 +58,9 @@ Both NAM slots can run in series or parallel without changing the overall routin
 
 ### Preset Builder prototype (macOS)
 
-Install [llama.cpp](https://formulae.brew.sh/formula/llama.cpp) with `brew install llama.cpp` and download an instruct model in GGUF format, such as [Qwen3-4B-Instruct-2507 Q4_K_M](https://huggingface.co/DhruvalLabs/Qwen3-4B-Instruct-2507-GGUF/tree/main). Save a NAMplified preset with a capture and, if needed, an IR to populate `Presets/Library`.
+On macOS, open **Build Preset**, describe the sound, and select **Build**. The first build asks for confirmation before downloading and verifying the pinned llama.cpp runtime and Qwen GGUF model (about 2.5 GB). Subsequent builds run locally with the cached files. **Close** stops the server. Use **Save** in the main window to keep the result.
 
-Open **Build Preset**, enter the full path to the GGUF file and describe the sound. **Build** starts the local server and previews one capture, an optional IR, EQ, delay and reverb in the current chain. **Close** stops the server. Use **Save** in the main window to keep the result.
+Save a NAMplified preset with a capture and, if needed, an IR to populate `Presets/Library`.
 
 To refine the current chain, choose **Load DI WAV**, describe the change and click **Build**. NAMplified renders the first 12 seconds through the original chain and two proposed variations. Listen to **Original**, **A** and **B** at matched levels, then choose **Use A** or **Use B** to apply the settings. Use a mono WAV or put the DI in the left channel of a stereo WAV.
 
