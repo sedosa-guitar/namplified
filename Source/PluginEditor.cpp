@@ -1594,7 +1594,7 @@ public:
 
             if (loadKind == FileKind::nam)
             {
-                libraryButton.setButtonText ("SMART BROWSER");
+                libraryButton.setButtonText ("FILE BROWSER");
                 libraryButton.setTooltip ("Search and filter NAM captures in a local folder library.");
                 libraryButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
                 libraryButton.setColour (juce::TextButton::textColourOffId, text);
@@ -2927,6 +2927,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
+        const juce::Graphics::ScopedSaveState savedState (g);
+        // Disabled tiles are translucent, so keep wires out of their bounds too.
+        for (const auto* tile : tiles)
+            if (tile->isVisible())
+                g.excludeClipRegion (tile->getBounds());
+
         const auto wire = juce::Colour (0xff70d9b6);
         g.setFont (namplifiedFontOptions (15.0f, juce::Font::bold));
         g.setColour (secondaryText);
@@ -3039,7 +3045,7 @@ private:
     }
 
     static void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                           juce::Colour colour, float thickness = 2.5f)
+                           juce::Colour colour, float thickness = 3.0f)
     {
         g.setColour (colour);
         juce::Path path;
@@ -3050,7 +3056,7 @@ private:
     }
 
     static void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                         juce::Colour colour, float thickness = 2.5f)
+                         juce::Colour colour, float thickness = 3.0f)
     {
         g.setColour (colour);
         g.drawLine (start.x, start.y, end.x, end.y, thickness);
@@ -3359,12 +3365,15 @@ public:
         tileList->setSize (juce::jmax (chainViewport.getWidth(), tileList->getRequiredWidth()),
                            tileList->getRequiredHeight());
         area.removeFromTop (12);
-        detailsViewport.setBounds (area.withTrimmedLeft (58).withTrimmedRight (58));
+        const auto detailBounds = area.reduced (58, 0);
+        // Keep the scrollbar in the gutter so it does not shift the detail panel.
+        detailsViewport.setBounds (detailBounds.withWidth (detailBounds.getWidth()
+                                                           + detailsViewport.getScrollBarThickness()));
         if (selectedStage != nullptr)
         {
             if (detailsViewport.getViewedComponent() != selectedStage)
                 detailsViewport.setViewedComponent (selectedStage, false);
-            selectedStage->setSize (juce::jmax (1, detailsViewport.getWidth() - 14),
+            selectedStage->setSize (juce::jmax (1, detailBounds.getWidth()),
                                     juce::jmax (selectedStage->getPreferredHeight(),
                                                 detailsViewport.getHeight()));
         }
