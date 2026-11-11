@@ -8,6 +8,18 @@
 
 namespace
 {
+bool copyLibraryFile (const juce::File& source, const juce::File& destination)
+{
+    if (destination.existsAsFile())
+        return true;
+    if (! destination.getParentDirectory().createDirectory().wasOk())
+        return false;
+
+    juce::TemporaryFile staging (destination);
+    return source.copyFileTo (staging.getFile())
+        && staging.overwriteTargetFileWithTemporary();
+}
+
 juce::File findNamedNAMPeer (const juce::File& file, int slot)
 {
     if (! file.existsAsFile())
@@ -809,233 +821,121 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
         if (presetState.getChild (i).getProperty ("id").toString() == "masterVolume")
             presetState.removeChild (i, nullptr);
     presetState.setProperty ("selectedUserPreset", file.getFileNameWithoutExtension(), nullptr);
-    const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
-    if (! assetsFolder.createDirectory().wasOk())
-        return false;
-
-    const auto bundleCaptureFamily = [&assetsFolder] (const juce::String& folderName,
-                                                       const juce::String& originalPath,
-                                                       int captureSlot)
+    const auto library = file.getSiblingFile ("Library");
+    const auto storePath = [&presetState, &library] (const juce::String& property, int captureSlot)
     {
+        const auto originalPath = presetState.getProperty (property).toString();
         if (originalPath.isEmpty())
-            return juce::String();
-        const juce::File selectedSource (originalPath);
-        if (! selectedSource.existsAsFile())
-            return originalPath;
-
-        const auto selectedCapture = captureSlot >= 0
-            ? findNamedNAMPeer (selectedSource, captureSlot) : selectedSource;
-        const auto sourceFolder = selectedSource.getParentDirectory();
-        auto sourceCaptures = sourceFolder.findChildFiles (juce::File::findFiles, false, "*.nam");
-        if (sourceCaptures.isEmpty())
-            sourceCaptures.add (selectedCapture);
-        sourceCaptures.sort();
-
-        auto stagingFolder = assetsFolder.getChildFile (folderName + "_staging");
-        if (stagingFolder.isDirectory() && ! stagingFolder.deleteRecursively())
-            return juce::String();
-        if (! stagingFolder.createDirectory().wasOk())
-            return juce::String();
-
-        juce::StringArray copiedHashes;
-        bool selectedWasCopied = false;
-        for (const auto& capture : sourceCaptures)
-        {
-            const auto captureName = capture.getFileName();
-            bool belongsToAnotherBlock = captureName.startsWithIgnoreCase ("BOOST_NAM");
-            if (captureSlot >= 0)
-            {
-                for (int otherSlot = 0; otherSlot < numAmpSlots; ++otherSlot)
-                {
-                    if (otherSlot == captureSlot)
-                        continue;
-                    const auto otherPrefix = "NAM" + juce::String (otherSlot + 1);
-                    if (captureName.startsWithIgnoreCase (otherPrefix + "_")
-                        || captureName.equalsIgnoreCase (otherPrefix + ".nam"))
-                        belongsToAnotherBlock = true;
-                }
-            }
-            if (belongsToAnotherBlock && capture != selectedSource && capture != selectedCapture)
-                continue;
-
-            const auto canonicalCapture = captureSlot >= 0
-                ? findNamedNAMPeer (capture, captureSlot) : capture;
-            const auto hash = juce::SHA256 (canonicalCapture).toHexString();
-            if (copiedHashes.contains (hash))
-            {
-                if (canonicalCapture == selectedCapture)
-                    selectedWasCopied = true;
-                continue;
-            }
-
-            const auto destination = stagingFolder.getChildFile (canonicalCapture.getFileName());
-            if (canonicalCapture != destination && ! canonicalCapture.copyFileTo (destination))
-            {
-                stagingFolder.deleteRecursively();
-                return juce::String();
-            }
-            copiedHashes.add (hash);
-            if (canonicalCapture == selectedCapture)
-                selectedWasCopied = true;
-
-            const auto sourceMetadata = canonicalCapture.getSiblingFile (
-                canonicalCapture.getFileNameWithoutExtension() + ".t3k.json");
-            if (sourceMetadata.existsAsFile()
-                && ! sourceMetadata.copyFileTo (destination.getSiblingFile (
-                       destination.getFileNameWithoutExtension() + ".t3k.json")))
-            {
-                stagingFolder.deleteRecursively();
-                return juce::String();
-            }
-        }
-
-        if (! selectedWasCopied)
-        {
-            const auto destination = stagingFolder.getChildFile (selectedCapture.getFileName());
-            if (! selectedCapture.copyFileTo (destination))
-            {
-                stagingFolder.deleteRecursively();
-                return juce::String();
-            }
-            const auto sourceMetadata = selectedCapture.getSiblingFile (
-                selectedCapture.getFileNameWithoutExtension() + ".t3k.json");
-            if (sourceMetadata.existsAsFile())
-                sourceMetadata.copyFileTo (destination.getSiblingFile (
-                    destination.getFileNameWithoutExtension() + ".t3k.json"));
-        }
-
-        const auto destinationFolder = assetsFolder.getChildFile (folderName);
-        if (destinationFolder.isDirectory() && ! destinationFolder.deleteRecursively())
-        {
-            stagingFolder.deleteRecursively();
-            return juce::String();
-        }
-        if (! stagingFolder.moveFileTo (destinationFolder))
-        {
-            if (! stagingFolder.copyDirectoryTo (destinationFolder))
-            {
-                stagingFolder.deleteRecursively();
-                return juce::String();
-            }
-            stagingFolder.deleteRecursively();
-        }
-
-        return juce::String ("@preset-assets/") + folderName + "/" + selectedCapture.getFileName();
-    };
-
-    const auto bundleAsset = [&assetsFolder] (const juce::String& originalPath, const juce::String& assetName)
-    {
-        if (originalPath.isEmpty())
-            return juce::String();
-        juce::File source (originalPath);
-        if (! source.existsAsFile())
-            return originalPath;
-        if (assetName.startsWith ("NAM") && assetName != "BOOST_NAM")
-            source = findNamedNAMPeer (source, assetName.substring (3).getIntValue() - 1);
-        auto bundledName = source.getFileName().startsWithIgnoreCase (assetName + "_")
-            ? source.getFileName() : assetName + "_" + source.getFileName();
-        const auto sourceName = source.getFileNameWithoutExtension();
-        if ((assetName.startsWith ("NAM") && (sourceName.equalsIgnoreCase ("NAM1")
-                                                || sourceName.equalsIgnoreCase ("NAM2")))
-            || (assetName == "BOOST_NAM" && sourceName.equalsIgnoreCase ("BOOST_NAM")))
-            bundledName = assetName + "_capture.nam";
-        const auto destination = assetsFolder.getChildFile (bundledName);
-        if (source != destination)
-        {
-            if (destination.existsAsFile() && ! destination.deleteFile())
-                return juce::String();
-            if (! source.copyFileTo (destination))
-                return juce::String();
-        }
-        if (source.hasFileExtension ("nam"))
-        {
-            const auto sourceMetadata = source.getSiblingFile (source.getFileNameWithoutExtension() + ".t3k.json");
-            if (sourceMetadata.existsAsFile())
-            {
-                const auto destinationMetadata = destination.getSiblingFile (
-                    destination.getFileNameWithoutExtension() + ".t3k.json");
-                if (destinationMetadata.existsAsFile() && ! destinationMetadata.deleteFile())
-                    return juce::String();
-                if (! sourceMetadata.copyFileTo (destinationMetadata))
-                    return juce::String();
-            }
-        }
-        return juce::String ("@preset-assets/") + destination.getFileName();
-    };
-    const auto saveBundledPath = [&presetState, &assetsFolder, &bundleAsset] (const juce::String& property,
-                                                               const juce::String& assetName)
-    {
-        const auto storedPath = presetState.getProperty (property).toString();
-        if (storedPath.isEmpty())
             return true;
-        const auto bundledPath = bundleAsset (storedPath, assetName);
-        if (bundledPath.isEmpty())
-            return false;
-        if (bundledPath.startsWith ("@preset-assets/"))
+
+        const juce::File source (originalPath);
+        if (! source.existsAsFile())
+            return true;
+
+        auto destination = source;
+        if (! source.isAChildOf (library))
         {
-            presetState.setProperty (property, bundledPath, nullptr);
-            if (property.startsWith ("ampFile"))
+            if (source.hasFileExtension ("nam"))
             {
-                const auto slot = property.substring (7).getIntValue() - 1;
-                const auto bundledFile = assetsFolder.getChildFile (
-                    bundledPath.fromFirstOccurrenceOf ("/", false, false));
-                if (slot >= 0 && slot < numAmpSlots)
-                    presetState.setProperty ("ampDisplayName" + juce::String (slot + 1),
-                                             displayNameForNAMFile (bundledFile, slot), nullptr);
+                const auto selected = captureSlot >= 0 ? findNamedNAMPeer (source, captureSlot) : source;
+                auto family = source.getParentDirectory().findChildFiles (juce::File::findFiles, false, "*.nam");
+                if (! family.contains (selected))
+                    family.add (selected);
+                family.sort();
+
+                const auto selectedHash = juce::SHA256 (selected).toHexString();
+                juce::StringArray hashes;
+                juce::Array<juce::File> captures;
+                for (const auto& capture : family)
+                {
+                    const auto name = capture.getFileName();
+                    if (capture != selected && capture.getParentDirectory().getFileName().endsWith ("_Assets"))
+                    {
+                        // Old flat preset folders can contain NAMs for several blocks.
+                        const auto prefix = captureSlot >= 0 ? "NAM" + juce::String (captureSlot + 1)
+                                                             : juce::String ("BOOST_NAM");
+                        if (! name.startsWithIgnoreCase (prefix + "_")
+                            && ! name.equalsIgnoreCase (prefix + ".nam"))
+                            continue;
+                    }
+
+                    const auto hash = juce::SHA256 (capture).toHexString();
+                    if (! hashes.contains (hash))
+                    {
+                        hashes.add (hash);
+                        captures.add (capture);
+                    }
+                }
+
+                juce::String manifest;
+                for (int i = 0; i < captures.size(); ++i)
+                    manifest += hashes[i] + " " + captures[i].getFileName() + "\n";
+                const auto familyHash = juce::SHA256 (manifest.toRawUTF8(), manifest.getNumBytesAsUTF8()).toHexString();
+                const auto folder = library.getChildFile ("Captures")
+                    .getChildFile (source.getParentDirectory().getFileName()).getChildFile (familyHash);
+                for (const auto& capture : captures)
+                {
+                    const auto target = folder.getChildFile (capture.getFileName());
+                    if (! copyLibraryFile (capture, target))
+                        return false;
+                    const auto metadata = capture.withFileExtension (".t3k.json");
+                    if (metadata.existsAsFile() && ! copyLibraryFile (metadata, target.withFileExtension (".t3k.json")))
+                        return false;
+                }
+                destination = folder.getChildFile (captures[hashes.indexOf (selectedHash)].getFileName());
+            }
+            else
+            {
+                const auto hash = juce::SHA256 (source).toHexString();
+                const auto folder = library.getChildFile ("IRs").getChildFile (hash);
+                auto name = source.getFileName();
+                if (source.getParentDirectory().getFileName().endsWith ("_Assets")
+                    && (name.startsWithIgnoreCase ("IR1_") || name.startsWithIgnoreCase ("IR2_")))
+                    name = name.substring (4);
+                destination = folder.getChildFile (name);
+                if (! copyLibraryFile (source, destination))
+                    return false;
             }
         }
+
+        auto relativePath = destination.getRelativePathFrom (library);
+       #if JUCE_WINDOWS
+        relativePath = relativePath.replaceCharacter (juce::File::getSeparatorChar(), '/');
+       #endif
+        presetState.setProperty (property, "@library/" + relativePath, nullptr);
+        if (captureSlot >= 0)
+            presetState.setProperty ("ampDisplayName" + juce::String (captureSlot + 1),
+                                     displayNameForNAMFile (destination, captureSlot), nullptr);
         return true;
     };
+
     for (int slot = 0; slot < numAmpSlots; ++slot)
-    {
-        const auto property = "ampFile" + juce::String (slot + 1);
-        const auto sourcePath = presetState.getProperty (property).toString();
-        if (sourcePath.isNotEmpty())
-        {
-            const auto bundledPath = bundleCaptureFamily ("NAM" + juce::String (slot + 1), sourcePath, slot);
-            if (bundledPath.isEmpty())
-                return false;
-            if (bundledPath.startsWith ("@preset-assets/"))
-            {
-                presetState.setProperty (property, bundledPath, nullptr);
-                const auto bundledFile = assetsFolder.getChildFile (
-                    bundledPath.fromFirstOccurrenceOf ("/", false, false));
-                presetState.setProperty ("ampDisplayName" + juce::String (slot + 1),
-                                         displayNameForNAMFile (bundledFile, slot), nullptr);
-            }
-        }
-    }
-    const auto boostSourcePath = presetState.getProperty ("boostNAMFile").toString();
-    if (boostSourcePath.isNotEmpty())
-    {
-        const auto bundledBoostPath = bundleCaptureFamily ("BOOST_NAM", boostSourcePath, -1);
-        if (bundledBoostPath.isEmpty())
+        if (! storePath ("ampFile" + juce::String (slot + 1), slot))
             return false;
-        if (bundledBoostPath.startsWith ("@preset-assets/"))
-            presetState.setProperty ("boostNAMFile", bundledBoostPath, nullptr);
-    }
+    if (! storePath ("boostNAMFile", -1))
+        return false;
     for (int slot = 0; slot < numIRSlots; ++slot)
-        if (! saveBundledPath ("irFile" + juce::String (slot + 1), "IR" + juce::String (slot + 1)))
+        if (! storePath ("irFile" + juce::String (slot + 1), -1))
             return false;
 
-    auto bundledXml = presetState.createXml();
-    if (bundledXml == nullptr)
+    auto presetXml = presetState.createXml();
+    if (presetXml == nullptr)
         return false;
     juce::MemoryBlock presetData;
-    copyXmlToBinary (*bundledXml, presetData);
+    copyXmlToBinary (*presetXml, presetData);
     if (! file.replaceWithData (presetData.getData(), presetData.getSize()))
         return false;
 
-    const auto resolveBundledPath = [&assetsFolder, &presetState] (const juce::String& property)
+    const auto resolveLibraryPath = [&library, &presetState] (const juce::String& property)
     {
         const auto path = presetState.getProperty (property).toString();
-        if (! path.startsWith ("@preset-assets/"))
+        if (! path.startsWith ("@library/"))
             return juce::String();
-        return assetsFolder.getChildFile (path.fromFirstOccurrenceOf ("/", false, false)).getFullPathName();
+        return library.getChildFile (path.fromFirstOccurrenceOf ("/", false, false)).getFullPathName();
     };
     for (int slot = 0; slot < numAmpSlots; ++slot)
     {
-        const auto path = resolveBundledPath ("ampFile" + juce::String (slot + 1));
+        const auto path = resolveLibraryPath ("ampFile" + juce::String (slot + 1));
         if (path.isNotEmpty())
         {
             namFilePaths[slot] = path;
@@ -1045,11 +945,11 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     }
     for (int slot = 0; slot < numIRSlots; ++slot)
     {
-        const auto path = resolveBundledPath ("irFile" + juce::String (slot + 1));
+        const auto path = resolveLibraryPath ("irFile" + juce::String (slot + 1));
         if (path.isNotEmpty())
             irFilePaths[slot] = path;
     }
-    const auto resolvedBoostPath = resolveBundledPath ("boostNAMFile");
+    const auto resolvedBoostPath = resolveLibraryPath ("boostNAMFile");
     if (resolvedBoostPath.isNotEmpty())
         boostNAMFilePath = resolvedBoostPath;
     return true;
@@ -1068,12 +968,14 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     const auto* masterParameter = parameters.getRawParameterValue ("masterVolume");
     const auto preservedMasterVolume = masterParameter != nullptr ? masterParameter->load() : 0.0f;
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
+    const auto library = file.getSiblingFile ("Library");
     for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2" })
     {
         const auto storedPath = presetState.getProperty (property).toString();
-        if (! storedPath.startsWith ("@preset-assets/"))
+        const auto shared = storedPath.startsWith ("@library/");
+        if (! shared && ! storedPath.startsWith ("@preset-assets/"))
             continue;
-        const auto assetFile = assetsFolder.getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false));
+        const auto assetFile = (shared ? library : assetsFolder).getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false));
         if (! assetFile.existsAsFile())
             return false;
         presetState.setProperty (property, assetFile.getFullPathName(), nullptr);

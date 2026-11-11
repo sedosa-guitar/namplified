@@ -22,14 +22,14 @@ See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
 - **Post-amp blocks:** Delay, Reverb, Chorus, and nine-band Post EQ. Reorder and enable them individually.
 - **Output section:** output trim and a signal meter. Input and output meters show signal level and briefly indicate clipping.
-- **Presets:** save, recall, and delete user presets; reset the chain to its default setup. Saving copies referenced NAM captures and IRs into a matching `_Assets` folder beside the preset, so both can be backed up or moved together. Unsaved parameter and capture changes are indicated in the interface.
+- **Presets:** save, recall, and delete user presets; reset the chain to its default setup. Presets reference the shared `Presets/Library` folder. Back up the entire `Presets` folder to keep the files together. Unsaved parameter and capture changes are indicated in the interface.
 - **MIDI CC Learn:** assign incoming MIDI CC messages to parameters and switches by selecting MIDI Learn, clicking a control, then moving a controller. Mappings are shared across presets and saved in the user's application data folder.
 
 The default chain starts with Input → Noise Gate → Amp 1 → IR 1 → Reverb → Output. Optional blocks can be enabled as needed; the chain editor presents the available stages and lets you reorder movable blocks inside their sections.
 
 ### NAM routing
 
-Each of the two NAM slots loads a compatible `.nam` capture. Capture files can be switched with the previous/next controls when they share a folder. Preset saving copies referenced NAM captures and IRs to a matching `_Assets` folder.
+Each of the two NAM slots loads a compatible `.nam` capture. Capture files can be switched with the previous/next controls when they share a folder. Preset saving imports capture families and IRs into the shared library and reuses them for subsequent saves. Older presets can still load from their original `_Assets` folders and use the shared library when resaved.
 
 The amp slots can run **in series** or **in parallel**. In series, the output of one active amp feeds the next. In parallel, both amp paths run side by side and can be blended. Cabinet routing offers two choices for parallel amps:
 
@@ -75,7 +75,7 @@ NAMplified uses [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpMo
 
 ### TONE3000 model browser
 
-NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMplified downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected NAM slot. The OAuth token is kept in memory for this operation; NAMplified does not upload captures. When a user saves a preset, the preset manager copies any referenced NAM captures and IR files into that preset's `_Assets` folder. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
+NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMplified downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected NAM slot. The OAuth token is kept in memory for this operation; NAMplified does not upload captures. When a user saves a preset, the preset manager imports referenced NAM captures and IR files into the shared library. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
 
 This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Before using Browse TONE3000, register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI in the TONE3000 API settings for that key. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
 
