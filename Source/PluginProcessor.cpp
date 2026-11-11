@@ -1210,9 +1210,54 @@ void NAMplifiedAudioProcessor::stopAudition()
     playAudition ({}, 0.0);
 }
 
+bool NAMplifiedAudioProcessor::startDIRecording (double sampleRate)
+{
+    if (getTotalNumInputChannels() == 0 || sampleRate < 8000.0 || sampleRate > 384000.0
+        || ! std::isfinite (sampleRate))
+        return false;
+
+    juce::AudioBuffer<float> storage (1, juce::roundToInt (20.0 * sampleRate));
+    const juce::SpinLock::ScopedLockType lock (recordingLock);
+    recordingAudio = std::move (storage);
+    recordingPosition = 0;
+    recordingRate = sampleRate;
+    recordingActive.store (true);
+    return true;
+}
+
+int NAMplifiedAudioProcessor::stopDIRecording (juce::AudioBuffer<float>& destination)
+{
+    const juce::SpinLock::ScopedLockType lock (recordingLock);
+    recordingActive.store (false);
+    destination = std::move (recordingAudio);
+    const auto samples = recordingPosition;
+    recordingPosition = 0;
+    return samples;
+}
+
 void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (recordingActive.load())
+    {
+        const juce::SpinLock::ScopedTryLockType lock (recordingLock);
+        if (lock.isLocked() && recordingActive.load())
+        {
+            if (recordingRate != modelSampleRate.load() || getTotalNumInputChannels() == 0
+                || buffer.getNumChannels() == 0)
+                recordingActive.store (false);
+            else
+            {
+                const auto count = juce::jmin (buffer.getNumSamples(),
+                                              recordingAudio.getNumSamples() - recordingPosition);
+                recordingAudio.copyFrom (0, recordingPosition, buffer, 0, 0, count);
+                recordingPosition += count;
+                if (recordingPosition == recordingAudio.getNumSamples())
+                    recordingActive.store (false);
+            }
+        }
+    }
+
     {
         const juce::SpinLock::ScopedTryLockType lock (auditionLock);
         if (lock.isLocked() && auditionRate == modelSampleRate.load()

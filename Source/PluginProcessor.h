@@ -69,6 +69,10 @@ public:
     bool isParameterModified (const juce::String& parameterId) const;
     juce::StringArray getUserPresetNames() const;
     juce::File getUserPresetLibraryDirectory() const;
+    bool startDIRecording (double sampleRate);
+    bool isDIRecording() const noexcept { return recordingActive.load(); }
+    int stopDIRecording (juce::AudioBuffer<float>& destination);
+
     double getAuditionSampleRate() const noexcept { return modelSampleRate.load(); }
     bool renderAudition (const juce::MemoryBlock& state, const juce::AudioBuffer<float>& input,
                          double sampleRate, juce::AudioBuffer<float>& output,
@@ -148,6 +152,11 @@ private:
     struct NAMModel;
     std::unique_ptr<NAMModel> namModels[numAmpSlots];
     std::unique_ptr<NAMModel> boostNAMModel;
+    juce::SpinLock recordingLock;
+    juce::AudioBuffer<float> recordingAudio;
+    std::atomic<bool> recordingActive { false };
+    double recordingRate = 0.0;
+    int recordingPosition = 0;
     juce::SpinLock auditionLock;
     juce::AudioBuffer<float> auditionAudio;
     int auditionPosition = 0;

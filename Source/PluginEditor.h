@@ -45,6 +45,7 @@ private:
     juce::TextButton resetChainButton { "Reset Chain" };
     juce::TextButton presetBuilderButton { "BUILD PRESET" };
     std::unique_ptr<PresetBuilderDialog> presetBuilder;
+    std::unique_ptr<juce::Component> aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;
