@@ -40,10 +40,10 @@ private:
     juce::Label subtitle;
     juce::Label presetLabel;
     juce::ComboBox presetBox;
-    juce::TextButton savePresetButton { "Save" };
-    juce::TextButton deletePresetButton { "Delete" };
-    juce::TextButton resetChainButton { "Reset Chain" };
-    juce::TextButton presetBuilderButton { "BUILD PRESET" };
+    juce::DrawableButton savePresetButton { "Save preset", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton deletePresetButton { "Delete preset", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton resetChainButton { "New chain", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton presetBuilderButton { "Build preset", juce::DrawableButton::ImageFitted };
     std::unique_ptr<PresetBuilderDialog> presetBuilder;
     std::unique_ptr<juce::Component> aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };

@@ -1505,6 +1505,27 @@ public:
     }
 };
 
+class CaptureActionButton final : public juce::TextButton
+{
+public:
+    juce::Path icon;
+
+private:
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+    {
+        juce::TextButton::paintButton (g, highlighted, down);
+        if (icon.isEmpty())
+            return;
+
+        const auto colour = highlighted ? knobAccent : findColour (textColourOffId);
+        g.setColour (colour.withMultipliedAlpha (isEnabled() ? 1.0f : 0.4f));
+        const auto centre = getLocalBounds().toFloat().getCentre();
+        g.strokePath (icon, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded),
+                      juce::AffineTransform::translation (centre.x - 10.0f, centre.y - 10.0f));
+    }
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -1555,8 +1576,9 @@ public:
         {
             graphicEq = std::make_unique<GraphicEqEditor> (audioProcessor, stageName == "Post EQ");
             addAndMakeVisible (*graphicEq);
-            expandButton = std::make_unique<juce::TextButton> ("FULL SCREEN");
-            expandButton->setTooltip ("Expand this graphic EQ to fill the plugin window.");
+            expandButton = std::make_unique<juce::DrawableButton> ("Expand EQ", juce::DrawableButton::ImageFitted);
+            expandButton->setEdgeIndent (5);
+            setFullscreenMode (false);
             addAndMakeVisible (*expandButton);
             expandButton->onClick = [this]
             {
@@ -1583,25 +1605,53 @@ public:
 
         if (loadKind != FileKind::none)
         {
-            loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM FILE" : "LOAD IR");
+            loadButton.setButtonText (loadKind == FileKind::nam ? "" : "LOAD IR");
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
             if (loadKind == FileKind::impulseResponse)
                 loadButton.getProperties().set ("namButtonFontHeight", 18.0);
-            if (loadKind == FileKind::nam)
-                loadButton.setTooltip ("Load one NAM file directly. Use the capture browser to search a local library, or PREV/NEXT to step through captures in the loaded file's folder.");
             addAndMakeVisible (loadButton);
 
             if (loadKind == FileKind::nam)
             {
-                libraryButton.setButtonText ("FILE BROWSER");
-                libraryButton.setTooltip ("Search and filter NAM captures in a local folder library.");
+                loadButton.setTitle ("Load NAM file");
+                loadButton.setTooltip ("Load NAM file directly");
+                auto& loadIcon = loadButton.icon;
+                loadIcon.startNewSubPath (12.0f, 18.0f);
+                loadIcon.lineTo (3.0f, 18.0f);
+                loadIcon.lineTo (3.0f, 2.0f);
+                loadIcon.lineTo (10.0f, 2.0f);
+                loadIcon.lineTo (15.0f, 7.0f);
+                loadIcon.lineTo (15.0f, 9.0f);
+                loadIcon.startNewSubPath (10.0f, 2.0f);
+                loadIcon.lineTo (10.0f, 7.0f);
+                loadIcon.lineTo (15.0f, 7.0f);
+                loadIcon.startNewSubPath (8.0f, 14.0f);
+                loadIcon.lineTo (19.0f, 14.0f);
+                loadIcon.startNewSubPath (16.0f, 11.0f);
+                loadIcon.lineTo (19.0f, 14.0f);
+                loadIcon.lineTo (16.0f, 17.0f);
+
+                libraryButton.setTitle ("File Browser");
+                libraryButton.setTooltip ("File Browser: Search and filter local NAM captures");
+                libraryButton.icon.startNewSubPath (1.0f, 17.0f);
+                libraryButton.icon.lineTo (1.0f, 4.0f);
+                libraryButton.icon.lineTo (8.0f, 4.0f);
+                libraryButton.icon.lineTo (10.0f, 7.0f);
+                libraryButton.icon.lineTo (19.0f, 7.0f);
+                libraryButton.icon.lineTo (19.0f, 17.0f);
+                libraryButton.icon.closeSubPath();
                 libraryButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
                 libraryButton.setColour (juce::TextButton::textColourOffId, text);
                 addAndMakeVisible (libraryButton);
                 libraryButton.onClick = [this] { openCaptureBrowser(); };
-                previousCaptureButton.setButtonText ("PREV");
-                nextCaptureButton.setButtonText ("NEXT");
+                previousCaptureButton.setTitle ("Previous NAM capture");
+                nextCaptureButton.setTitle ("Next NAM capture");
+                previousCaptureButton.icon.startNewSubPath (13.0f, 4.0f);
+                previousCaptureButton.icon.lineTo (7.0f, 10.0f);
+                previousCaptureButton.icon.lineTo (13.0f, 16.0f);
+                nextCaptureButton.icon = previousCaptureButton.icon;
+                nextCaptureButton.icon.applyTransform (juce::AffineTransform::scale (-1.0f, 1.0f).translated (20.0f, 0.0f));
                 previousCaptureButton.setTooltip ("Load the previous NAM capture from this folder.");
                 nextCaptureButton.setTooltip ("Load the next NAM capture from this folder.");
                 previousCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
@@ -1803,7 +1853,28 @@ public:
         isFullscreen = fullscreen;
         if (expandButton != nullptr)
         {
-            expandButton->setButtonText (fullscreen ? "RESTORE" : "FULL SCREEN");
+            juce::Path corners;
+            for (const auto x : { -1.0f, 1.0f })
+                for (const auto y : { -1.0f, 1.0f })
+                {
+                    const auto corner = fullscreen ? 3.0f : 8.0f;
+                    const auto arm = fullscreen ? 8.0f : 3.0f;
+                    corners.startNewSubPath (x * arm, y * corner);
+                    corners.lineTo (x * corner, y * corner);
+                    corners.lineTo (x * corner, y * arm);
+                }
+            juce::DrawablePath icon, hoverIcon;
+            for (auto* drawable : { &icon, &hoverIcon })
+            {
+                drawable->setPath (corners);
+                drawable->setFill (juce::Colours::transparentBlack);
+                drawable->setStrokeType (juce::PathStrokeType (1.7f, juce::PathStrokeType::curved,
+                                                               juce::PathStrokeType::rounded));
+            }
+            icon.setStrokeFill (secondaryText);
+            hoverIcon.setStrokeFill (knobAccent);
+            expandButton->setImages (&icon, &hoverIcon, &hoverIcon);
+            expandButton->setTitle (fullscreen ? "Restore EQ" : "Expand EQ");
             expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
         }
     }
@@ -1861,7 +1932,7 @@ public:
             if (controlIds[i].endsWith ("Source"))
                 sourceIndex = static_cast<int> (i);
         const auto rightWidth = (hasEnableControl ? 36 : 0) + (hasMoveControls ? 68 : 0)
-                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 110 : 0);
+                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 34 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
         {
@@ -1894,13 +1965,13 @@ public:
         if (toneCurveButton != nullptr)
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
         if (expandButton != nullptr)
-            expandButton->setBounds (right.removeFromLeft (104).withY (header.getY() + 4).withHeight (28));
+            expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
 
         if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
         {
             fileName.setBounds ({});
             auto actionRow = area.removeFromTop (38);
-            constexpr int loadWidth = 160, browserWidth = 160, navWidth = 64, toneWidth = 210;
+            constexpr int loadWidth = 44, browserWidth = 44, navWidth = 38, toneWidth = 210;
             constexpr int gap = 10;
             constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
             const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
@@ -2482,9 +2553,10 @@ private:
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
-    juce::TextButton loadButton, libraryButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
+    CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
+    juce::TextButton tone3000Button, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
-    std::unique_ptr<juce::TextButton> expandButton;
+    std::unique_ptr<juce::DrawableButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     std::vector<std::unique_ptr<juce::Label>> controlLabels;
@@ -3773,10 +3845,11 @@ public:
             if (! library.startAsProcess())
                 library.revealToUser();
         };
-        addAction ("Close", { 484, 144, 84, 36 });
-        addAction ("Build", { 576, 144, 96, 36 });
+        addAction ("Close", { 588, 144, 84, 36 });
+        getButton ("Close")->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff59363b));
+        addAction ("Build", { 484, 144, 96, 36 });
         getButton ("Close")->onClick = [this] { dismiss(); };
-        addAction ("Cancel", { 576, 144, 96, 36 });
+        addAction ("Cancel", { 484, 144, 96, 36 });
         getButton ("Cancel")->onClick = [this] { cancelJob(); };
         getButton ("Cancel")->setVisible (false);
         progressBar.setPercentageDisplay (false);
@@ -5260,9 +5333,6 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (presetLabel);
     presetBox.setTextWhenNothingSelected ("CHOOSE PRESET");
-    savePresetButton.setButtonText ("SAVE");
-    deletePresetButton.setButtonText ("DELETE");
-    resetChainButton.setButtonText ("NEW CHAIN");
     resetChainButton.setTooltip ("Start a new chain with the default settings");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
@@ -5323,6 +5393,58 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     };
     updateMasterVolumeValueLabel();
     addAndMakeVisible (presetBox);
+    const auto setHeaderIcon = [](juce::DrawableButton& button, const juce::Path& path)
+    {
+        juce::DrawablePath icon, hoverIcon;
+        for (auto* drawable : { &icon, &hoverIcon })
+        {
+            drawable->setPath (path);
+            drawable->setFill (juce::Colours::transparentBlack);
+            drawable->setStrokeType (juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
+                                                           juce::PathStrokeType::rounded));
+        }
+        icon.setStrokeFill (secondaryText);
+        hoverIcon.setStrokeFill (knobAccent);
+        button.setEdgeIndent (8);
+        button.setImages (&icon, &hoverIcon, &hoverIcon);
+    };
+    const auto line = [](juce::Path& path, float x1, float y1, float x2, float y2)
+    {
+        path.startNewSubPath (x1, y1);
+        path.lineTo (x2, y2);
+    };
+    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon;
+    saveIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 2.0f);
+    saveIcon.addRectangle (6.0f, 2.0f, 8.0f, 5.0f);
+    saveIcon.addRoundedRectangle (6.0f, 11.0f, 8.0f, 7.0f, 1.0f);
+    line (deleteIcon, 2.0f, 5.0f, 18.0f, 5.0f);
+    deleteIcon.startNewSubPath (4.0f, 5.0f);
+    deleteIcon.lineTo (5.0f, 18.0f);
+    deleteIcon.lineTo (15.0f, 18.0f);
+    deleteIcon.lineTo (16.0f, 5.0f);
+    line (deleteIcon, 7.0f, 2.0f, 13.0f, 2.0f);
+    line (deleteIcon, 8.0f, 8.0f, 8.0f, 15.0f);
+    line (deleteIcon, 12.0f, 8.0f, 12.0f, 15.0f);
+    newChainIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 3.0f);
+    line (newChainIcon, 6.0f, 10.0f, 14.0f, 10.0f);
+    line (newChainIcon, 10.0f, 6.0f, 10.0f, 14.0f);
+    builderIcon.startNewSubPath (8.0f, 1.0f);
+    builderIcon.lineTo (10.0f, 7.0f);
+    builderIcon.lineTo (16.0f, 9.0f);
+    builderIcon.lineTo (10.0f, 11.0f);
+    builderIcon.lineTo (8.0f, 17.0f);
+    builderIcon.lineTo (6.0f, 11.0f);
+    builderIcon.lineTo (0.0f, 9.0f);
+    builderIcon.lineTo (6.0f, 7.0f);
+    builderIcon.closeSubPath();
+    line (builderIcon, 16.0f, 15.0f, 20.0f, 15.0f);
+    line (builderIcon, 18.0f, 13.0f, 18.0f, 17.0f);
+    setHeaderIcon (savePresetButton, saveIcon);
+    setHeaderIcon (deletePresetButton, deleteIcon);
+    setHeaderIcon (resetChainButton, newChainIcon);
+    setHeaderIcon (presetBuilderButton, builderIcon);
+    presetBuilderButton.setTooltip ("Build a preset with local AI");
+
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
     deletePresetButton.setTooltip ("Delete the selected user preset");
     addAndMakeVisible (savePresetButton);
@@ -5479,13 +5601,11 @@ void NAMplifiedAudioProcessorEditor::resized()
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
-    presetBuilderButton.setBounds (top.removeFromRight (120).reduced (0, 4));
+    presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 980;
     const auto presetWidth = compactHeader ? 122 : 165;
-    const auto smallButtonWidth = compactHeader ? 58 : 76;
-    const auto resetButtonWidth = compactHeader ? 87 : 104;
     const auto pitchSliderWidth = compactHeader ? 62 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
@@ -5496,11 +5616,11 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 8);
-    savePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    savePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    deletePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    deletePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    resetChainButton.setBounds (presetArea.removeFromLeft (resetButtonWidth).reduced (0, 4));
+    resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
     pitchLabel.setBounds (presetArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
