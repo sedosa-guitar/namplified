@@ -104,9 +104,9 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ## Screenshots
 
-### Signal chain and AMP 1 controls
+### Signal chain and compressor controls
 
-![NAMplified in Series mode with the routing icons and compressor controls visible](docs/images/namplified-amp.png)
+![NAMplified in Series mode with the routing icons and compressor controls visible](docs/images/namplified-signal-chain.png)
 
 ### Amp and cabinet routing
 
