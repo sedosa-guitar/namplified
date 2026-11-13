@@ -4,6 +4,14 @@ All notable changes to NAMplified are summarized here. This changelog is reconst
 
 ## Unreleased development snapshot
 
+### Updates since November 8
+
+- Added the local Preset Builder beta with on-demand model setup and level-matched A/B auditioning from a recorded or imported guitar DI.
+- Added adjustable frequency splitting for parallel NAM amps and a polarity invert option for each amp.
+- Improved the capture browser and the TONE3000 flow for selecting and loading an individual capture.
+- Refined the signal-chain layout, controls, icons, and backgrounds.
+- Updated the README with current screenshots and moved unfinished documentation tasks to a local file.
+
 ### 2026-11-08
 
 - Removed the built-in amp simulations and the NAM/Amp Sim source switch; NAM capture loading and the Clean Boost, 808 Drive, and NAM Boost options remain.
