@@ -370,36 +370,38 @@ public:
                            float proportion, float startAngle, float endAngle,
                            juce::Slider& slider) override
     {
-        const auto diameter = static_cast<float> (juce::jmin (width, height) - 8);
-        const auto bounds = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y),
-                                                     static_cast<float> (width), static_cast<float> (height));
-        const auto centre = bounds.getCentre();
-        const auto radius = diameter * 0.5f;
-        g.setColour (juce::Colour::fromRGB (18, 23, 31));
-        g.fillEllipse (centre.x - radius, centre.y - radius, diameter, diameter);
-        g.setColour (juce::Colour::fromRGB (57, 66, 80));
-        g.drawEllipse (centre.x - radius, centre.y - radius, diameter, diameter, 2.0f);
-        const auto inner = radius * 0.76f;
-        g.setColour (juce::Colour::fromRGB (34, 42, 54));
-        g.fillEllipse (centre.x - inner, centre.y - inner, inner * 2.0f, inner * 2.0f);
+        const auto radius = static_cast<float> (juce::jmin (width, height)) * 0.5f - 6.0f;
+        if (radius <= 4.0f)
+            return;
 
-        juce::Path arc;
-        arc.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
-                           startAngle, endAngle, true);
-        g.setColour (juce::Colour::fromRGB (62, 70, 82));
-        g.strokePath (arc, juce::PathStrokeType (2.0f));
-        juce::Path active;
-        active.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
-                              startAngle, startAngle + proportion * (endAngle - startAngle), true);
-        const auto valueColour = processor.isParameterModified (slider.getName()) ? accent : knobAccent;
-        g.setColour (valueColour);
-        g.strokePath (active, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
-                                                     juce::PathStrokeType::rounded));
+        const juce::Point<float> centre (x + width * 0.5f, y + height * 0.5f);
+        const auto faceRadius = radius * 0.79f;
+        const auto face = juce::Rectangle<float> (2.0f * faceRadius, 2.0f * faceRadius).withCentre (centre);
         const auto angle = startAngle + proportion * (endAngle - startAngle);
-        const auto pointerEnd = centre + juce::Point<float> (std::sin (angle), -std::cos (angle)) * (radius - 7.0f);
+        const auto valueColour = processor.isParameterModified (slider.getName()) ? accent : knobAccent;
+
+        g.setColour (juce::Colour::fromRGB (18, 23, 31));
+        g.fillEllipse (face.expanded (1.5f));
+        g.setColour (juce::Colour::fromRGB (34, 42, 54));
+        g.fillEllipse (face);
+
+        juce::Path track;
+        track.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, endAngle, true);
+        const juce::PathStrokeType trackStroke (3.0f, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded);
+        g.setColour (juce::Colour::fromRGB (62, 70, 82));
+        g.strokePath (track, trackStroke);
+
+        juce::Path active;
+        active.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, angle, true);
         g.setColour (valueColour);
-        g.drawLine (centre.x, centre.y, pointerEnd.x, pointerEnd.y, 3.0f);
-        g.fillEllipse (centre.x - 2.5f, centre.y - 2.5f, 5.0f, 5.0f);
+        g.strokePath (active, trackStroke);
+
+        const juce::Point<float> direction (std::sin (angle), -std::cos (angle));
+        juce::Path marker;
+        marker.startNewSubPath (centre + direction * (faceRadius * 0.57f));
+        marker.lineTo (centre + direction * (faceRadius * 0.83f));
+        g.strokePath (marker, trackStroke);
     }
 
 private:
