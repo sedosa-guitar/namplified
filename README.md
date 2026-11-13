@@ -106,7 +106,7 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ### Signal chain and AMP 1 controls
 
-![NAMplified in Series mode with AMP 1 selected and its capture and EQ controls visible](docs/images/namplified-amp.png)
+![NAMplified in Series mode with the routing icons and compressor controls visible](docs/images/namplified-amp.png)
 
 ### Amp and cabinet routing
 
