@@ -459,7 +459,7 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addKnob ("reverbMix", "Reverb Mix", 0.0f, 1.0f, 0.12f);
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "reverbMode", 1 }, "Reverb Mode",
-        juce::StringArray { "Room", "Plate", "Cloud" }, 0));
+        juce::StringArray { "Room", "Plate", "Cloud", "IR" }, 0));
     addKnob ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.45f);
     addKnob ("reverbPreDelay", "Reverb Pre-Delay", 0.0f, 100.0f, 0.0f);
     addKnob ("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.8f);
@@ -917,7 +917,7 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     for (int slot = 0; slot < numAmpSlots; ++slot)
         if (! storePath ("ampFile" + juce::String (slot + 1), slot))
             return false;
-    if (! storePath ("boostNAMFile", -1))
+    if (! storePath ("reverbIRFile", -1) || ! storePath ("boostNAMFile", -1))
         return false;
     for (int slot = 0; slot < numIRSlots; ++slot)
         if (! storePath ("irFile" + juce::String (slot + 1), -1))
@@ -954,6 +954,8 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
         if (path.isNotEmpty())
             irFilePaths[slot] = path;
     }
+    if (const auto path = resolveLibraryPath ("reverbIRFile"); path.isNotEmpty())
+        reverbIRPath = path;
     const auto resolvedBoostPath = resolveLibraryPath ("boostNAMFile");
     if (resolvedBoostPath.isNotEmpty())
         boostNAMFilePath = resolvedBoostPath;
@@ -974,7 +976,7 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     const auto preservedMasterVolume = masterParameter != nullptr ? masterParameter->load() : 0.0f;
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
     const auto library = file.getSiblingFile ("Library");
-    for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2" })
+    for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2", "reverbIRFile" })
     {
         const auto storedPath = presetState.getProperty (property).toString();
         const auto shared = storedPath.startsWith ("@library/");
@@ -1033,6 +1035,7 @@ void NAMplifiedAudioProcessor::capturePresetSnapshot()
     }
     for (int slot = 0; slot < numAmpSlots; ++slot)
         presetFileSnapshot.emplace ("amp" + std::to_string (slot), namFilePaths[slot]);
+    presetFileSnapshot.emplace ("reverbIR", reverbIRPath);
     presetFileSnapshot.emplace ("boostNAM", boostNAMFilePath);
     for (int slot = 0; slot < numIRSlots; ++slot)
         presetFileSnapshot.emplace ("ir" + std::to_string (slot), irFilePaths[slot]);
@@ -1059,6 +1062,7 @@ bool NAMplifiedAudioProcessor::hasUnsavedParameterChanges() const
             current = boostNAMFilePath;
         else if (assetId == "amp0") current = namFilePaths[0];
         else if (assetId == "amp1") current = namFilePaths[1];
+        else if (assetId == "reverbIR") current = reverbIRPath;
         else if (assetId == "ir0") current = irFilePaths[0];
         else if (assetId == "ir1") current = irFilePaths[1];
         if (current != baseline)
@@ -1125,6 +1129,10 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     outputSafetyLimiter.setThreshold (0.0f);
     outputSafetyLimiter.setRelease (80.0f);
     outputSafetyLimiter.reset();
+    {
+        const juce::SpinLock::ScopedLockType lock (reverbConvolutionLock);
+        reverbConvolver.prepare (spec);
+    }
     reverb.prepare (sampleRate);
 }
 
@@ -1791,7 +1799,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
         else if (stage == 1 && enabled ("reverbOn"))
         {
-            const auto mode = juce::jlimit (0, 2, juce::roundToInt (get ("reverbMode", 0.0f)));
+            const auto mode = juce::jlimit (0, 3, juce::roundToInt (get ("reverbMode", 0.0f)));
+            const juce::SpinLock::ScopedTryLockType irLock (reverbConvolutionLock);
+            if (mode == 3 && (! irLock.isLocked() || ! reverbIRLoaded.load()))
+                return;
             const auto size = juce::jlimit (0.0f, 1.0f, get ("reverbSize", 0.45f));
             const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
             const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
@@ -1824,9 +1835,17 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     wet[i] = delayedInput;
                 }
             }
-            reverb.process (reverbWorkBuffer.getWritePointer (0),
-                            numChannels >= 2 ? reverbWorkBuffer.getWritePointer (1) : nullptr,
-                            numSamples, mode, size, damping, width);
+            if (mode == 3)
+            {
+                auto wet = juce::dsp::AudioBlock<float> (reverbWorkBuffer)
+                    .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
+                    .getSubBlock (0, static_cast<size_t> (numSamples));
+                reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
+            }
+            else
+                reverb.process (reverbWorkBuffer.getWritePointer (0),
+                                numChannels >= 2 ? reverbWorkBuffer.getWritePointer (1) : nullptr,
+                                numSamples, mode, size, damping, width);
             for (int channel = 0; channel < numChannels; ++channel)
             {
                 auto* wet = reverbWorkBuffer.getWritePointer (channel);
@@ -1883,6 +1902,7 @@ void NAMplifiedAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
         state.setProperty ("ampFile" + juce::String (slot + 1), namFilePaths[slot], nullptr);
     for (int slot = 0; slot < numAmpSlots; ++slot)
         state.setProperty ("ampDisplayName" + juce::String (slot + 1), namDisplayNames[slot], nullptr);
+    state.setProperty ("reverbIRFile", reverbIRPath, nullptr);
     state.setProperty ("boostNAMFile", boostNAMFilePath, nullptr);
     state.setProperty ("boostNAMDisplayName", boostNAMDisplayName, nullptr);
     const auto preOrder = getPreFxOrder();
@@ -1909,6 +1929,11 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         parameters.replaceState (state);
+        reverbIRLoaded.store (false);
+        reverbIRPath.clear();
+        const auto irPath = state.getProperty ("reverbIRFile").toString();
+        if (irPath.isNotEmpty())
+            loadReverbIR (juce::File (irPath));
         auto preOrder = getPreFxOrder();
         std::array<bool, numPreFxStages> preSeen {};
         size_t preCount = 0;
@@ -1984,6 +2009,37 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             loadNAMCapture (boostNAMSlot, boostNAMFile);
         boostNAMDisplayName = state.getProperty ("boostNAMDisplayName", boostNAMFile.getFileName()).toString();
     }
+}
+
+bool NAMplifiedAudioProcessor::loadReverbIR (const juce::File& file)
+{
+    juce::WavAudioFormat wav;
+    auto stream = file.createInputStream();
+    if (stream == nullptr)
+        return false;
+    std::unique_ptr<juce::AudioFormatReader> reader (wav.createReaderFor (stream.release(), true));
+    if (reader == nullptr || reader->lengthInSamples <= 0 || reader->sampleRate <= 0.0
+        || reader->numChannels == 0 || reader->numChannels > 2)
+        return false;
+
+    const auto length = static_cast<int> (juce::jmin (reader->lengthInSamples,
+        static_cast<juce::int64> (reader->sampleRate * 10.0)));
+    juce::AudioBuffer<float> impulse (static_cast<int> (reader->numChannels), length);
+    if (! reader->read (&impulse, 0, length, 0, true, true))
+        return false;
+    const juce::SpinLock::ScopedLockType lock (reverbConvolutionLock);
+    reverbConvolver.loadImpulseResponse (std::move (impulse), reader->sampleRate,
+        juce::dsp::Convolution::Stereo::yes, juce::dsp::Convolution::Trim::no,
+        juce::dsp::Convolution::Normalise::yes);
+    reverbIRPath = file.getFullPathName();
+    reverbIRLoaded.store (true);
+    return true;
+}
+
+juce::String NAMplifiedAudioProcessor::getReverbIRName() const
+{
+    return reverbIRPath.isEmpty() ? juce::String ("No IR loaded")
+                                  : juce::File (reverbIRPath).getFileName();
 }
 
 void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)

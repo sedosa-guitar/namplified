@@ -443,7 +443,7 @@ static juce::String formatControlValue (const ParameterControl& control, double 
     return juce::String (value, 2);
 }
 
-enum class FileKind { none, nam, impulseResponse };
+enum class FileKind { none, nam, impulseResponse, reverbIR };
 
 static juce::String getVisibleStageName (const juce::String& stageName)
 {
@@ -1672,7 +1672,8 @@ public:
             }
 
             setFileNameText (loadKind == FileKind::nam ? audioProcessor.getNAMCaptureName (slot)
-                                                       : audioProcessor.getImpulseResponseName (slot),
+                                                       : loadKind == FileKind::reverbIR ? audioProcessor.getReverbIRName()
+                                                                                       : audioProcessor.getImpulseResponseName (slot),
                              juce::dontSendNotification);
             fileName.setFont (namplifiedFontOptions (16.0f, juce::Font::bold));
             fileName.setColour (juce::Label::textColourId, text);
@@ -1685,7 +1686,7 @@ public:
 
             loadButton.onClick = [this]
             {
-                const auto filter = loadKind == FileKind::nam ? "*.nam" : "*.wav;*.aif;*.aiff;*.flac;*.ogg";
+                const auto filter = loadKind == FileKind::nam ? "*.nam" : loadKind == FileKind::reverbIR ? "*.wav" : "*.wav;*.aif;*.aiff;*.flac;*.ogg";
                 auto initialDirectory = loadKind == FileKind::nam
                     ? audioProcessor.getNAMCaptureFile (slot).getParentDirectory() : juce::File();
                 if (loadKind == FileKind::nam && ! initialDirectory.isDirectory())
@@ -1712,12 +1713,21 @@ public:
                             rememberNAMDirectory (file.getParentDirectory());
                             safeThis->audioProcessor.loadNAMCapture (safeThis->slot, file);
                         }
+                        else if (safeThis->loadKind == FileKind::reverbIR)
+                        {
+                            if (! safeThis->audioProcessor.loadReverbIR (file))
+                            {
+                                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                    "Could not load reverb IR", "Choose a valid mono or stereo WAV file.");
+                                return;
+                            }
+                        }
                         else
                             safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
                         safeThis->setFileNameText (file.getFileName(), juce::dontSendNotification);
                     });
             };
-            if (loadKind == FileKind::nam || loadKind == FileKind::impulseResponse)
+            if (loadKind != FileKind::none)
                 startTimerHz (3);
         }
 
@@ -1900,7 +1910,7 @@ public:
         const auto rowPitch = controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
-            : (loadKind == FileKind::none || isUsingBuiltInBoost() ? 0 : 46);
+            : (showsFileLoader() ? 46 : 0);
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
 
@@ -1994,7 +2004,7 @@ public:
             fileName.setJustificationType (juce::Justification::centredLeft);
         }
 
-        if (loadKind != FileKind::none && ! isUsingBuiltInBoost())
+        if (showsFileLoader())
         {
             if (loadKind != FileKind::nam)
             {
@@ -2354,6 +2364,9 @@ private:
                 || id == prefix + "EqPosition" || id == prefix + "Polarity" || id == prefix + "EqBass"
                 || id == prefix + "EqMid" || id == prefix + "EqTreble";
         }
+        if (loadKind == FileKind::reverbIR && showsFileLoader())
+            return controlIds[index] != "reverbSize" && controlIds[index] != "reverbDamping"
+                && controlIds[index] != "reverbWidth";
         if (stageName != "Boost Pedal")
             return true;
         const auto* source = audioProcessor.parameters.getRawParameterValue ("boostSource");
@@ -2397,6 +2410,11 @@ private:
                 }
             }
         }
+        if (loadKind == FileKind::reverbIR)
+        {
+            loadButton.setVisible (showsFileLoader());
+            fileName.setVisible (showsFileLoader());
+        }
         if (loadKind == FileKind::nam)
         {
             const auto showCapture = ! isUsingBuiltInBoost();
@@ -2407,6 +2425,16 @@ private:
             tone3000Button.setVisible (showCapture);
             fileName.setVisible (showCapture);
         }
+    }
+
+    bool showsFileLoader() const
+    {
+        if (loadKind == FileKind::reverbIR)
+        {
+            const auto* mode = audioProcessor.parameters.getRawParameterValue ("reverbMode");
+            return mode != nullptr && mode->load() >= 3.0f;
+        }
+        return loadKind != FileKind::none && ! isUsingBuiltInBoost();
     }
 
     bool isUsingBuiltInBoost() const
@@ -2477,6 +2505,8 @@ private:
     void timerCallback() override
     {
         updateAmpCabDependency();
+        if (loadKind == FileKind::reverbIR)
+            setFileNameText (audioProcessor.getReverbIRName(), juce::dontSendNotification);
         if (loadKind == FileKind::nam)
         {
             const auto currentFile = audioProcessor.getNAMCaptureFile (slot);
@@ -2487,7 +2517,8 @@ private:
                 tone3000Attribution = tone3000AttributionFor (currentFile);
             }
         }
-        if (loadKind == FileKind::nam && loadButton.isVisible() == isUsingBuiltInBoost())
+        if ((loadKind == FileKind::nam || loadKind == FileKind::reverbIR)
+            && loadButton.isVisible() != showsFileLoader())
         {
             updateConditionalControlVisibility();
             resized();
@@ -3413,8 +3444,8 @@ public:
                    { "delayDuck", "Ducking", true }, { "delayDuckThreshold", "Duck Threshold (dB)" },
                    { "delayDuckRelease", "Duck Release (ms)" }});
         addStage ("Reverb", "reverbOn", {{ "reverbSize", "Size", true }, { "reverbMix", "Mix", true }},
-                  FileKind::none, 0, mover (false, 1),
-                  {{ "reverbMode", "Algorithm", false, juce::StringArray { "Room", "Plate", "Cloud" } },
+                  FileKind::reverbIR, 0, mover (false, 1),
+                  {{ "reverbMode", "Mode", false, juce::StringArray { "Room", "Plate", "Cloud", "IR" } },
                    { "reverbSize", "Size / Decay", true }, { "reverbDamping", "Damping", true },
                    { "reverbPreDelay", "Pre-Delay (ms)" }, { "reverbWidth", "Width", true },
                    { "reverbHighPass", "High-Pass (Hz)" }, { "reverbLowPass", "Low-Pass (Hz)" },
