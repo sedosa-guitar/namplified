@@ -18,3 +18,6 @@ xcuserdata/
 *.o
 *.a
 *.dylib
+
+# Local release notes
+/RELEASE_TODO.local.md

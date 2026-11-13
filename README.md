@@ -104,25 +104,31 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ## Screenshots
 
-### Series mode and NAM capture controls
+### Signal chain and AMP 1 controls
 
-![Series signal chain with a NAM capture selected and its tone controls open](docs/images/series-nam-capture.png)
+![NAMplified in Series mode with AMP 1 selected and its capture and EQ controls visible](docs/images/namplified-amp.png)
 
-### Parallel amps with a shared IR
+### Amp and cabinet routing
 
-![Parallel amp paths summed into a shared cabinet IR, with IR shaping controls open](docs/images/parallel-shared-ir-shaping.png)
+**Series** feeds one active amp into the next, then blends the two cabinet IRs.
 
-### Compressor controls
+![Series routing with the amp blocks in line and two cabinet branches](docs/images/namplified-series.png)
 
-![Compressor detail panel with ratio, attack, release, tone, blend, output and EQ controls](docs/images/compressor-parallel.png)
+**Parallel with paired IRs** sends each amp to its own cabinet IR.
 
-### Pre EQ in the signal-chain view
+![Parallel routing with Amp 1 feeding IR 1 and Amp 2 feeding IR 2](docs/images/namplified-paired.png)
 
-![Pre EQ detail panel open below a parallel amp signal chain](docs/images/pre-eq-inline.png)
+**Parallel with a shared IR** blends the two amp paths before a single cabinet IR.
 
-### Expanded Pre EQ editor
+![Parallel routing with both amp paths merging into IR 1](docs/images/namplified-shared.png)
 
-![Expanded Pre EQ editor with five draggable bands and a band-width control](docs/images/pre-eq-full-screen.png)
+### TONE3000 capture selection
+
+![TONE3000 Browse button next to the selected capture name in the amp editor](docs/images/namplified-tone.png)
+
+### Preset Builder
+
+![Preset Builder with a tone prompt, DI recording and import controls, and Original, A and B audition buttons](docs/images/namplified-builder.png)
 
 ## Build from source (macOS)
 
@@ -147,25 +153,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 ## Installation
 
-> **Placeholder:** Release builds and verified installation steps are not published yet. These sections will be completed when distributable packages are available.
-
-> **Release preparation:** Use the [public release checklist](docs/RELEASE_CHECKLIST.md) when preparing installers and publishing downloads.
-
-### macOS standalone
-
-<!-- TODO: Add download link, supported macOS versions, installation steps, and first-launch audio setup. -->
-
-### Audio Unit (AU)
-
-<!-- TODO: Add package location, installation steps, host rescanning instructions, and signing/notarization details. -->
-
-### VST3
-
-<!-- TODO: Add package location, installation steps, host rescanning instructions, and signing/notarization details. -->
-
-### Windows / Linux
-
-<!-- TODO: State platform support only after those targets are built and verified. -->
+Build from source using the instructions above. Public installers are not available yet.
 
 ## Third-party software and licenses
 
@@ -177,16 +165,9 @@ Copyright (C) 2026 Ronny Wels (sedosa). Git commits may also appear under the au
 
 NAMplified is currently distributed free of charge, without paid features or donation links. This describes the maintainers' distribution; AGPL-3.0-only still permits compliant third-party forks to charge for copies.
 
-When publishing plugin binaries or installers, provide access to the corresponding source code for that exact release and retain the required third-party license notices. The current repository is not yet a release package: installation steps, signing/notarization, and final per-binary dependency notices remain to be completed.
+When publishing plugin binaries or installers, provide access to the corresponding source code for that exact release and retain the required third-party license notices.
 
 ## Known limitations
 
 - Current CMake targets are for macOS only.
 - NAM captures must be mono-in/mono-out and compatible with the bundled NAM Core version.
-- Installation packages and signing/notarization guidance are still to be added.
-
-## Contributing
-
-Contribution and issue-reporting guidance will be added before the public GitHub release.
-
-<!-- TODO: Add contribution guidelines, support contact, and issue templates. -->
