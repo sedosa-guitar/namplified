@@ -78,12 +78,17 @@ juce_add_plugin(NAMplified
 if (APPLE)
     target_compile_definitions(NAMplified_Standalone PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
     target_sources(NAMplified_Standalone PRIVATE Source/NAMplifiedStandaloneApp.cpp)
+    set_property(TARGET NAMplified_Standalone APPEND PROPERTY LINK_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
+        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
+    )
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"
             "-DICON_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
             "-DRESOURCES_DIR=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
+        COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>"
         VERBATIM
     )
 endif()

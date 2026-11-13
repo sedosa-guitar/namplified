@@ -2653,17 +2653,19 @@ public:
     void paint (juce::Graphics& g) override
     {
         g.beginTransparencyLayer (isBlockEnabled() ? 1.0f : 0.32f);
-        auto r = getLocalBounds().toFloat();
+        const auto r = getLocalBounds().toFloat();
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
-        g.setColour (isSelected ? juce::Colour::fromRGB (37, 49, 66) : tileSurface);
+        g.setColour (isSelected ? tileSurface.interpolatedWith (selectionAccent, 0.25f) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
         const auto kind = getModuleKind();
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
-        const auto borderColour = isSelected ? selectionAccent
-                               : ioBlock ? juce::Colour::fromRGB (72, 79, 92)
+        const auto borderColour = ioBlock ? juce::Colour::fromRGB (72, 79, 92)
                                          : getIconColour (kind);
-        g.setColour (borderColour);
-        g.drawRoundedRectangle (r.reduced (2.0f), cornerRadius - 2.0f, isSelected ? 4.5f : 4.0f);
+        if (! isSelected)
+        {
+            g.setColour (borderColour);
+            g.drawRoundedRectangle (r.reduced (2.0f), cornerRadius - 2.0f, 4.0f);
+        }
         if (isDragging)
         {
             g.setColour (selectionAccent.withAlpha (0.18f));
@@ -2709,6 +2711,14 @@ public:
             g.drawText ("?", marker.translated (0.0f, -0.5f), juce::Justification::centred, false);
         }
         g.endTransparencyLayer();
+
+        if (isSelected)
+        {
+            g.setColour (selectionAccent);
+            g.drawRoundedRectangle (r.reduced (3.0f), cornerRadius - 3.0f, 6.0f);
+            g.setColour (selectionAccent.withAlpha (0.4f));
+            g.drawRoundedRectangle (r.reduced (8.0f), cornerRadius - 8.0f, 1.5f);
+        }
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -3837,6 +3847,10 @@ public:
         styleLabel (credit, "Free, open-source amp and effects plugin.\nCreated by Ronny Wels (sedosa).", 16.0f);
         styleLabel (licenseTitle, "LICENSE", 13.0f, knobAccent, true);
         styleLabel (license, "Project code: AGPL-3.0. Captures, IRs and third-party assets remain under their respective licenses. Retain required attribution.", 15.0f);
+        projectLink.setFont (license.getFont(), false);
+        projectLink.setColour (juce::HyperlinkButton::textColourId, knobAccent);
+        projectLink.setJustificationType (juce::Justification::centredLeft);
+        addAndMakeVisible (projectLink);
         addAndMakeVisible (close);
         close.onClick = [this] { exitModalState (0); };
     }
@@ -3849,11 +3863,14 @@ public:
         credit.setBounds (juce::Rectangle<int> (24, 137, 512, 58) + origin);
         licenseTitle.setBounds (juce::Rectangle<int> (24, 210, 512, 19) + origin);
         license.setBounds (juce::Rectangle<int> (24, 232, 512, 50) + origin);
+        projectLink.setBounds (juce::Rectangle<int> (24, 294, 400, 36) + origin);
         close.setBounds (juce::Rectangle<int> (442, 294, 94, 36) + origin);
     }
 
 private:
     juce::Label description, credit, licenseTitle, license;
+    juce::HyperlinkButton projectLink { "View the source code on GitHub",
+                                      juce::URL ("https://github.com/sedosa-guitar/namplified") };
     juce::TextButton close { "Close" };
 };
 
