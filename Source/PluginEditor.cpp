@@ -370,36 +370,38 @@ public:
                            float proportion, float startAngle, float endAngle,
                            juce::Slider& slider) override
     {
-        const auto diameter = static_cast<float> (juce::jmin (width, height) - 8);
-        const auto bounds = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y),
-                                                     static_cast<float> (width), static_cast<float> (height));
-        const auto centre = bounds.getCentre();
-        const auto radius = diameter * 0.5f;
-        g.setColour (juce::Colour::fromRGB (18, 23, 31));
-        g.fillEllipse (centre.x - radius, centre.y - radius, diameter, diameter);
-        g.setColour (juce::Colour::fromRGB (57, 66, 80));
-        g.drawEllipse (centre.x - radius, centre.y - radius, diameter, diameter, 2.0f);
-        const auto inner = radius * 0.76f;
-        g.setColour (juce::Colour::fromRGB (34, 42, 54));
-        g.fillEllipse (centre.x - inner, centre.y - inner, inner * 2.0f, inner * 2.0f);
+        const auto radius = static_cast<float> (juce::jmin (width, height)) * 0.5f - 6.0f;
+        if (radius <= 4.0f)
+            return;
 
-        juce::Path arc;
-        arc.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
-                           startAngle, endAngle, true);
-        g.setColour (juce::Colour::fromRGB (62, 70, 82));
-        g.strokePath (arc, juce::PathStrokeType (2.0f));
-        juce::Path active;
-        active.addCentredArc (centre.x, centre.y, radius - 3.0f, radius - 3.0f, 0.0f,
-                              startAngle, startAngle + proportion * (endAngle - startAngle), true);
-        const auto valueColour = processor.isParameterModified (slider.getName()) ? accent : knobAccent;
-        g.setColour (valueColour);
-        g.strokePath (active, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
-                                                     juce::PathStrokeType::rounded));
+        const juce::Point<float> centre (x + width * 0.5f, y + height * 0.5f);
+        const auto faceRadius = radius * 0.79f;
+        const auto face = juce::Rectangle<float> (2.0f * faceRadius, 2.0f * faceRadius).withCentre (centre);
         const auto angle = startAngle + proportion * (endAngle - startAngle);
-        const auto pointerEnd = centre + juce::Point<float> (std::sin (angle), -std::cos (angle)) * (radius - 7.0f);
+        const auto valueColour = processor.isParameterModified (slider.getName()) ? accent : knobAccent;
+
+        g.setColour (juce::Colour::fromRGB (18, 23, 31));
+        g.fillEllipse (face.expanded (1.5f));
+        g.setColour (juce::Colour::fromRGB (34, 42, 54));
+        g.fillEllipse (face);
+
+        juce::Path track;
+        track.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, endAngle, true);
+        const juce::PathStrokeType trackStroke (3.0f, juce::PathStrokeType::curved,
+                                               juce::PathStrokeType::rounded);
+        g.setColour (juce::Colour::fromRGB (62, 70, 82));
+        g.strokePath (track, trackStroke);
+
+        juce::Path active;
+        active.addCentredArc (centre.x, centre.y, radius, radius, 0.0f, startAngle, angle, true);
         g.setColour (valueColour);
-        g.drawLine (centre.x, centre.y, pointerEnd.x, pointerEnd.y, 3.0f);
-        g.fillEllipse (centre.x - 2.5f, centre.y - 2.5f, 5.0f, 5.0f);
+        g.strokePath (active, trackStroke);
+
+        const juce::Point<float> direction (std::sin (angle), -std::cos (angle));
+        juce::Path marker;
+        marker.startNewSubPath (centre + direction * (faceRadius * 0.57f));
+        marker.lineTo (centre + direction * (faceRadius * 0.83f));
+        g.strokePath (marker, trackStroke);
     }
 
 private:
@@ -1505,6 +1507,27 @@ public:
     }
 };
 
+class CaptureActionButton final : public juce::TextButton
+{
+public:
+    juce::Path icon;
+
+private:
+    void paintButton (juce::Graphics& g, bool highlighted, bool down) override
+    {
+        juce::TextButton::paintButton (g, highlighted, down);
+        if (icon.isEmpty())
+            return;
+
+        const auto colour = highlighted ? knobAccent : findColour (textColourOffId);
+        g.setColour (colour.withMultipliedAlpha (isEnabled() ? 1.0f : 0.4f));
+        const auto centre = getLocalBounds().toFloat().getCentre();
+        g.strokePath (icon, juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
+                                                  juce::PathStrokeType::rounded),
+                      juce::AffineTransform::translation (centre.x - 10.0f, centre.y - 10.0f));
+    }
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -1555,8 +1578,9 @@ public:
         {
             graphicEq = std::make_unique<GraphicEqEditor> (audioProcessor, stageName == "Post EQ");
             addAndMakeVisible (*graphicEq);
-            expandButton = std::make_unique<juce::TextButton> ("FULL SCREEN");
-            expandButton->setTooltip ("Expand this graphic EQ to fill the plugin window.");
+            expandButton = std::make_unique<juce::DrawableButton> ("Expand EQ", juce::DrawableButton::ImageFitted);
+            expandButton->setEdgeIndent (5);
+            setFullscreenMode (false);
             addAndMakeVisible (*expandButton);
             expandButton->onClick = [this]
             {
@@ -1583,25 +1607,50 @@ public:
 
         if (loadKind != FileKind::none)
         {
-            loadButton.setButtonText (loadKind == FileKind::nam ? "LOAD NAM FILE" : "LOAD IR");
+            const auto loadTitle = loadKind == FileKind::nam ? "Load NAM file" : "Load IR file";
+            loadButton.setTitle (loadTitle);
+            loadButton.setTooltip (loadTitle);
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
-            if (loadKind == FileKind::impulseResponse)
-                loadButton.getProperties().set ("namButtonFontHeight", 18.0);
-            if (loadKind == FileKind::nam)
-                loadButton.setTooltip ("Load one NAM file directly. Use the capture browser to search a local library, or PREV/NEXT to step through captures in the loaded file's folder.");
+            auto& loadIcon = loadButton.icon;
+            loadIcon.startNewSubPath (12.0f, 18.0f);
+            loadIcon.lineTo (3.0f, 18.0f);
+            loadIcon.lineTo (3.0f, 2.0f);
+            loadIcon.lineTo (10.0f, 2.0f);
+            loadIcon.lineTo (15.0f, 7.0f);
+            loadIcon.lineTo (15.0f, 9.0f);
+            loadIcon.startNewSubPath (10.0f, 2.0f);
+            loadIcon.lineTo (10.0f, 7.0f);
+            loadIcon.lineTo (15.0f, 7.0f);
+            loadIcon.startNewSubPath (8.0f, 14.0f);
+            loadIcon.lineTo (19.0f, 14.0f);
+            loadIcon.startNewSubPath (16.0f, 11.0f);
+            loadIcon.lineTo (19.0f, 14.0f);
+            loadIcon.lineTo (16.0f, 17.0f);
             addAndMakeVisible (loadButton);
 
             if (loadKind == FileKind::nam)
             {
-                libraryButton.setButtonText ("FILE BROWSER");
-                libraryButton.setTooltip ("Search and filter NAM captures in a local folder library.");
+                libraryButton.setTitle ("File Browser");
+                libraryButton.setTooltip ("File Browser: Search and filter local NAM captures");
+                libraryButton.icon.startNewSubPath (1.0f, 17.0f);
+                libraryButton.icon.lineTo (1.0f, 4.0f);
+                libraryButton.icon.lineTo (8.0f, 4.0f);
+                libraryButton.icon.lineTo (10.0f, 7.0f);
+                libraryButton.icon.lineTo (19.0f, 7.0f);
+                libraryButton.icon.lineTo (19.0f, 17.0f);
+                libraryButton.icon.closeSubPath();
                 libraryButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
                 libraryButton.setColour (juce::TextButton::textColourOffId, text);
                 addAndMakeVisible (libraryButton);
                 libraryButton.onClick = [this] { openCaptureBrowser(); };
-                previousCaptureButton.setButtonText ("PREV");
-                nextCaptureButton.setButtonText ("NEXT");
+                previousCaptureButton.setTitle ("Previous NAM capture");
+                nextCaptureButton.setTitle ("Next NAM capture");
+                previousCaptureButton.icon.startNewSubPath (13.0f, 4.0f);
+                previousCaptureButton.icon.lineTo (7.0f, 10.0f);
+                previousCaptureButton.icon.lineTo (13.0f, 16.0f);
+                nextCaptureButton.icon = previousCaptureButton.icon;
+                nextCaptureButton.icon.applyTransform (juce::AffineTransform::scale (-1.0f, 1.0f).translated (20.0f, 0.0f));
                 previousCaptureButton.setTooltip ("Load the previous NAM capture from this folder.");
                 nextCaptureButton.setTooltip ("Load the next NAM capture from this folder.");
                 previousCaptureButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
@@ -1786,11 +1835,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto card = getLocalBounds().toFloat();
-        g.setColour (detailSurface);
+        const auto card = getLocalBounds().toFloat().reduced (1.0f);
+        g.setGradientFill ({ juce::Colour (0xff202b3b), card.getTopLeft(),
+                             juce::Colour (0xff151d2a), card.getBottomLeft(), false });
         g.fillRoundedRectangle (card, 16.0f);
-        g.setColour (juce::Colour::fromRGB (62, 73, 86));
-        g.drawRoundedRectangle (card.reduced (1.0f), 16.0f, 2.5f);
+        g.setColour (juce::Colour (0xff394b60));
+        g.drawRoundedRectangle (card, 16.0f, 1.25f);
         drawBlockIcon (g, juce::Rectangle<float> (26.0f, 18.0f, 32.0f, 32.0f));
     }
 
@@ -1803,7 +1853,28 @@ public:
         isFullscreen = fullscreen;
         if (expandButton != nullptr)
         {
-            expandButton->setButtonText (fullscreen ? "RESTORE" : "FULL SCREEN");
+            juce::Path corners;
+            for (const auto x : { -1.0f, 1.0f })
+                for (const auto y : { -1.0f, 1.0f })
+                {
+                    const auto corner = fullscreen ? 3.0f : 8.0f;
+                    const auto arm = fullscreen ? 8.0f : 3.0f;
+                    corners.startNewSubPath (x * arm, y * corner);
+                    corners.lineTo (x * corner, y * corner);
+                    corners.lineTo (x * corner, y * arm);
+                }
+            juce::DrawablePath icon, hoverIcon;
+            for (auto* drawable : { &icon, &hoverIcon })
+            {
+                drawable->setPath (corners);
+                drawable->setFill (juce::Colours::transparentBlack);
+                drawable->setStrokeType (juce::PathStrokeType (1.7f, juce::PathStrokeType::curved,
+                                                               juce::PathStrokeType::rounded));
+            }
+            icon.setStrokeFill (secondaryText);
+            hoverIcon.setStrokeFill (knobAccent);
+            expandButton->setImages (&icon, &hoverIcon, &hoverIcon);
+            expandButton->setTitle (fullscreen ? "Restore EQ" : "Expand EQ");
             expandButton->setTooltip (fullscreen ? "Return to the signal chain view." : "Expand this graphic EQ to fill the plugin window.");
         }
     }
@@ -1861,7 +1932,7 @@ public:
             if (controlIds[i].endsWith ("Source"))
                 sourceIndex = static_cast<int> (i);
         const auto rightWidth = (hasEnableControl ? 36 : 0) + (hasMoveControls ? 68 : 0)
-                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 110 : 0);
+                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 34 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
         {
@@ -1894,13 +1965,13 @@ public:
         if (toneCurveButton != nullptr)
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
         if (expandButton != nullptr)
-            expandButton->setBounds (right.removeFromLeft (104).withY (header.getY() + 4).withHeight (28));
+            expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
 
         if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
         {
             fileName.setBounds ({});
             auto actionRow = area.removeFromTop (38);
-            constexpr int loadWidth = 160, browserWidth = 160, navWidth = 64, toneWidth = 210;
+            constexpr int loadWidth = 44, browserWidth = 44, navWidth = 38, toneWidth = 210;
             constexpr int gap = 10;
             constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
             const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
@@ -1928,7 +1999,7 @@ public:
             if (loadKind != FileKind::nam)
             {
                 auto fileRow = area.removeFromTop (40);
-                loadButton.setBounds (fileRow.removeFromLeft (130));
+                loadButton.setBounds (fileRow.removeFromLeft (44));
                 fileRow.removeFromLeft (10);
                 const auto nameWidth = juce::jmin (620, fileRow.getWidth());
                 fileName.setBounds (fileRow.removeFromLeft (nameWidth));
@@ -2482,9 +2553,10 @@ private:
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
-    juce::TextButton loadButton, libraryButton, tone3000Button, previousCaptureButton, nextCaptureButton, moveUpButton, moveDownButton;
+    CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
+    juce::TextButton tone3000Button, moveUpButton, moveDownButton;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
-    std::unique_ptr<juce::TextButton> expandButton;
+    std::unique_ptr<juce::DrawableButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> enableAttachment;
     std::vector<std::unique_ptr<juce::Label>> controlLabels;
@@ -2525,7 +2597,12 @@ public:
 
     void setSelected (bool selected)
     {
+        if (isSelected == selected)
+            return;
+
         isSelected = selected;
+        iconAnimationStart = selected ? juce::Time::getMillisecondCounterHiRes() : 0.0;
+        startTimerHz (selected ? 60 : 4);
         repaint();
     }
 
@@ -2577,8 +2654,11 @@ public:
             }
         }
         const auto iconSize = juce::jmin (30.0f, juce::jmin (r.getWidth(), r.getHeight()) * 0.48f);
+        const auto progress = juce::jlimit (0.0, 1.0,
+            (juce::Time::getMillisecondCounterHiRes() - iconAnimationStart) / iconAnimationDuration);
+        const auto lift = static_cast<float> (std::sin (progress * juce::MathConstants<double>::pi)) * 5.0f;
         const auto iconBounds = juce::Rectangle<float> (0.0f, 0.0f, iconSize, iconSize)
-                                    .withCentre (r.getCentre());
+                                    .withCentre (r.getCentre()).translated (0.0f, -lift);
         {
             const juce::Graphics::ScopedSaveState iconState (g);
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
@@ -2884,9 +2964,17 @@ private:
 
     void timerCallback() override
     {
+        if (iconAnimationStart != 0.0
+            && juce::Time::getMillisecondCounterHiRes() - iconAnimationStart >= iconAnimationDuration)
+        {
+            iconAnimationStart = 0.0;
+            startTimerHz (4);
+        }
         repaint();
     }
 
+    static constexpr double iconAnimationDuration = 210.0;
+    double iconAnimationStart = 0.0;
     juce::AudioProcessorValueTreeState& parameterState;
     juce::String stageName;
     juce::String enableParameterId;
@@ -2933,16 +3021,24 @@ public:
             if (tile->isVisible())
                 g.excludeClipRegion (tile->getBounds());
 
-        const auto wire = juce::Colour (0xff70d9b6);
-        g.setFont (namplifiedFontOptions (15.0f, juce::Font::bold));
-        g.setColour (secondaryText);
-        if (parallelRouting)
+        drawWiring (g);
+    }
+
+    void updateSignalFlow (float inputPeak, double now)
+    {
+        if (! isShowing())
         {
-            drawParallelWiring (g, wire);
+            flowStrength = 0.0f;
             return;
         }
 
-        drawSerialWiring (g, wire);
+        const auto signal = juce::jlimit (0.0f, 1.0f,
+            (juce::Decibels::gainToDecibels (inputPeak) + 60.0f) / 35.0f);
+        const auto target = 0.72f + 0.26f * signal;
+        flowStrength += (target - flowStrength) * (target > flowStrength ? 0.22f : 0.09f);
+
+        flowX = static_cast<float> (std::fmod (now * 0.22, flowSpacing));
+        repaint();
     }
 
     void setOrderedTiles (std::vector<StageTile*> ordered)
@@ -3019,6 +3115,18 @@ public:
     }
 
 private:
+    void drawWiring (juce::Graphics& g)
+    {
+        if (parallelRouting)
+            drawParallelWiring (g);
+        else
+            drawSerialWiring (g);
+    }
+
+    static constexpr float flowSpacing = 380.0f;
+    float flowStrength = 0.0f;
+    float flowX = 0.0f;
+
     static bool isPostEffect (const juce::String& name)
     {
         return name == "Delay" || name == "Reverb" || name == "Chorus" || name == "Post EQ";
@@ -3044,22 +3152,34 @@ private:
         return found;
     }
 
-    static void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                           juce::Colour colour, float thickness = 3.0f)
+    void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
+                    float thickness = 3.0f) const
     {
-        g.setColour (colour);
-        juce::Path path;
-        path.startNewSubPath (start);
-        path.lineTo (end);
-        g.strokePath (path, juce::PathStrokeType (thickness, juce::PathStrokeType::curved,
-                                                   juce::PathStrokeType::rounded));
+        const auto base = juce::Colour (0xff489b88);
+        g.setColour (base);
+        g.drawLine ({ start, end }, thickness);
+
+        const auto length = start.getDistanceFrom (end);
+        for (float offset = 0.0f; offset < length; offset += 3.0f)
+        {
+            const auto from = start + (end - start) * (offset / length);
+            const auto to = start + (end - start) * (juce::jmin (offset + 3.0f, length) / length);
+            const auto distance = std::abs (std::remainder ((from.x + to.x) * 0.5f - flowX, flowSpacing));
+            const auto light = flowStrength * juce::jmax (0.0f, 1.0f - distance / 90.0f);
+            if (light <= 0.01f)
+                continue;
+
+            g.setColour (juce::Colour (0xff91ffe0).withAlpha (light * 0.25f));
+            g.drawLine ({ from, to }, thickness + 4.0f);
+            g.setColour (base.interpolatedWith (juce::Colour (0xffe2fff7), light));
+            g.drawLine ({ from, to }, thickness + light);
+        }
     }
 
-    static void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                         juce::Colour colour, float thickness = 3.0f)
+    void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
+                  float thickness = 3.0f) const
     {
-        g.setColour (colour);
-        g.drawLine (start.x, start.y, end.x, end.y, thickness);
+        drawArrow (g, start, end, thickness);
     }
 
     static juce::Point<float> leftCentre (juce::Component* c)
@@ -3072,7 +3192,7 @@ private:
         return { static_cast<float> (c->getRight()), static_cast<float> (c->getY() + c->getHeight() / 2) };
     }
 
-    void drawSerialWiring (juce::Graphics& g, juce::Colour wire)
+    void drawSerialWiring (juce::Graphics& g)
     {
         auto* input = findTile ("Input");
         auto* output = findTile ("Output");
@@ -3091,7 +3211,7 @@ private:
         ampChain.insert (ampChain.end(), pre.begin(), pre.end());
         ampChain.insert (ampChain.end(), nams.begin(), nams.end());
         for (size_t i = 0; i + 1 < ampChain.size(); ++i)
-            drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]), wire);
+            drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]));
 
         const auto irInX = static_cast<float> (irs.front()->getX() - 14);
         const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
@@ -3102,28 +3222,28 @@ private:
         const auto ampOutput = rightCentre (ampChain.back());
         const auto branchTop = *std::min_element (branchY.begin(), branchY.end());
         const auto branchBottom = *std::max_element (branchY.begin(), branchY.end());
-        drawBus (g, ampOutput, { splitX, ampOutput.y }, wire);
+        drawBus (g, ampOutput, { splitX, ampOutput.y });
         drawBus (g, { splitX, juce::jmin (branchTop, ampOutput.y) },
-                 { splitX, juce::jmax (branchBottom, ampOutput.y) }, wire);
+                 { splitX, juce::jmax (branchBottom, ampOutput.y) });
         for (auto* ir : irs)
-            drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir), wire);
+            drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir));
 
         const auto mergeX = irOutX;
-        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop }, wire);
-        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom }, wire);
-        drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom }, wire);
+        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop });
+        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom });
+        drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom });
         for (auto* ir : irs)
-            drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
+            drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
         const auto postInput = leftCentre (post.front());
         const auto routeY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
-        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY }, wire);
-        drawBus (g, { mergeX, routeY }, postInput, wire);
+        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY });
+        drawBus (g, { mergeX, routeY }, postInput);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
-        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]));
+        drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
-    void drawParallelWiring (juce::Graphics& g, juce::Colour wire)
+    void drawParallelWiring (juce::Graphics& g)
     {
         auto* input = findTile ("Input");
         if (input == nullptr) return;
@@ -3137,7 +3257,7 @@ private:
                 break;
         }
         for (size_t i = 0; i + 1 < pre.size(); ++i)
-            drawArrow (g, rightCentre (pre[i]), leftCentre (pre[i + 1]), wire);
+            drawArrow (g, rightCentre (pre[i]), leftCentre (pre[i + 1]));
 
         const auto nams = namedTiles ("NAM Profile");
         if (nams.empty()) return;
@@ -3146,10 +3266,10 @@ private:
         const auto bottomY = static_cast<float> (nams.back()->getY() + nams.back()->getHeight() / 2);
         const auto inputY = static_cast<float> (pre.back()->getY() + pre.back()->getHeight() / 2);
         const juce::Point<float> splitNode (splitX, inputY);
-        drawBus (g, rightCentre (pre.back()), splitNode, wire);
-        drawBus (g, { splitX, juce::jmin (topY, inputY) }, { splitX, juce::jmax (bottomY, inputY) }, wire);
+        drawBus (g, rightCentre (pre.back()), splitNode);
+        drawBus (g, { splitX, juce::jmin (topY, inputY) }, { splitX, juce::jmax (bottomY, inputY) });
         for (auto* nam : nams)
-            drawArrow (g, { splitX, static_cast<float> (nam->getY() + nam->getHeight() / 2) }, leftCentre (nam), wire);
+            drawArrow (g, { splitX, static_cast<float> (nam->getY() + nam->getHeight() / 2) }, leftCentre (nam));
 
         const auto irs = namedTiles ("Cab IR");
 
@@ -3178,10 +3298,10 @@ private:
             for (auto* nam : nams)
             {
                 const auto from = rightCentre (nam);
-                drawArrow (g, from, { joinX, from.y }, wire);
+                drawArrow (g, from, { joinX, from.y });
             }
-            drawBus (g, { joinX, joinTop }, { joinX, joinBottom }, wire);
-            drawArrow (g, { joinX, irMid }, leftCentre (irs.front()), wire);
+            drawBus (g, { joinX, joinTop }, { joinX, joinBottom });
+            drawArrow (g, { joinX, irMid }, leftCentre (irs.front()));
         }
         else
         {
@@ -3193,22 +3313,22 @@ private:
                 const auto from = rightCentre (nam);
                 const auto to = leftCentre (matchingIR);
                 const auto elbowX = (from.x + to.x) * 0.5f;
-                drawBus (g, from, { elbowX, from.y }, wire);
-                drawBus (g, { elbowX, from.y }, { elbowX, to.y }, wire);
-                drawArrow (g, { elbowX, to.y }, to, wire);
+                drawBus (g, from, { elbowX, from.y });
+                drawBus (g, { elbowX, from.y }, { elbowX, to.y });
+                drawArrow (g, { elbowX, to.y }, to);
             }
         }
 
-        drawBus (g, { irOutX, irTop }, { irOutX, irBottom }, wire);
+        drawBus (g, { irOutX, irTop }, { irOutX, irBottom });
         for (auto* ir : irs)
-            drawArrow (g, rightCentre (ir), { irOutX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
+            drawArrow (g, rightCentre (ir), { irOutX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
 
         const auto lowerY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
-        drawBus (g, { irOutX, irMid }, { irOutX, lowerY }, wire);
-        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()), wire);
+        drawBus (g, { irOutX, irMid }, { irOutX, lowerY });
+        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()));
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
-        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]));
+        drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
     std::vector<StageTile*> tiles;
@@ -3319,12 +3439,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (background);
-        auto area = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (chainSurface);
+        const auto area = getLocalBounds().toFloat().reduced (1.0f);
+        g.setGradientFill ({ juce::Colour (0xff182638), area.getCentreX(), area.getY(),
+                             chainSurface, area.getRight(), area.getBottom(), true });
         g.fillRoundedRectangle (area, 18.0f);
-        g.setColour (juce::Colour::fromRGB (52, 59, 72));
-        g.drawRoundedRectangle (area, 18.0f, 2.4f);
+        g.setColour (juce::Colour (0xff2c3c50));
+        g.drawRoundedRectangle (area, 18.0f, 1.25f);
         const auto now = juce::Time::getMillisecondCounterHiRes();
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
         drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT",
@@ -3393,6 +3513,7 @@ private:
     void timerCallback() override
     {
         const auto now = juce::Time::getMillisecondCounterHiRes();
+        tileList->updateSignalFlow (audioProcessor.getInputPeak(), now);
         if (audioProcessor.consumeInputClip()) inputClipUntilMs = now + 1500.0;
         if (audioProcessor.consumeOutputClip()) outputClipUntilMs = now + 1500.0;
         repaint();
@@ -3773,10 +3894,11 @@ public:
             if (! library.startAsProcess())
                 library.revealToUser();
         };
-        addAction ("Close", { 484, 144, 84, 36 });
-        addAction ("Build", { 576, 144, 96, 36 });
+        addAction ("Close", { 588, 144, 84, 36 });
+        getButton ("Close")->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff59363b));
+        addAction ("Build", { 484, 144, 96, 36 });
         getButton ("Close")->onClick = [this] { dismiss(); };
-        addAction ("Cancel", { 576, 144, 96, 36 });
+        addAction ("Cancel", { 484, 144, 96, 36 });
         getButton ("Cancel")->onClick = [this] { cancelJob(); };
         getButton ("Cancel")->setVisible (false);
         progressBar.setPercentageDisplay (false);
@@ -5260,9 +5382,6 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (presetLabel);
     presetBox.setTextWhenNothingSelected ("CHOOSE PRESET");
-    savePresetButton.setButtonText ("SAVE");
-    deletePresetButton.setButtonText ("DELETE");
-    resetChainButton.setButtonText ("NEW CHAIN");
     resetChainButton.setTooltip ("Start a new chain with the default settings");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
@@ -5323,6 +5442,58 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     };
     updateMasterVolumeValueLabel();
     addAndMakeVisible (presetBox);
+    const auto setHeaderIcon = [](juce::DrawableButton& button, const juce::Path& path)
+    {
+        juce::DrawablePath icon, hoverIcon;
+        for (auto* drawable : { &icon, &hoverIcon })
+        {
+            drawable->setPath (path);
+            drawable->setFill (juce::Colours::transparentBlack);
+            drawable->setStrokeType (juce::PathStrokeType (1.6f, juce::PathStrokeType::curved,
+                                                           juce::PathStrokeType::rounded));
+        }
+        icon.setStrokeFill (secondaryText);
+        hoverIcon.setStrokeFill (knobAccent);
+        button.setEdgeIndent (8);
+        button.setImages (&icon, &hoverIcon, &hoverIcon);
+    };
+    const auto line = [](juce::Path& path, float x1, float y1, float x2, float y2)
+    {
+        path.startNewSubPath (x1, y1);
+        path.lineTo (x2, y2);
+    };
+    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon;
+    saveIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 2.0f);
+    saveIcon.addRectangle (6.0f, 2.0f, 8.0f, 5.0f);
+    saveIcon.addRoundedRectangle (6.0f, 11.0f, 8.0f, 7.0f, 1.0f);
+    line (deleteIcon, 2.0f, 5.0f, 18.0f, 5.0f);
+    deleteIcon.startNewSubPath (4.0f, 5.0f);
+    deleteIcon.lineTo (5.0f, 18.0f);
+    deleteIcon.lineTo (15.0f, 18.0f);
+    deleteIcon.lineTo (16.0f, 5.0f);
+    line (deleteIcon, 7.0f, 2.0f, 13.0f, 2.0f);
+    line (deleteIcon, 8.0f, 8.0f, 8.0f, 15.0f);
+    line (deleteIcon, 12.0f, 8.0f, 12.0f, 15.0f);
+    newChainIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 3.0f);
+    line (newChainIcon, 6.0f, 10.0f, 14.0f, 10.0f);
+    line (newChainIcon, 10.0f, 6.0f, 10.0f, 14.0f);
+    builderIcon.startNewSubPath (8.0f, 1.0f);
+    builderIcon.lineTo (10.0f, 7.0f);
+    builderIcon.lineTo (16.0f, 9.0f);
+    builderIcon.lineTo (10.0f, 11.0f);
+    builderIcon.lineTo (8.0f, 17.0f);
+    builderIcon.lineTo (6.0f, 11.0f);
+    builderIcon.lineTo (0.0f, 9.0f);
+    builderIcon.lineTo (6.0f, 7.0f);
+    builderIcon.closeSubPath();
+    line (builderIcon, 16.0f, 15.0f, 20.0f, 15.0f);
+    line (builderIcon, 18.0f, 13.0f, 18.0f, 17.0f);
+    setHeaderIcon (savePresetButton, saveIcon);
+    setHeaderIcon (deletePresetButton, deleteIcon);
+    setHeaderIcon (resetChainButton, newChainIcon);
+    setHeaderIcon (presetBuilderButton, builderIcon);
+    presetBuilderButton.setTooltip ("Build a preset with local AI");
+
     savePresetButton.setTooltip ("Save the current signal chain as a preset");
     deletePresetButton.setTooltip ("Delete the selected user preset");
     addAndMakeVisible (savePresetButton);
@@ -5454,7 +5625,10 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 
 void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (background);
+    const auto bounds = getLocalBounds().toFloat();
+    g.setGradientFill ({ juce::Colour (0xff162338), bounds.getTopLeft(),
+                         background, bounds.getBottomRight(), false });
+    g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
 }
@@ -5479,13 +5653,11 @@ void NAMplifiedAudioProcessorEditor::resized()
     title.setBounds (titleArea.removeFromTop (28));
     subtitle.setBounds (titleArea);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
-    presetBuilderButton.setBounds (top.removeFromRight (120).reduced (0, 4));
+    presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 980;
     const auto presetWidth = compactHeader ? 122 : 165;
-    const auto smallButtonWidth = compactHeader ? 58 : 76;
-    const auto resetButtonWidth = compactHeader ? 87 : 104;
     const auto pitchSliderWidth = compactHeader ? 62 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
@@ -5496,11 +5668,11 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 8);
-    savePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    savePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    deletePresetButton.setBounds (presetArea.removeFromLeft (smallButtonWidth).reduced (0, 4));
+    deletePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    resetChainButton.setBounds (presetArea.removeFromLeft (resetButtonWidth).reduced (0, 4));
+    resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
     pitchLabel.setBounds (presetArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
