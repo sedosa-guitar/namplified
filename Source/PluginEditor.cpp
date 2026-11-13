@@ -1605,33 +1605,30 @@ public:
 
         if (loadKind != FileKind::none)
         {
-            loadButton.setButtonText (loadKind == FileKind::nam ? "" : "LOAD IR");
+            const auto loadTitle = loadKind == FileKind::nam ? "Load NAM file" : "Load IR file";
+            loadButton.setTitle (loadTitle);
+            loadButton.setTooltip (loadTitle);
             loadButton.setColour (juce::TextButton::buttonColourId, juce::Colour::fromRGB (54, 58, 67));
             loadButton.setColour (juce::TextButton::textColourOffId, text);
-            if (loadKind == FileKind::impulseResponse)
-                loadButton.getProperties().set ("namButtonFontHeight", 18.0);
+            auto& loadIcon = loadButton.icon;
+            loadIcon.startNewSubPath (12.0f, 18.0f);
+            loadIcon.lineTo (3.0f, 18.0f);
+            loadIcon.lineTo (3.0f, 2.0f);
+            loadIcon.lineTo (10.0f, 2.0f);
+            loadIcon.lineTo (15.0f, 7.0f);
+            loadIcon.lineTo (15.0f, 9.0f);
+            loadIcon.startNewSubPath (10.0f, 2.0f);
+            loadIcon.lineTo (10.0f, 7.0f);
+            loadIcon.lineTo (15.0f, 7.0f);
+            loadIcon.startNewSubPath (8.0f, 14.0f);
+            loadIcon.lineTo (19.0f, 14.0f);
+            loadIcon.startNewSubPath (16.0f, 11.0f);
+            loadIcon.lineTo (19.0f, 14.0f);
+            loadIcon.lineTo (16.0f, 17.0f);
             addAndMakeVisible (loadButton);
 
             if (loadKind == FileKind::nam)
             {
-                loadButton.setTitle ("Load NAM file");
-                loadButton.setTooltip ("Load NAM file directly");
-                auto& loadIcon = loadButton.icon;
-                loadIcon.startNewSubPath (12.0f, 18.0f);
-                loadIcon.lineTo (3.0f, 18.0f);
-                loadIcon.lineTo (3.0f, 2.0f);
-                loadIcon.lineTo (10.0f, 2.0f);
-                loadIcon.lineTo (15.0f, 7.0f);
-                loadIcon.lineTo (15.0f, 9.0f);
-                loadIcon.startNewSubPath (10.0f, 2.0f);
-                loadIcon.lineTo (10.0f, 7.0f);
-                loadIcon.lineTo (15.0f, 7.0f);
-                loadIcon.startNewSubPath (8.0f, 14.0f);
-                loadIcon.lineTo (19.0f, 14.0f);
-                loadIcon.startNewSubPath (16.0f, 11.0f);
-                loadIcon.lineTo (19.0f, 14.0f);
-                loadIcon.lineTo (16.0f, 17.0f);
-
                 libraryButton.setTitle ("File Browser");
                 libraryButton.setTooltip ("File Browser: Search and filter local NAM captures");
                 libraryButton.icon.startNewSubPath (1.0f, 17.0f);
@@ -1999,7 +1996,7 @@ public:
             if (loadKind != FileKind::nam)
             {
                 auto fileRow = area.removeFromTop (40);
-                loadButton.setBounds (fileRow.removeFromLeft (130));
+                loadButton.setBounds (fileRow.removeFromLeft (44));
                 fileRow.removeFromLeft (10);
                 const auto nameWidth = juce::jmin (620, fileRow.getWidth());
                 fileName.setBounds (fileRow.removeFromLeft (nameWidth));
