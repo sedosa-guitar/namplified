@@ -5572,16 +5572,48 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         updateRoutingDisplay();
     };
 
-    ampRoutingBox.addItem ("SERIES", 1);
-    ampRoutingBox.addItem ("PARALLEL BLEND", 2);
-    ampRoutingBox.setName ("ampRouting");
-    ampRoutingBox.setTooltip (
-        "Series: NAM captures feed one another, e.g. Boost capture > OD capture > Amp capture.\n"
-        "Parallel Blend: NAM profiles run side by side and blend into the shared Cab IR section.");
-    addAndMakeVisible (ampRoutingBox);
-    ampRoutingAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-        processor.parameters, "ampRouting", ampRoutingBox);
-    ampRoutingBox.addListener (this);
+    juce::Path seriesIcon, parallelIcon;
+    line (seriesIcon, 1, 8, 25, 8);
+    seriesIcon.addRoundedRectangle (5, 4, 5, 8, 1);
+    seriesIcon.addRoundedRectangle (16, 4, 5, 8, 1);
+    line (parallelIcon, 1, 8, 5, 8);
+    parallelIcon.addRectangle (5, 3, 16, 10);
+    line (parallelIcon, 21, 8, 25, 8);
+
+    const auto setupRoutingButton = [&](juce::DrawableButton& button, const juce::Path& path,
+                                        const juce::String& tooltip, float mode)
+    {
+        juce::DrawablePath icon, activeIcon;
+        icon.setPath (path);
+        icon.setFill (juce::Colours::transparentBlack);
+        icon.setStrokeType (juce::PathStrokeType (1.6f));
+        activeIcon.setPath (path);
+        activeIcon.setFill (juce::Colours::transparentBlack);
+        activeIcon.setStrokeType (juce::PathStrokeType (1.6f));
+        icon.setStrokeFill (secondaryText);
+        activeIcon.setStrokeFill (knobAccent);
+        button.setImages (&icon, &activeIcon, &activeIcon, nullptr, &activeIcon);
+        button.setTooltip (tooltip);
+        button.onClick = [this, mode]
+        {
+            if (auto* parameter = audioProcessor.parameters.getParameter ("ampRouting"))
+            {
+                const auto value = parameter->convertTo0to1 (mode);
+                if (parameter->getValue() != value)
+                {
+                    parameter->beginChangeGesture();
+                    parameter->setValueNotifyingHost (value);
+                    parameter->endChangeGesture();
+                    updateRoutingDisplay();
+                }
+            }
+        };
+        addAndMakeVisible (button);
+    };
+    setupRoutingButton (seriesRoutingButton, seriesIcon,
+                        "Series: run the amp captures one after the other.", 0.0f);
+    setupRoutingButton (parallelRoutingButton, parallelIcon,
+                        "Parallel Blend: run the amp captures side by side and blend their signals.", 1.0f);
 
     parallelIRBox.addItem ("PAIRED IRs", 1);
     parallelIRBox.addItem ("SHARED IR 1", 2);
@@ -5718,7 +5750,9 @@ void NAMplifiedAudioProcessorEditor::resized()
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
-    ampRoutingBox.setBounds (controlRow.removeFromRight (180).reduced (0, 2));
+    parallelRoutingButton.setBounds (controlRow.removeFromRight (44).reduced (0, 2));
+    controlRow.removeFromRight (4);
+    seriesRoutingButton.setBounds (controlRow.removeFromRight (44).reduced (0, 2));
     if (parallelIRBox.isVisible())
     {
         controlRow.removeFromRight (8);
@@ -5765,7 +5799,8 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     blendLabel.setVisible (showChrome);
     blendValueLabel.setVisible (showChrome);
     blendSlider.setVisible (showChrome);
-    ampRoutingBox.setVisible (showChrome);
+    seriesRoutingButton.setVisible (showChrome);
+    parallelRoutingButton.setVisible (showChrome);
     parallelIRBox.setVisible (showChrome && parallelIRBox.getSelectedId() == 2);
     if (showChrome)
         updateRoutingDisplay();
@@ -5872,7 +5907,7 @@ void NAMplifiedAudioProcessorEditor::updateMasterVolumeValueLabel()
 
 void NAMplifiedAudioProcessorEditor::comboBoxChanged (juce::ComboBox* box)
 {
-    if (box != &ampRoutingBox && box != &parallelIRBox)
+    if (box != &parallelIRBox)
         return;
     const juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
     juce::MessageManager::callAsync ([safeThis]
@@ -5909,7 +5944,8 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
             audioProcessor.parameters, blendParameterId, blendSlider);
         blendSlider.setEnabled (true);
     }
-    ampRoutingBox.setSelectedId (parallel ? 2 : 1, juce::dontSendNotification);
+    seriesRoutingButton.setToggleState (! parallel, juce::dontSendNotification);
+    parallelRoutingButton.setToggleState (parallel, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
     ampCrossoverButton.setVisible (parallel);
     ampCrossoverSlider.setVisible (parallel);
@@ -5948,7 +5984,7 @@ void NAMplifiedAudioProcessorEditor::updateBlendValue()
                              juce::dontSendNotification);
 }
 
-void NAMplifiedAudioProcessorEditor::showSavePresetPrompt()
+void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()> onSaved)
 {
     auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
                                          juce::MessageBoxIconType::NoIcon, this);
@@ -5958,7 +5994,7 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt()
     alert->addButton ("Save", 1);
     alert->addButton ("Cancel", 0);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
-    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert] (int result)
+    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, onSaved = std::move (onSaved)] (int result)
     {
         alert->setLookAndFeel (nullptr);
         if (result != 1 || safeThis == nullptr)
@@ -5971,10 +6007,12 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt()
                                                      "Check the preset name and available storage space.");
             return;
         }
-        safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->audioProcessor.setSelectedUserPresetName (name);
+        safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets (name);
+        if (onSaved)
+            onSaved();
     }), true);
 }
 

@@ -15,6 +15,7 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    void showSavePresetPrompt (std::function<void()> onSaved = {});
 
 private:
     void refreshUserPresets (const juce::String& selectName = {});
@@ -22,7 +23,6 @@ private:
     void updateBlendValue();
     void updateMasterVolumeValueLabel();
     void setEqFullscreen (bool shouldBeFullscreen);
-    void showSavePresetPrompt();
     void showDeletePresetPrompt();
     void showAboutDialog();
     void showPresetBuilder();
@@ -53,12 +53,12 @@ private:
     juce::Label blendLabel;
     juce::Label blendValueLabel;
     juce::Slider blendSlider;
-    juce::ComboBox ampRoutingBox;
+    juce::DrawableButton seriesRoutingButton { "Series", juce::DrawableButton::ImageOnButtonBackground };
+    juce::DrawableButton parallelRoutingButton { "Parallel Blend", juce::DrawableButton::ImageOnButtonBackground };
     juce::ComboBox parallelIRBox;
     juce::TextButton ampCrossoverButton { "FREQ SPLIT" };
     juce::Slider ampCrossoverSlider;
     juce::Label ampCrossoverValueLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> ampRoutingAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampCrossoverAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampCrossoverSliderAttachment;

@@ -108,6 +108,16 @@ public:
        #endif
     }
 
+    void closeButtonPressed() override
+    {
+        juce::JUCEApplicationBase::getInstance()->systemRequestedQuit();
+    }
+
+    NAMplifiedAudioProcessor* getNAMplifiedProcessor() const
+    {
+        return dynamic_cast<NAMplifiedAudioProcessor*> (pluginHolder->processor.get());
+    }
+
     void saveState()
     {
         if (pluginHolder != nullptr)
@@ -161,6 +171,44 @@ public:
 
     void systemRequestedQuit() override
     {
+        if (quitPromptOpen)
+            return;
+
+        auto* processor = mainWindow != nullptr ? mainWindow->getNAMplifiedProcessor() : nullptr;
+        if (processor == nullptr || ! processor->hasUnsavedParameterChanges())
+        {
+            finishQuit();
+            return;
+        }
+
+        quitPromptOpen = true;
+        auto* alert = new juce::AlertWindow ("Unsaved preset changes",
+                                             "Save your preset changes before quitting?",
+                                             juce::MessageBoxIconType::NoIcon, mainWindow.get());
+        if (auto* editor = processor->getActiveEditor())
+            alert->setLookAndFeel (&editor->getLookAndFeel());
+        alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        alert->addButton ("Discard", 2);
+        alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        alert->enterModalState (true, juce::ModalCallbackFunction::create ([this, processor, alert] (int result)
+        {
+            alert->setLookAndFeel (nullptr);
+            quitPromptOpen = false;
+            if (result == 2)
+            {
+                processor->restorePresetSnapshot();
+                finishQuit();
+            }
+            else if (result == 1)
+            {
+                processor->promptToSavePreset ([this] { finishQuit(); });
+            }
+        }), true);
+    }
+
+private:
+    void finishQuit()
+    {
         if (mainWindow != nullptr)
             mainWindow->saveState();
         else if (pluginHolder != nullptr)
@@ -168,18 +216,14 @@ public:
 
         if (juce::ModalComponentManager::getInstance()->cancelAllModalComponents())
         {
-            juce::Timer::callAfterDelay (100, []
-            {
-                if (auto* app = juce::JUCEApplicationBase::getInstance())
-                    app->systemRequestedQuit();
-            });
+            juce::Timer::callAfterDelay (100, [this] { finishQuit(); });
             return;
         }
-
         quit();
     }
 
-private:
+    bool quitPromptOpen = false;
+
     std::unique_ptr<juce::StandalonePluginHolder> createPluginHolder()
     {
        #ifdef JucePlugin_PreferredChannelConfigurations

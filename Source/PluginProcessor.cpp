@@ -1021,6 +1021,11 @@ void NAMplifiedAudioProcessor::setSelectedUserPresetName (const juce::String& na
 
 void NAMplifiedAudioProcessor::capturePresetSnapshot()
 {
+    getStateInformation (presetSnapshotState);
+    presetPreFxOrder = getPreFxOrder();
+    presetPostFxOrder = getPostFxOrder();
+    presetAmpOrder = getAmpSlotOrder();
+    presetIROrder = getIRSlotOrder();
     presetSnapshot.clear();
     presetFileSnapshot.clear();
     for (auto* parameter : getParameters())
@@ -1041,6 +1046,22 @@ void NAMplifiedAudioProcessor::capturePresetSnapshot()
         presetFileSnapshot.emplace ("ir" + std::to_string (slot), irFilePaths[slot]);
 }
 
+void NAMplifiedAudioProcessor::promptToSavePreset (std::function<void()> onSaved)
+{
+    if (auto* editor = dynamic_cast<NAMplifiedAudioProcessorEditor*> (getActiveEditor()))
+        editor->showSavePresetPrompt (std::move (onSaved));
+}
+
+void NAMplifiedAudioProcessor::restorePresetSnapshot()
+{
+    if (presetSnapshotState.isEmpty())
+        return;
+    auto* master = parameters.getParameter ("masterVolume");
+    const auto volume = master->getValue();
+    setStateInformation (presetSnapshotState.getData(), static_cast<int> (presetSnapshotState.getSize()));
+    master->setValueNotifyingHost (volume);
+}
+
 bool NAMplifiedAudioProcessor::isParameterModified (const juce::String& parameterId) const
 {
     const auto baseline = presetSnapshot.find (parameterId.toStdString());
@@ -1051,6 +1072,10 @@ bool NAMplifiedAudioProcessor::isParameterModified (const juce::String& paramete
 
 bool NAMplifiedAudioProcessor::hasUnsavedParameterChanges() const
 {
+    if (! presetSnapshotState.isEmpty()
+        && (getPreFxOrder() != presetPreFxOrder || getPostFxOrder() != presetPostFxOrder
+            || getAmpSlotOrder() != presetAmpOrder || getIRSlotOrder() != presetIROrder))
+        return true;
     for (const auto& [parameterId, baseline] : presetSnapshot)
         if (const auto* current = parameters.getRawParameterValue (parameterId); current != nullptr
             && std::abs (current->load() - baseline) > 0.0001f)
