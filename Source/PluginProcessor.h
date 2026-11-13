@@ -47,6 +47,8 @@ public:
     bool consumeInputClip() noexcept { return inputClipped.exchange (false, std::memory_order_relaxed); }
     bool consumeOutputClip() noexcept { return outputClipped.exchange (false, std::memory_order_relaxed); }
     IRParameters parameters;
+    bool loadReverbIR (const juce::File& file);
+    juce::String getReverbIRName() const;
     void loadImpulseResponse (int slot, const juce::File& file);
     bool isImpulseResponseActive (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
@@ -227,6 +229,10 @@ private:
     std::array<float, 2> postHighState {};
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> delayLines[2];
     juce::dsp::DelayLine<float, juce::dsp::DelayLineInterpolationTypes::Linear> reverbPreDelayLines[2];
+    juce::SpinLock reverbConvolutionLock;
+    juce::dsp::Convolution reverbConvolver;
+    juce::String reverbIRPath;
+    std::atomic<bool> reverbIRLoaded { false };
     juce::AudioBuffer<float> reverbWorkBuffer;
     juce::dsp::Chorus<float> chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
