@@ -3002,16 +3002,24 @@ public:
             if (tile->isVisible())
                 g.excludeClipRegion (tile->getBounds());
 
-        const auto wire = juce::Colour (0xff70d9b6);
-        g.setFont (namplifiedFontOptions (15.0f, juce::Font::bold));
-        g.setColour (secondaryText);
-        if (parallelRouting)
+        drawWiring (g);
+    }
+
+    void updateSignalFlow (float inputPeak, double now)
+    {
+        if (! isShowing())
         {
-            drawParallelWiring (g, wire);
+            flowStrength = 0.0f;
             return;
         }
 
-        drawSerialWiring (g, wire);
+        const auto signal = juce::jlimit (0.0f, 1.0f,
+            (juce::Decibels::gainToDecibels (inputPeak) + 60.0f) / 35.0f);
+        const auto target = 0.72f + 0.26f * signal;
+        flowStrength += (target - flowStrength) * (target > flowStrength ? 0.22f : 0.09f);
+
+        flowX = static_cast<float> (std::fmod (now * 0.22, flowSpacing));
+        repaint();
     }
 
     void setOrderedTiles (std::vector<StageTile*> ordered)
@@ -3088,6 +3096,18 @@ public:
     }
 
 private:
+    void drawWiring (juce::Graphics& g)
+    {
+        if (parallelRouting)
+            drawParallelWiring (g);
+        else
+            drawSerialWiring (g);
+    }
+
+    static constexpr float flowSpacing = 380.0f;
+    float flowStrength = 0.0f;
+    float flowX = 0.0f;
+
     static bool isPostEffect (const juce::String& name)
     {
         return name == "Delay" || name == "Reverb" || name == "Chorus" || name == "Post EQ";
@@ -3113,22 +3133,34 @@ private:
         return found;
     }
 
-    static void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                           juce::Colour colour, float thickness = 3.0f)
+    void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
+                    float thickness = 3.0f) const
     {
-        g.setColour (colour);
-        juce::Path path;
-        path.startNewSubPath (start);
-        path.lineTo (end);
-        g.strokePath (path, juce::PathStrokeType (thickness, juce::PathStrokeType::curved,
-                                                   juce::PathStrokeType::rounded));
+        const auto base = juce::Colour (0xff489b88);
+        g.setColour (base);
+        g.drawLine ({ start, end }, thickness);
+
+        const auto length = start.getDistanceFrom (end);
+        for (float offset = 0.0f; offset < length; offset += 3.0f)
+        {
+            const auto from = start + (end - start) * (offset / length);
+            const auto to = start + (end - start) * (juce::jmin (offset + 3.0f, length) / length);
+            const auto distance = std::abs (std::remainder ((from.x + to.x) * 0.5f - flowX, flowSpacing));
+            const auto light = flowStrength * juce::jmax (0.0f, 1.0f - distance / 90.0f);
+            if (light <= 0.01f)
+                continue;
+
+            g.setColour (juce::Colour (0xff91ffe0).withAlpha (light * 0.25f));
+            g.drawLine ({ from, to }, thickness + 4.0f);
+            g.setColour (base.interpolatedWith (juce::Colour (0xffe2fff7), light));
+            g.drawLine ({ from, to }, thickness + light);
+        }
     }
 
-    static void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
-                         juce::Colour colour, float thickness = 3.0f)
+    void drawBus (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
+                  float thickness = 3.0f) const
     {
-        g.setColour (colour);
-        g.drawLine (start.x, start.y, end.x, end.y, thickness);
+        drawArrow (g, start, end, thickness);
     }
 
     static juce::Point<float> leftCentre (juce::Component* c)
@@ -3141,7 +3173,7 @@ private:
         return { static_cast<float> (c->getRight()), static_cast<float> (c->getY() + c->getHeight() / 2) };
     }
 
-    void drawSerialWiring (juce::Graphics& g, juce::Colour wire)
+    void drawSerialWiring (juce::Graphics& g)
     {
         auto* input = findTile ("Input");
         auto* output = findTile ("Output");
@@ -3160,7 +3192,7 @@ private:
         ampChain.insert (ampChain.end(), pre.begin(), pre.end());
         ampChain.insert (ampChain.end(), nams.begin(), nams.end());
         for (size_t i = 0; i + 1 < ampChain.size(); ++i)
-            drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]), wire);
+            drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]));
 
         const auto irInX = static_cast<float> (irs.front()->getX() - 14);
         const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
@@ -3171,28 +3203,28 @@ private:
         const auto ampOutput = rightCentre (ampChain.back());
         const auto branchTop = *std::min_element (branchY.begin(), branchY.end());
         const auto branchBottom = *std::max_element (branchY.begin(), branchY.end());
-        drawBus (g, ampOutput, { splitX, ampOutput.y }, wire);
+        drawBus (g, ampOutput, { splitX, ampOutput.y });
         drawBus (g, { splitX, juce::jmin (branchTop, ampOutput.y) },
-                 { splitX, juce::jmax (branchBottom, ampOutput.y) }, wire);
+                 { splitX, juce::jmax (branchBottom, ampOutput.y) });
         for (auto* ir : irs)
-            drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir), wire);
+            drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir));
 
         const auto mergeX = irOutX;
-        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop }, wire);
-        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom }, wire);
-        drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom }, wire);
+        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop });
+        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom });
+        drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom });
         for (auto* ir : irs)
-            drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
+            drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
         const auto postInput = leftCentre (post.front());
         const auto routeY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
-        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY }, wire);
-        drawBus (g, { mergeX, routeY }, postInput, wire);
+        drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY });
+        drawBus (g, { mergeX, routeY }, postInput);
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
-        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]));
+        drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
-    void drawParallelWiring (juce::Graphics& g, juce::Colour wire)
+    void drawParallelWiring (juce::Graphics& g)
     {
         auto* input = findTile ("Input");
         if (input == nullptr) return;
@@ -3206,7 +3238,7 @@ private:
                 break;
         }
         for (size_t i = 0; i + 1 < pre.size(); ++i)
-            drawArrow (g, rightCentre (pre[i]), leftCentre (pre[i + 1]), wire);
+            drawArrow (g, rightCentre (pre[i]), leftCentre (pre[i + 1]));
 
         const auto nams = namedTiles ("NAM Profile");
         if (nams.empty()) return;
@@ -3215,10 +3247,10 @@ private:
         const auto bottomY = static_cast<float> (nams.back()->getY() + nams.back()->getHeight() / 2);
         const auto inputY = static_cast<float> (pre.back()->getY() + pre.back()->getHeight() / 2);
         const juce::Point<float> splitNode (splitX, inputY);
-        drawBus (g, rightCentre (pre.back()), splitNode, wire);
-        drawBus (g, { splitX, juce::jmin (topY, inputY) }, { splitX, juce::jmax (bottomY, inputY) }, wire);
+        drawBus (g, rightCentre (pre.back()), splitNode);
+        drawBus (g, { splitX, juce::jmin (topY, inputY) }, { splitX, juce::jmax (bottomY, inputY) });
         for (auto* nam : nams)
-            drawArrow (g, { splitX, static_cast<float> (nam->getY() + nam->getHeight() / 2) }, leftCentre (nam), wire);
+            drawArrow (g, { splitX, static_cast<float> (nam->getY() + nam->getHeight() / 2) }, leftCentre (nam));
 
         const auto irs = namedTiles ("Cab IR");
 
@@ -3247,10 +3279,10 @@ private:
             for (auto* nam : nams)
             {
                 const auto from = rightCentre (nam);
-                drawArrow (g, from, { joinX, from.y }, wire);
+                drawArrow (g, from, { joinX, from.y });
             }
-            drawBus (g, { joinX, joinTop }, { joinX, joinBottom }, wire);
-            drawArrow (g, { joinX, irMid }, leftCentre (irs.front()), wire);
+            drawBus (g, { joinX, joinTop }, { joinX, joinBottom });
+            drawArrow (g, { joinX, irMid }, leftCentre (irs.front()));
         }
         else
         {
@@ -3262,22 +3294,22 @@ private:
                 const auto from = rightCentre (nam);
                 const auto to = leftCentre (matchingIR);
                 const auto elbowX = (from.x + to.x) * 0.5f;
-                drawBus (g, from, { elbowX, from.y }, wire);
-                drawBus (g, { elbowX, from.y }, { elbowX, to.y }, wire);
-                drawArrow (g, { elbowX, to.y }, to, wire);
+                drawBus (g, from, { elbowX, from.y });
+                drawBus (g, { elbowX, from.y }, { elbowX, to.y });
+                drawArrow (g, { elbowX, to.y }, to);
             }
         }
 
-        drawBus (g, { irOutX, irTop }, { irOutX, irBottom }, wire);
+        drawBus (g, { irOutX, irTop }, { irOutX, irBottom });
         for (auto* ir : irs)
-            drawArrow (g, rightCentre (ir), { irOutX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, wire);
+            drawArrow (g, rightCentre (ir), { irOutX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
 
         const auto lowerY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
-        drawBus (g, { irOutX, irMid }, { irOutX, lowerY }, wire);
-        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()), wire);
+        drawBus (g, { irOutX, irMid }, { irOutX, lowerY });
+        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()));
         for (size_t i = 0; i + 1 < post.size(); ++i)
-            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]), wire);
-        drawArrow (g, rightCentre (post.back()), leftCentre (output), wire);
+            drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]));
+        drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
     std::vector<StageTile*> tiles;
@@ -3462,6 +3494,7 @@ private:
     void timerCallback() override
     {
         const auto now = juce::Time::getMillisecondCounterHiRes();
+        tileList->updateSignalFlow (audioProcessor.getInputPeak(), now);
         if (audioProcessor.consumeInputClip()) inputClipUntilMs = now + 1500.0;
         if (audioProcessor.consumeOutputClip()) outputClipUntilMs = now + 1500.0;
         repaint();
