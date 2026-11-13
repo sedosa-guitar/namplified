@@ -1835,11 +1835,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        auto card = getLocalBounds().toFloat();
-        g.setColour (detailSurface);
+        const auto card = getLocalBounds().toFloat().reduced (1.0f);
+        g.setGradientFill ({ juce::Colour (0xff202b3b), card.getTopLeft(),
+                             juce::Colour (0xff151d2a), card.getBottomLeft(), false });
         g.fillRoundedRectangle (card, 16.0f);
-        g.setColour (juce::Colour::fromRGB (62, 73, 86));
-        g.drawRoundedRectangle (card.reduced (1.0f), 16.0f, 2.5f);
+        g.setColour (juce::Colour (0xff394b60));
+        g.drawRoundedRectangle (card, 16.0f, 1.25f);
         drawBlockIcon (g, juce::Rectangle<float> (26.0f, 18.0f, 32.0f, 32.0f));
     }
 
@@ -3422,12 +3423,12 @@ public:
 
     void paint (juce::Graphics& g) override
     {
-        g.fillAll (background);
-        auto area = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (chainSurface);
+        const auto area = getLocalBounds().toFloat().reduced (1.0f);
+        g.setGradientFill ({ juce::Colour (0xff182638), area.getCentreX(), area.getY(),
+                             chainSurface, area.getRight(), area.getBottom(), true });
         g.fillRoundedRectangle (area, 18.0f);
-        g.setColour (juce::Colour::fromRGB (52, 59, 72));
-        g.drawRoundedRectangle (area, 18.0f, 2.4f);
+        g.setColour (juce::Colour (0xff2c3c50));
+        g.drawRoundedRectangle (area, 18.0f, 1.25f);
         const auto now = juce::Time::getMillisecondCounterHiRes();
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
         drawLevelMeter (g, static_cast<float> (getWidth() - 41), audioProcessor.getOutputPeak(), "OUTPUT",
@@ -5608,7 +5609,10 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 
 void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (background);
+    const auto bounds = getLocalBounds().toFloat();
+    g.setGradientFill ({ juce::Colour (0xff162338), bounds.getTopLeft(),
+                         background, bounds.getBottomRight(), false });
+    g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
 }
