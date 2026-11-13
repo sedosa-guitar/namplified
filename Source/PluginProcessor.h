@@ -67,6 +67,8 @@ public:
     void setPostFxOrder (const std::array<int, numPostFxStages>& order);
     void resetToDefaults();
     void capturePresetSnapshot();
+    void restorePresetSnapshot();
+    void promptToSavePreset (std::function<void()> onSaved);
     bool hasUnsavedParameterChanges() const;
     bool isParameterModified (const juce::String& parameterId) const;
     juce::StringArray getUserPresetNames() const;
@@ -182,6 +184,11 @@ private:
     std::array<std::atomic<int>, numAmpSlots> ampSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numIRSlots> irSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numPostFxStages> postFxOrder { 0, 1, 2, 3 };
+    juce::MemoryBlock presetSnapshotState;
+    std::array<int, numPreFxStages> presetPreFxOrder {};
+    std::array<int, numPostFxStages> presetPostFxOrder {};
+    std::array<int, numAmpSlots> presetAmpOrder {};
+    std::array<int, numIRSlots> presetIROrder {};
     std::unordered_map<std::string, float> presetSnapshot;
     std::unordered_map<std::string, juce::String> presetFileSnapshot;
     std::vector<juce::String> midiParameterIds;
