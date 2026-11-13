@@ -4,13 +4,25 @@ All notable changes to NAMplified are summarized here. This changelog is reconst
 
 ## Unreleased development snapshot
 
-### Updates since November 8
+### 2026-11-12 to 2026-11-13
 
-- Added the local Preset Builder beta with on-demand model setup and level-matched A/B auditioning from a recorded or imported guitar DI.
-- Added adjustable frequency splitting for parallel NAM amps and a polarity invert option for each amp.
-- Improved the capture browser and the TONE3000 flow for selecting and loading an individual capture.
-- Refined the signal-chain layout, controls, icons, and backgrounds.
-- Updated the README with current screenshots and moved unfinished documentation tasks to a local file.
+- Refined editor buttons, icon placement, and panel backgrounds.
+- Replaced the README screenshots with current views of the amp controls, routing modes, TONE3000, and Preset Builder. Moved unfinished documentation tasks out of the public README.
+
+### 2026-11-11
+
+- Added the local Preset Builder beta. Describe a tone, record or import a dry guitar DI, and compare the original chain with two generated variants at matched levels.
+- Added first-run downloads for the local runtime and model, with user confirmation, SHA-256 verification, and reuse of downloaded files. Added a TONE3000 search shortcut for suggested captures.
+- Added a standalone Audio / MIDI settings window for configuring audio devices and MIDI inputs.
+- Updated the menu, logo presentation, and text rendering.
+- Added the public release checklist and updated third-party license and distribution notes.
+
+### 2026-11-09 to 2026-11-10
+
+- Added an adjustable frequency split in parallel mode. Amp 1 receives lows and Amp 2 receives highs when both amps are active.
+- Added a polarity invert option for each NAM amp.
+- Improved capture browsing and the TONE3000 flow for selecting a tone and loading an individual capture. Updated capture switching to apply changes immediately.
+- Refined the signal-chain layout, signal indicators, block detail panels, and knob styling.
 
 ### 2026-11-08
 
