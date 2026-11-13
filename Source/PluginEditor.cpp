@@ -5576,9 +5576,15 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     line (seriesIcon, 1, 8, 25, 8);
     seriesIcon.addRoundedRectangle (5, 4, 5, 8, 1);
     seriesIcon.addRoundedRectangle (16, 4, 5, 8, 1);
-    line (parallelIcon, 1, 8, 5, 8);
-    parallelIcon.addRectangle (5, 3, 16, 10);
-    line (parallelIcon, 21, 8, 25, 8);
+    line (parallelIcon, 1, 8, 6, 8);
+    for (const auto branchY : { 3.0f, 13.0f })
+    {
+        parallelIcon.startNewSubPath (6.0f, 8.0f);
+        parallelIcon.lineTo (10.0f, branchY);
+        parallelIcon.lineTo (16.0f, branchY);
+        parallelIcon.lineTo (20.0f, 8.0f);
+    }
+    line (parallelIcon, 20, 8, 25, 8);
 
     const auto setupRoutingButton = [&](juce::DrawableButton& button, const juce::Path& path,
                                         const juce::String& tooltip, float mode)
