@@ -2597,7 +2597,12 @@ public:
 
     void setSelected (bool selected)
     {
+        if (isSelected == selected)
+            return;
+
         isSelected = selected;
+        iconAnimationStart = selected ? juce::Time::getMillisecondCounterHiRes() : 0.0;
+        startTimerHz (selected ? 60 : 4);
         repaint();
     }
 
@@ -2649,8 +2654,11 @@ public:
             }
         }
         const auto iconSize = juce::jmin (30.0f, juce::jmin (r.getWidth(), r.getHeight()) * 0.48f);
+        const auto progress = juce::jlimit (0.0, 1.0,
+            (juce::Time::getMillisecondCounterHiRes() - iconAnimationStart) / iconAnimationDuration);
+        const auto lift = static_cast<float> (std::sin (progress * juce::MathConstants<double>::pi)) * 5.0f;
         const auto iconBounds = juce::Rectangle<float> (0.0f, 0.0f, iconSize, iconSize)
-                                    .withCentre (r.getCentre());
+                                    .withCentre (r.getCentre()).translated (0.0f, -lift);
         {
             const juce::Graphics::ScopedSaveState iconState (g);
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
@@ -2956,9 +2964,17 @@ private:
 
     void timerCallback() override
     {
+        if (iconAnimationStart != 0.0
+            && juce::Time::getMillisecondCounterHiRes() - iconAnimationStart >= iconAnimationDuration)
+        {
+            iconAnimationStart = 0.0;
+            startTimerHz (4);
+        }
         repaint();
     }
 
+    static constexpr double iconAnimationDuration = 210.0;
+    double iconAnimationStart = 0.0;
     juce::AudioProcessorValueTreeState& parameterState;
     juce::String stageName;
     juce::String enableParameterId;
