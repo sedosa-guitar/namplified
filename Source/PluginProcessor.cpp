@@ -1141,10 +1141,9 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         delayLine.prepare (spec);
         delayLine.reset();
     }
-    analogDelayToneState.fill (0.0f);
-    analogDelayToneLowState.fill (0.0f);
-    analogDelayWowPhase.fill (0.0f);
-    analogDelayFlutterPhase.fill (0.0f);
+    analogDelayInput.fill (0.0f);
+    for (auto& line : analogDelay)
+        line.prepare (sampleRate);
     for (auto& predelayLine : reverbPreDelayLines)
     {
         predelayLine.setMaximumDelayInSamples (static_cast<int> (sampleRate * 0.15) + 2);
@@ -1731,40 +1730,27 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 setCutFilterCoefficients (delayLowPassFilters[static_cast<size_t> (channel)], false,
                                           lowPass, sampleRate);
             }
-            const auto toneCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * tone
-                                                           / static_cast<float> (sampleRate));
-            const auto secondToneCoefficient = 1.0f - std::exp (-juce::MathConstants<float>::twoPi * tone * 0.68f
-                                                                  / static_cast<float> (sampleRate));
-            const auto shapeRepeat = [&] (int channel, float sample)
+            if (analog)
             {
-                if (! analog)
-                    return delayLowPassFilters[static_cast<size_t> (channel)].process (
-                        delayHighPassFilters[static_cast<size_t> (channel)].process (sample));
-                const auto index = static_cast<size_t> (channel);
-                auto shaped = delayHighPassFilters[index].process (sample);
-                shaped = delayLowPassFilters[index].process (shaped);
-                analogDelayToneState[index] += toneCoefficient * (shaped - analogDelayToneState[index]);
-                analogDelayToneLowState[index] += secondToneCoefficient
-                    * (analogDelayToneState[index] - analogDelayToneLowState[index]);
-                return std::tanh (analogDelayToneLowState[index] * 1.35f) / std::tanh (1.35f);
+                for (auto& line : analogDelay)
+                {
+                    line.setFilterFreq (tone);
+                    line.setDelayTime (delaySamples / static_cast<float> (sampleRate));
+                }
+            }
+
+            const auto readRepeat = [&] (size_t channel)
+            {
+                const auto sample = analog ? analogDelay[channel].process (analogDelayInput[channel]) * 0.65f
+                                           : delayLines[channel].popSample (0, delaySamples);
+                return delayLowPassFilters[channel].process (delayHighPassFilters[channel].process (sample));
             };
-            const auto modulatedDelayFor = [this, delaySamples, analog, sampleRate] (int channel)
+            const auto writeRepeat = [&] (size_t channel, float sample)
             {
-                if (! analog)
-                    return delaySamples;
-                const auto index = static_cast<size_t> (channel);
-                auto& wow = analogDelayWowPhase[index];
-                auto& flutter = analogDelayFlutterPhase[index];
-                wow += 0.27f / static_cast<float> (sampleRate);
-                flutter += 5.1f / static_cast<float> (sampleRate);
-                if (wow >= 1.0f) wow -= 1.0f;
-                if (flutter >= 1.0f) flutter -= 1.0f;
-                const auto wowSamples = std::sin (juce::MathConstants<float>::twoPi * wow)
-                                      * static_cast<float> (sampleRate) * 0.00032f;
-                const auto flutterSamples = std::sin (juce::MathConstants<float>::twoPi * flutter + 0.8f)
-                                          * static_cast<float> (sampleRate) * 0.000035f;
-                return juce::jlimit (1.0f, static_cast<float> (sampleRate * 1.2),
-                                     delaySamples + wowSamples + flutterSamples);
+                if (analog)
+                    analogDelayInput[channel] = sample;
+                else
+                    delayLines[channel].pushSample (0, sample);
             };
             const auto duckAmount = juce::jlimit (0.0f, 1.0f, get ("delayDuck", 0.0f));
             const auto duckThreshold = get ("delayDuckThreshold", -30.0f);
@@ -1790,9 +1776,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
                 if (mode == 0) // Mono repeats sit in the centre of a stereo output.
                 {
-                    auto& line = delayLines[0];
-                    const auto wet = shapeRepeat (0, line.popSample (0, modulatedDelayFor (0)));
-                    line.pushSample (0, monoInput + wet * feedback);
+                    const auto wet = readRepeat (0);
+                    writeRepeat (0, monoInput + wet * feedback);
                     const auto outputWet = wet * duckGain * mix;
                     left[i] = dryLeft * (1.0f - mix) + outputWet;
                     if (numChannels > 1)
@@ -1800,12 +1785,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 }
                 else if (mode == 2) // Mono input alternates between the left and right delay lines.
                 {
-                    auto& leftLine = delayLines[0];
-                    auto& rightLine = delayLines[1];
-                    const auto wetLeft = shapeRepeat (0, leftLine.popSample (0, modulatedDelayFor (0)));
-                    const auto wetRight = shapeRepeat (1, rightLine.popSample (0, modulatedDelayFor (1)));
-                    leftLine.pushSample (0, monoInput + wetRight * feedback);
-                    rightLine.pushSample (0, wetLeft * feedback);
+                    const auto wetLeft = readRepeat (0);
+                    const auto wetRight = readRepeat (1);
+                    writeRepeat (0, monoInput + wetRight * feedback);
+                    writeRepeat (1, wetLeft * feedback);
                     if (numChannels > 1)
                     {
                         left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
@@ -1816,13 +1799,13 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 }
                 else // Stereo keeps independent repeats on each channel.
                 {
-                    const auto wetLeft = shapeRepeat (0, delayLines[0].popSample (0, modulatedDelayFor (0)));
-                    delayLines[0].pushSample (0, dryLeft + wetLeft * feedback);
+                    const auto wetLeft = readRepeat (0);
+                    writeRepeat (0, dryLeft + wetLeft * feedback);
                     left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
                     if (numChannels > 1)
                     {
-                        const auto wetRight = shapeRepeat (1, delayLines[1].popSample (0, modulatedDelayFor (1)));
-                        delayLines[1].pushSample (0, dryRight + wetRight * feedback);
+                        const auto wetRight = readRepeat (1);
+                        writeRepeat (1, dryRight + wetRight * feedback);
                         right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
                     }
                 }

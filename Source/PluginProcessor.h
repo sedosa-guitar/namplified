@@ -18,6 +18,12 @@
 #include "Galactic2.h"
 #include "DragonflyRoom.h"
 
+#include <complex>
+#include "ThirdParty/ChowBBD/chowdsp_SIMDUtils.h"
+#include "ThirdParty/ChowBBD/chowdsp_SIMDComplex.h"
+#include "ThirdParty/ChowBBD/chowdsp_BBDFilterBank.h"
+#include "ThirdParty/ChowBBD/chowdsp_BBDDelayLine.h"
+
 //==============================================================================
 /**
 */
@@ -208,10 +214,8 @@ private:
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
     std::array<float, 2> compressorEnvelope {};
-    std::array<float, 2> analogDelayToneState {};
-    std::array<float, 2> analogDelayToneLowState {};
-    std::array<float, 2> analogDelayWowPhase {};
-    std::array<float, 2> analogDelayFlutterPhase {};
+    std::array<chowdsp::BBD::BBDDelayLine<16384>, 2> analogDelay;
+    std::array<float, 2> analogDelayInput {};
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     std::array<std::vector<float>, 2> pitchBuffers;
     int pitchBufferSize = 0, pitchWritePosition = 0;

@@ -60,7 +60,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Compressor:** an 1176-inspired FET-style compressor with selectable ratios, including All Buttons In, plus attack, release, blend, output, tone, and EQ controls.
 - **Pre EQ:** five adjustable bands before the amp section.
 - **Post EQ:** nine adjustable bands after the effects section, with an expanded editor view.
-- **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode adds bandwidth-limited, saturated repeats with subtle wow and flutter.
+- **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode uses the 16,384-stage bucket-brigade DSP from ChowMatrix for bandwidth-limited repeats.
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
 - **Chorus:** rate, depth, and mix controls.
 - **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −24 to +24 semitones.
