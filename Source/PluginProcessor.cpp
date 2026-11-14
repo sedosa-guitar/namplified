@@ -1147,7 +1147,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         predelayLine.prepare (spec);
         predelayLine.reset();
     }
-    reverbWorkBuffer.setSize (static_cast<int> (channels), samplesPerBlock);
+    reverbWorkBuffer.setSize (2, samplesPerBlock);
     delayDuckEnvelope = 0.0f;
     chorus.prepare (spec);
     outputSafetyLimiter.prepare (spec);
@@ -1159,6 +1159,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         reverbConvolver.prepare (spec);
     }
     reverb.prepare (sampleRate);
+    cloudReverb.prepare (sampleRate);
 }
 
 void NAMplifiedAudioProcessor::releaseResources() {}
@@ -1866,6 +1867,21 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
                     .getSubBlock (0, static_cast<size_t> (numSamples));
                 reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
+            }
+            else if (mode == 2)
+            {
+                if (numChannels == 1)
+                    reverbWorkBuffer.copyFrom (1, 0, reverbWorkBuffer, 0, 0, numSamples);
+                auto* left = reverbWorkBuffer.getWritePointer (0);
+                auto* right = reverbWorkBuffer.getWritePointer (1);
+                cloudReverb.process (left, right, numSamples, size, damping);
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto mid = (left[i] + right[i]) * 0.5f;
+                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * width) : 0.0f;
+                    left[i] = mid + side;
+                    right[i] = mid - side;
+                }
             }
             else
                 reverb.process (reverbWorkBuffer.getWritePointer (0),

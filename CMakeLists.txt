@@ -109,6 +109,8 @@ target_sources(NAMplified PRIVATE
     Source/Tone3000Client.cpp
     Source/CleanBoost.h
     Source/AlgorithmicReverb.h
+    Source/Galactic2.cpp
+    Source/Galactic2.h
     Source/Tone3000Client.h
     Source/Tone3000Config.h
 )
