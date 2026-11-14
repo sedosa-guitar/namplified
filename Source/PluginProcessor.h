@@ -17,6 +17,7 @@
 #include "KPlate140.h"
 #include "Galactic2.h"
 #include "DragonflyRoom.h"
+#include "StereoChorus.h"
 
 #include <complex>
 #include "ThirdParty/ChowBBD/chowdsp_SIMDUtils.h"
@@ -247,7 +248,7 @@ private:
     juce::String reverbIRPath;
     std::atomic<bool> reverbIRLoaded { false };
     juce::AudioBuffer<float> reverbWorkBuffer;
-    juce::dsp::Chorus<float> chorus;
+    StereoChorus chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
     airwindows::KPlate140 plateReverb;
     DragonflyRoom roomReverb;

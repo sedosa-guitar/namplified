@@ -145,14 +145,15 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ```
 
-## Airwindows Galactic2 and kPlate140
+## Airwindows Galactic2, kPlate140 and StereoChorus
 
-DSP adapted from [Airwindows kPlate140](https://github.com/airwindows/airwindows/tree/94cb6793893027fb418ffac7cdbfcb9b4c82aadb/plugins/LinuxVST/src/kPlate140) and [Airwindows Galactic2](https://github.com/airwindows/airwindows/tree/94cb6793893027fb418ffac7cdbfcb9b4c82aadb/plugins/LinuxVST/src/Galactic2).
+DSP adapted from [Airwindows kPlate140](https://github.com/airwindows/airwindows/tree/94cb6793893027fb418ffac7cdbfcb9b4c82aadb/plugins/LinuxVST/src/kPlate140), [Airwindows Galactic2](https://github.com/airwindows/airwindows/tree/94cb6793893027fb418ffac7cdbfcb9b4c82aadb/plugins/LinuxVST/src/Galactic2), and [Airwindows StereoChorus](https://github.com/airwindows/airwindows/tree/94cb6793893027fb418ffac7cdbfcb9b4c82aadb/plugins/LinuxVST/src/StereoChorus).
 
 ```text
 MIT License
 
 Copyright (c) 2018 Chris Johnson
+Copyright (c) 2016 airwindows (StereoChorus)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
