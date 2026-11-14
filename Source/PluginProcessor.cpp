@@ -469,7 +469,7 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         juce::StringArray { "Digital", "Analog" }, 0));
     addFrequency ("delayTone", "Delay Tone", 500.0f, 12000.0f, 4500.0f);
     addFrequency ("delayHighPass", "Delay High-Pass", 20.0f, 1000.0f, 100.0f);
-    addFrequency ("delayLowPass", "Delay Low-Pass", 1000.0f, 20000.0f, 8000.0f);
+    addFrequency ("delayLowPass", "Delay Low-Pass", 1000.0f, 20000.0f, 4300.0f);
     addKnob ("delayDuck", "Delay Ducking", 0.0f, 1.0f, 0.0f);
     addKnob ("delayDuckThreshold", "Delay Duck Threshold", -48.0f, 0.0f, -30.0f);
     addKnob ("delayDuckRelease", "Delay Duck Release", 20.0f, 1000.0f, 250.0f);
@@ -487,7 +487,7 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addKnob ("roomWander", "Room Wander", 0.0f, 1.0f, 0.5f);
     addKnob ("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.8f);
     addFrequency ("reverbHighPass", "Reverb High-Pass", 20.0f, 1000.0f, 120.0f);
-    addFrequency ("reverbLowPass", "Reverb Low-Pass", 1000.0f, 20000.0f, 10000.0f);
+    addFrequency ("reverbLowPass", "Reverb Low-Pass", 1000.0f, 20000.0f, 4300.0f);
     addToggle ("chorusOn", "Chorus");
     addKnob ("chorusRate", "Chorus Rate", 0.1f, 5.0f, 0.8f);
     addKnob ("chorusDepth", "Chorus Depth", 0.0f, 1.0f, 0.35f);
@@ -1762,7 +1762,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             const auto analog = get ("delayType", 0.0f) >= 0.5f;
             const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
             const auto highPass = get ("delayHighPass", 100.0f);
-            const auto lowPass = juce::jmax (get ("delayLowPass", 8000.0f), highPass * 1.1f);
+            const auto lowPass = juce::jmax (get ("delayLowPass", 4300.0f), highPass * 1.1f);
             for (int channel = 0; channel < 2; ++channel)
             {
                 setCutFilterCoefficients (delayHighPassFilters[static_cast<size_t> (channel)], true,
@@ -1861,7 +1861,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
             const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
             const auto highPass = get ("reverbHighPass", 120.0f);
-            const auto lowPassSetting = get ("reverbLowPass", 10000.0f);
+            const auto lowPassSetting = get ("reverbLowPass", 4300.0f);
             const auto plateDampingCutoff = 20000.0f * std::pow (0.1f, damping);
             const auto lowPass = juce::jmax (mode == 1 ? juce::jmin (lowPassSetting, plateDampingCutoff) : lowPassSetting,
                                             highPass * 1.1f);

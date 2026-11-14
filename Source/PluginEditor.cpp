@@ -3401,7 +3401,7 @@ public:
                    { "compAttack", "Attack (ms)" }, { "compRelease", "Release (ms)" },
                    { "compRatioMode", "Ratio", false, juce::StringArray { "4:1", "8:1", "12:1", "20:1", "All Buttons In" } },
                    { "compTone", "Tone (dB)" }, { "compBlend", "Blend", true },
-                   { "compVolume", "Output (dB)" }, { "compEQ", "EQ", true }});
+                   { "compVolume", "Output (dB)" }});
         addStage ("Boost Pedal", "boostOn",
                   {{ "boostSource", "Source" }, { "boostGain", "Post Volume (dB)" },
                    { "boostNAMIn", "NAM Input (dB)" }, { "boostNAMOut", "NAM Output (dB)" }},
@@ -3596,9 +3596,9 @@ private:
                 g.fillRect (lit);
             }
         };
-        drawZone (-60.0f, -18.0f, teal);
-        drawZone (-18.0f, -3.0f, orange);
-        drawZone (-3.0f, 6.0f, red);
+        drawZone (-60.0f, -6.0f, teal);
+        drawZone (-6.0f, 0.0f, orange);
+        drawZone (0.0f, 6.0f, red);
         if (clipped)
         {
             g.setColour (red);
@@ -5514,6 +5514,23 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         path.startNewSubPath (x1, y1);
         path.lineTo (x2, y2);
     };
+    for (auto* button : { &previousPresetButton, &nextPresetButton })
+    {
+        const bool previous = button == &previousPresetButton;
+        juce::Path arrow;
+        arrow.startNewSubPath (1.0f, previous ? 7.0f : 1.0f);
+        arrow.lineTo (7.0f, previous ? 1.0f : 7.0f);
+        arrow.lineTo (13.0f, previous ? 7.0f : 1.0f);
+        setHeaderIcon (*button, arrow);
+        button->setEdgeIndent (4);
+        button->setTooltip (previous ? "Previous preset in this group" : "Next preset in this group");
+        button->onClick = [this, previous]
+        {
+            if (const auto id = adjacentPresetId (previous ? -1 : 1); id != 0)
+                presetBox.setSelectedId (id, juce::sendNotificationSync);
+        };
+        addAndMakeVisible (*button);
+    }
     juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon;
     saveIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 2.0f);
     saveIcon.addRectangle (6.0f, 2.0f, 8.0f, 5.0f);
@@ -5579,6 +5596,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
             refreshUserPresets (name);
             updateRoutingDisplay();
         }
+        else
+            refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     };
     savePresetButton.onClick = [this] { showSavePresetPrompt(); };
     deletePresetButton.onClick = [this] { showDeletePresetPrompt(); };
@@ -5757,6 +5776,9 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 46 : 58));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
+    auto presetArrows = presetArea.removeFromLeft (24).reduced (2, 3);
+    previousPresetButton.setBounds (presetArrows.removeFromTop (presetArrows.getHeight() / 2));
+    nextPresetButton.setBounds (presetArrows);
     presetArea.removeFromLeft (compactHeader ? 6 : 8);
     savePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
@@ -5812,6 +5834,8 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     subtitle.setVisible (showChrome);
     presetLabel.setVisible (showChrome);
     presetBox.setVisible (showChrome);
+    previousPresetButton.setVisible (showChrome);
+    nextPresetButton.setVisible (showChrome);
     savePresetButton.setVisible (showChrome);
     deletePresetButton.setVisible (showChrome);
     resetChainButton.setVisible (showChrome);
@@ -5849,7 +5873,7 @@ void NAMplifiedAudioProcessorEditor::refreshUserPresets (const juce::String& sel
         const auto& key = presetMenuKeys[i];
         auto label = key.fromLastOccurrenceOf ("/", false, false);
         if (presetDirty && key == previousName)
-            label += " *";
+            label = "* " + label;
 
         if (key.startsWith ("Artist/"))
         {
@@ -5876,7 +5900,26 @@ void NAMplifiedAudioProcessorEditor::refreshUserPresets (const juce::String& sel
     menu->addSubMenu ("Artist", artists);
     const auto index = presetMenuKeys.indexOf (previousName);
     presetBox.setSelectedId (index + 1, juce::dontSendNotification);
+    previousPresetButton.setEnabled (adjacentPresetId (-1) != 0);
+    nextPresetButton.setEnabled (adjacentPresetId (1) != 0);
     deletePresetButton.setEnabled (index >= 0 && (! previousName.containsChar ('/') || previousName.startsWith ("Artist/Sedosa/")));
+}
+
+int NAMplifiedAudioProcessorEditor::adjacentPresetId (int direction) const
+{
+    const auto selected = presetBox.getSelectedId() - 1;
+    if (! juce::isPositiveAndBelow (selected, presetMenuKeys.size()))
+        return 0;
+
+    const auto groupOf = [] (const juce::String& key)
+    {
+        return key.substring (0, juce::jmax (0, key.lastIndexOfChar ('/')));
+    };
+    const auto group = groupOf (presetMenuKeys[selected]);
+    for (auto i = selected + direction; juce::isPositiveAndBelow (i, presetMenuKeys.size()); i += direction)
+        if (groupOf (presetMenuKeys[i]) == group)
+            return i + 1;
+    return 0;
 }
 
 juce::String NAMplifiedAudioProcessorEditor::selectedPresetName() const
