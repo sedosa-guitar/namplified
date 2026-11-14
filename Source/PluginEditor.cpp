@@ -1600,7 +1600,12 @@ public:
             addAndMakeVisible (*toneCurveButton);
             toneCurveButton->onClick = [this, details = std::move (detailControls)]
             {
-                auto content = std::make_unique<ParameterDetailPanel> (audioProcessor, lookAndFeel, stageName, details);
+                auto visibleDetails = details;
+                if (loadKind == FileKind::reverbIR
+                    && audioProcessor.parameters.getRawParameterValue ("reverbMode")->load() != 0.0f)
+                    visibleDetails.erase (std::remove_if (visibleDetails.begin(), visibleDetails.end(),
+                        [] (const auto& control) { return juce::String (control.id).startsWith ("room"); }), visibleDetails.end());
+                auto content = std::make_unique<ParameterDetailPanel> (audioProcessor, lookAndFeel, stageName, visibleDetails);
                 juce::CallOutBox::launchAsynchronously (std::move (content), *toneCurveButton, nullptr);
             };
         }
@@ -1907,7 +1912,7 @@ public:
         }
         const auto columns = selectorCount > 0 ? 4 : 5;
         const auto rows = (knobCount + columns - 1) / columns;
-        const auto rowPitch = controlRowPitch;
+        const auto rowPitch = usesCompactControls() ? 132 : controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
         const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
             : (showsFileLoader() ? 46 : 0);
@@ -2086,7 +2091,8 @@ public:
                                          : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
         const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
-        const auto baseRowPitch = controlRowPitch;
+        const auto baseRowPitch = usesCompactControls() ? 132 : controlRowPitch;
+        const auto knobSize = usesCompactControls() ? 80 : rotarySize;
         const auto distributedRowPitch = rows > 0
             ? juce::jmin (240, juce::jmax (baseRowPitch, area.getHeight() / rows))
             : baseRowPitch;
@@ -2109,9 +2115,8 @@ public:
                 auto valueArea = cell.removeFromBottom (20);
                 if (widgetValueLabels[index] != nullptr)
                     widgetValueLabels[index]->setBounds (valueArea);
-                const auto knobWidth = juce::jmin (rotarySize,
-                                                   cell.getWidth());
-                const auto knobHeight = rotarySize;
+                const auto knobWidth = juce::jmin (knobSize, cell.getWidth());
+                const auto knobHeight = juce::jmin (knobSize, cell.getHeight());
                 auto knob = cell.withSizeKeepingCentre (knobWidth, knobHeight);
                 controlWidgets[index]->setBounds (knob);
             }
@@ -2579,6 +2584,8 @@ private:
     std::function<void (int)> moveHandler;
     std::function<void()> contentSizeChangedHandler;
     std::function<void (bool)> fullscreenHandler;
+    bool usesCompactControls() const { return stageName == "Delay" || stageName == "Reverb"; }
+
     static constexpr int rotarySize = 102;
     static constexpr int controlRowPitch = 156;
     bool isFullscreen = false;
@@ -3459,7 +3466,9 @@ public:
                    { "reverbSize", "Size / Decay", true }, { "reverbDamping", "Damping", true },
                    { "reverbPreDelay", "Pre-Delay (ms)" }, { "reverbWidth", "Width", true },
                    { "reverbHighPass", "High-Pass (Hz)" }, { "reverbLowPass", "Low-Pass (Hz)" },
-                   { "reverbMix", "Mix", true }});
+                   { "reverbMix", "Mix", true }, { "roomSize", "Room Size", true },
+                   { "roomEarlyMix", "Early / Late Balance", true }, { "roomSpin", "Spin (Hz)" },
+                   { "roomWander", "Wander", true }});
         addStage ("Chorus", "chorusOn",
                   {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 2));

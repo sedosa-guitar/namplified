@@ -16,6 +16,7 @@
 #include "CleanBoost.h"
 #include "AlgorithmicReverb.h"
 #include "Galactic2.h"
+#include "DragonflyRoom.h"
 
 //==============================================================================
 /**
@@ -245,6 +246,7 @@ private:
     juce::dsp::Chorus<float> chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
     AlgorithmicReverb reverb;
+    DragonflyRoom roomReverb;
     airwindows::Galactic2 cloudReverb;
 
     //==============================================================================
