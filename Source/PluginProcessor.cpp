@@ -1162,7 +1162,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         const juce::SpinLock::ScopedLockType lock (reverbConvolutionLock);
         reverbConvolver.prepare (spec);
     }
-    reverb.prepare (sampleRate);
+    plateReverb.prepare (sampleRate);
     roomReverb.prepare (sampleRate);
     cloudReverb.prepare (sampleRate);
 }
@@ -1838,7 +1838,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
             const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
             const auto highPass = get ("reverbHighPass", 120.0f);
-            const auto lowPass = juce::jmax (get ("reverbLowPass", 10000.0f), highPass * 1.1f);
+            const auto lowPassSetting = get ("reverbLowPass", 10000.0f);
+            const auto plateDampingCutoff = 20000.0f * std::pow (0.1f, damping);
+            const auto lowPass = juce::jmax (mode == 1 ? juce::jmin (lowPassSetting, plateDampingCutoff) : lowPassSetting,
+                                            highPass * 1.1f);
             for (int channel = 0; channel < numChannels; ++channel)
             {
                 setCutFilterCoefficients (reverbHighPassFilters[static_cast<size_t> (channel)], true,
@@ -1873,7 +1876,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     .getSubBlock (0, static_cast<size_t> (numSamples));
                 reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
             }
-            else if (mode == 0 || mode == 2)
+            else
             {
                 if (numChannels == 1)
                     reverbWorkBuffer.copyFrom (1, 0, reverbWorkBuffer, 0, 0, numSamples);
@@ -1883,20 +1886,18 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     roomReverb.process (left, right, numSamples, size, damping, width,
                                         get ("roomSize", 1.0f), get ("roomEarlyMix", 0.35f),
                                         get ("roomSpin", 0.5f), get ("roomWander", 0.5f));
+                else if (mode == 1)
+                    plateReverb.process (left, right, numSamples, size);
                 else
                     cloudReverb.process (left, right, numSamples, size, damping);
                 for (int i = 0; i < numSamples; ++i)
                 {
                     const auto mid = (left[i] + right[i]) * 0.5f;
-                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * (mode == 2 ? width : 1.0f)) : 0.0f;
+                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * (mode == 0 ? 1.0f : width)) : 0.0f;
                     left[i] = mid + side;
                     right[i] = mid - side;
                 }
             }
-            else
-                reverb.process (reverbWorkBuffer.getWritePointer (0),
-                                numChannels >= 2 ? reverbWorkBuffer.getWritePointer (1) : nullptr,
-                                numSamples, mode, size, damping, width);
             for (int channel = 0; channel < numChannels; ++channel)
             {
                 auto* wet = reverbWorkBuffer.getWritePointer (channel);
