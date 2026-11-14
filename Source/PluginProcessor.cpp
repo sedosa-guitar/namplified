@@ -1900,11 +1900,9 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
         else if (stage == 2 && enabled ("chorusOn"))
         {
-            chorus.setRate (get ("chorusRate", 0.8f));
-            chorus.setDepth (get ("chorusDepth", 0.35f));
-            chorus.setMix (get ("chorusMix", 0.25f));
-            auto block = juce::dsp::AudioBlock<float> (buffer).getSubBlock (0, static_cast<size_t> (numSamples));
-            chorus.process (juce::dsp::ProcessContextReplacing<float> (block));
+            chorus.process (buffer, numChannels, numSamples,
+                            get ("chorusRate", 0.8f), get ("chorusDepth", 0.35f),
+                            get ("chorusMix", 0.25f));
         }
         else if (stage == 3 && enabled ("postOn"))
             processEqualizer (buffer, numChannels, numSamples, "post", false);
