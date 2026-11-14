@@ -181,3 +181,12 @@ Freeverb3 is copyright Teru Kamogashira and is licensed under GPL-2.0-or-later.
 The bundled code removes obsolete C++ exception specifications and an unused isfinite macro for compiler
 compatibility. See the [Freeverb3 license](Source/ThirdParty/Dragonfly/freeverb/COPYING)
 and [authors](Source/ThirdParty/Dragonfly/freeverb/AUTHORS).
+
+## ChowMatrix Analog delay DSP
+
+The Analog delay uses the 16,384-stage BBD implementation selected by
+[ChowMatrix v1.3.0](https://github.com/Chowdhury-DSP/ChowMatrix/tree/d355a33dced7353f6a75b7824d6f5e60e5582fc1).
+The vendored BBD and SIMD headers come from its pinned
+[chowdsp_utils revision](https://github.com/Chowdhury-DSP/chowdsp_utils/tree/c34df5539c97412988d2ad2ca59c357032c99cd4).
+That revision supplies the GPLv3 license in
+[Source/ThirdParty/ChowBBD/LICENSE](Source/ThirdParty/ChowBBD/LICENSE).
