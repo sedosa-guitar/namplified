@@ -40,6 +40,7 @@ private:
     juce::Label subtitle;
     juce::Label presetLabel;
     juce::ComboBox presetBox;
+    juce::StringArray presetMenuKeys;
     juce::DrawableButton savePresetButton { "Save preset", juce::DrawableButton::ImageFitted };
     juce::DrawableButton deletePresetButton { "Delete preset", juce::DrawableButton::ImageFitted };
     juce::DrawableButton resetChainButton { "New chain", juce::DrawableButton::ImageFitted };
