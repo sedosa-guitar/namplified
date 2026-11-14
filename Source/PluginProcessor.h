@@ -15,6 +15,7 @@
 #include <vector>
 #include "CleanBoost.h"
 #include "AlgorithmicReverb.h"
+#include "Galactic2.h"
 
 //==============================================================================
 /**
@@ -244,6 +245,7 @@ private:
     juce::dsp::Chorus<float> chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
     AlgorithmicReverb reverb;
+    airwindows::Galactic2 cloudReverb;
 
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (NAMplifiedAudioProcessor)
