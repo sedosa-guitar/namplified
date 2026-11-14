@@ -14,7 +14,7 @@
 #include <unordered_map>
 #include <vector>
 #include "CleanBoost.h"
-#include "AlgorithmicReverb.h"
+#include "KPlate140.h"
 #include "Galactic2.h"
 #include "DragonflyRoom.h"
 
@@ -245,7 +245,7 @@ private:
     juce::AudioBuffer<float> reverbWorkBuffer;
     juce::dsp::Chorus<float> chorus;
     juce::dsp::Limiter<float> outputSafetyLimiter;
-    AlgorithmicReverb reverb;
+    airwindows::KPlate140 plateReverb;
     DragonflyRoom roomReverb;
     airwindows::Galactic2 cloudReverb;
 

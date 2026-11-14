@@ -108,7 +108,8 @@ target_sources(NAMplified PRIVATE
     Source/PluginEditor.cpp
     Source/Tone3000Client.cpp
     Source/CleanBoost.h
-    Source/AlgorithmicReverb.h
+    Source/KPlate140.cpp
+    Source/KPlate140.h
     Source/DragonflyRoom.h
     Source/ThirdParty/Dragonfly/freeverb/earlyref.cpp
     Source/ThirdParty/Dragonfly/freeverb/progenitor2.cpp
