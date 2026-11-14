@@ -96,13 +96,6 @@ static juce::Typeface::Ptr getNAMplifiedTypeface()
     return typeface;
 }
 
-static juce::Typeface::Ptr getBrandTypeface()
-{
-    static const auto typeface = juce::Typeface::createSystemTypefaceFor (
-        BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
-    return typeface;
-}
-
 static juce::FontOptions namplifiedFontOptions (float height, int style = juce::Font::plain)
 {
     const auto weight = (style & juce::Font::bold) != 0 ? 650.0f : 450.0f;
@@ -5421,10 +5414,12 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     brandIcon.setTooltip ("NAMplified");
     addAndMakeVisible (brandIcon);
     title.setText ("NAMplified", juce::dontSendNotification);
-    title.setFont (juce::Font (juce::FontOptions().withTypeface (getBrandTypeface()).withHeight (29.0f).withStyle ("Bold")));
+    title.setJustificationType (juce::Justification::centredLeft);
+    title.setFont (juce::Font (namplifiedFontOptions (27.0f, juce::Font::bold)));
     title.setColour (juce::Label::textColourId, text);
     addAndMakeVisible (title);
     subtitle.setText ("NEURAL AMP MODELING WORKSTATION", juce::dontSendNotification);
+    subtitle.setJustificationType (juce::Justification::centredLeft);
     subtitle.setFont (namplifiedFontOptions (9.0f, juce::Font::bold));
     subtitle.setColour (juce::Label::textColourId, secondaryText);
     addAndMakeVisible (subtitle);
