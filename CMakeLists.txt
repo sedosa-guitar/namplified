@@ -109,6 +109,19 @@ target_sources(NAMplified PRIVATE
     Source/Tone3000Client.cpp
     Source/CleanBoost.h
     Source/AlgorithmicReverb.h
+    Source/DragonflyRoom.h
+    Source/ThirdParty/Dragonfly/freeverb/earlyref.cpp
+    Source/ThirdParty/Dragonfly/freeverb/progenitor2.cpp
+    Source/ThirdParty/Dragonfly/freeverb/progenitor.cpp
+    Source/ThirdParty/Dragonfly/freeverb/revbase.cpp
+    Source/ThirdParty/Dragonfly/freeverb/allpass.cpp
+    Source/ThirdParty/Dragonfly/freeverb/biquad.cpp
+    Source/ThirdParty/Dragonfly/freeverb/comb.cpp
+    Source/ThirdParty/Dragonfly/freeverb/delay.cpp
+    Source/ThirdParty/Dragonfly/freeverb/delayline.cpp
+    Source/ThirdParty/Dragonfly/freeverb/efilter.cpp
+    Source/ThirdParty/Dragonfly/freeverb/slot.cpp
+    Source/ThirdParty/Dragonfly/freeverb/utils.cpp
     Source/Galactic2.cpp
     Source/Galactic2.h
     Source/Tone3000Client.h
@@ -142,3 +155,6 @@ foreach(plugin_format AU VST3 Standalone)
         target_link_libraries(NAMplified_${plugin_format} PRIVATE nam_core)
     endif()
 endforeach()
+
+target_include_directories(NAMplified PRIVATE Source/ThirdParty/Dragonfly)
+target_compile_definitions(NAMplified PRIVATE LIBFV3_FLOAT)

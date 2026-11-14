@@ -143,3 +143,12 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
+
+## Dragonfly Room / Freeverb3
+
+NAMplified's Room algorithm uses the Freeverb3 early reflection and
+Progenitor 2 engines from the [Dragonfly Reverb source tree](https://github.com/michaelwillis/dragonfly-reverb/tree/440ec7b3b3db2fec34b9f80cf4890102ca14d1c3).
+Freeverb3 is copyright Teru Kamogashira and is licensed under GPL-2.0-or-later.
+The bundled code removes obsolete C++ exception specifications and an unused isfinite macro for compiler
+compatibility. See the [Freeverb3 license](Source/ThirdParty/Dragonfly/freeverb/COPYING)
+and [authors](Source/ThirdParty/Dragonfly/freeverb/AUTHORS).

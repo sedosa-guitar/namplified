@@ -462,6 +462,10 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         juce::StringArray { "Room", "Plate", "Cloud", "IR" }, 0));
     addKnob ("reverbDamping", "Reverb Damping", 0.0f, 1.0f, 0.45f);
     addKnob ("reverbPreDelay", "Reverb Pre-Delay", 0.0f, 100.0f, 0.0f);
+    addKnob ("roomSize", "Room Size", 0.5f, 1.5f, 1.0f);
+    addKnob ("roomEarlyMix", "Early Reflections", 0.0f, 1.0f, 0.35f);
+    addKnob ("roomSpin", "Room Spin", 0.1f, 5.0f, 0.5f);
+    addKnob ("roomWander", "Room Wander", 0.0f, 1.0f, 0.5f);
     addKnob ("reverbWidth", "Reverb Width", 0.0f, 1.0f, 0.8f);
     addFrequency ("reverbHighPass", "Reverb High-Pass", 20.0f, 1000.0f, 120.0f);
     addFrequency ("reverbLowPass", "Reverb Low-Pass", 1000.0f, 20000.0f, 10000.0f);
@@ -1159,6 +1163,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         reverbConvolver.prepare (spec);
     }
     reverb.prepare (sampleRate);
+    roomReverb.prepare (sampleRate);
     cloudReverb.prepare (sampleRate);
 }
 
@@ -1868,17 +1873,22 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     .getSubBlock (0, static_cast<size_t> (numSamples));
                 reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
             }
-            else if (mode == 2)
+            else if (mode == 0 || mode == 2)
             {
                 if (numChannels == 1)
                     reverbWorkBuffer.copyFrom (1, 0, reverbWorkBuffer, 0, 0, numSamples);
                 auto* left = reverbWorkBuffer.getWritePointer (0);
                 auto* right = reverbWorkBuffer.getWritePointer (1);
-                cloudReverb.process (left, right, numSamples, size, damping);
+                if (mode == 0)
+                    roomReverb.process (left, right, numSamples, size, damping, width,
+                                        get ("roomSize", 1.0f), get ("roomEarlyMix", 0.35f),
+                                        get ("roomSpin", 0.5f), get ("roomWander", 0.5f));
+                else
+                    cloudReverb.process (left, right, numSamples, size, damping);
                 for (int i = 0; i < numSamples; ++i)
                 {
                     const auto mid = (left[i] + right[i]) * 0.5f;
-                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * width) : 0.0f;
+                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * (mode == 2 ? width : 1.0f)) : 0.0f;
                     left[i] = mid + side;
                     right[i] = mid - side;
                 }
