@@ -207,6 +207,25 @@ NAMplifiedAudioProcessor::NAMplifiedAudioProcessor()
     for (auto& mapping : midiCCParameterIndices)
         mapping.store (-1, std::memory_order_relaxed);
     loadMidiMappings();
+
+    const auto presets = getUserPresetDirectory();
+    const auto factory = presets.getChildFile ("Factory");
+    factory.getChildFile ("NAM").createDirectory();
+    factory.getChildFile ("IR").createDirectory();
+    presets.getChildFile ("Artist/Sedosa").createDirectory();
+   #if JUCE_MAC
+    if (juce::JUCEApplicationBase::isStandaloneApp())
+    {
+        const auto bundledFactory = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+            .getParentDirectory().getSiblingFile ("Resources").getChildFile ("Factory");
+        for (const auto& asset : bundledFactory.findChildFiles (juce::File::findFiles, true, "*.nam;*.wav"))
+        {
+            const auto destination = factory.getChildFile (asset.getRelativePathFrom (bundledFactory));
+            if (! destination.exists() && destination.getParentDirectory().createDirectory().wasOk())
+                asset.copyFileTo (destination);
+        }
+    }
+   #endif
 }
 
 juce::File NAMplifiedAudioProcessor::getMidiMappingsFile() const
@@ -790,11 +809,16 @@ juce::File NAMplifiedAudioProcessor::getUserPresetDirectory() const
 
 juce::File NAMplifiedAudioProcessor::getUserPresetFile (const juce::String& name) const
 {
-    auto safeName = name.trim().retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-().");
+    const auto sedosa = name.startsWith ("Artist/Sedosa/");
+    const auto leaf = sedosa ? name.substring (14) : name;
+    if (leaf.containsAnyOf ("/\\"))
+        return {};
+    auto safeName = leaf.trim().retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-().");
     while (safeName.startsWith (".")) safeName = safeName.substring (1);
     safeName = safeName.trim();
     if (safeName.isEmpty()) return {};
-    return getUserPresetDirectory().getChildFile (safeName).withFileExtension (".tlpreset");
+    const auto root = getUserPresetDirectory();
+    return (sedosa ? root.getChildFile ("Artist/Sedosa") : root).getChildFile (safeName + ".tlpreset");
 }
 
 juce::File NAMplifiedAudioProcessor::getUserPresetLibraryDirectory() const
@@ -809,6 +833,13 @@ juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
     if (! folder.isDirectory()) return names;
     for (const auto& file : folder.findChildFiles (juce::File::findFiles, false, "*.tlpreset"))
         names.add (file.getFileNameWithoutExtension());
+    const auto append = [&names] (const juce::File& directory, const juce::String& prefix)
+    {
+        for (const auto& file : directory.findChildFiles (juce::File::findFiles, false, "*.tlpreset"))
+            names.add (prefix + file.getFileNameWithoutExtension());
+    };
+    for (const auto& artist : folder.getChildFile ("Artist").findChildFiles (juce::File::findDirectories, false))
+        append (artist, "Artist/" + artist.getFileName() + "/");
     names.sort (true);
     return names;
 }
@@ -816,7 +847,7 @@ juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
 bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
 {
     const auto file = getUserPresetFile (name);
-    if (file == juce::File() || ! getUserPresetDirectory().createDirectory().wasOk())
+    if (file == juce::File() || ! file.getParentDirectory().createDirectory().wasOk())
         return false;
 
     juce::MemoryBlock savedState;
@@ -829,8 +860,10 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     for (int i = presetState.getNumChildren(); --i >= 0;)
         if (presetState.getChild (i).getProperty ("id").toString() == "masterVolume")
             presetState.removeChild (i, nullptr);
-    presetState.setProperty ("selectedUserPreset", file.getFileNameWithoutExtension(), nullptr);
-    const auto library = file.getSiblingFile ("Library");
+    const auto key = (name.startsWith ("Artist/Sedosa/") ? juce::String ("Artist/Sedosa/") : juce::String())
+        + file.getFileNameWithoutExtension();
+    presetState.setProperty ("selectedUserPreset", key, nullptr);
+    const auto library = getUserPresetLibraryDirectory();
     const auto storePath = [&presetState, &library] (const juce::String& property, int captureSlot)
     {
         const auto originalPath = presetState.getProperty (property).toString();
@@ -963,12 +996,16 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     const auto resolvedBoostPath = resolveLibraryPath ("boostNAMFile");
     if (resolvedBoostPath.isNotEmpty())
         boostNAMFilePath = resolvedBoostPath;
+    setSelectedUserPresetName (key);
     return true;
 }
 
 bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
 {
-    const auto file = getUserPresetFile (name);
+    const auto file = name.containsChar ('/')
+        ? (getUserPresetNames().contains (name)
+            ? getUserPresetDirectory().getChildFile (name + ".tlpreset") : juce::File())
+        : getUserPresetFile (name);
     if (file == juce::File() || ! file.existsAsFile()) return false;
     juce::MemoryBlock state;
     if (! file.loadFileAsData (state)) return false;
@@ -979,7 +1016,7 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     const auto* masterParameter = parameters.getRawParameterValue ("masterVolume");
     const auto preservedMasterVolume = masterParameter != nullptr ? masterParameter->load() : 0.0f;
     const auto assetsFolder = file.getSiblingFile (file.getFileNameWithoutExtension() + "_Assets");
-    const auto library = file.getSiblingFile ("Library");
+    const auto library = getUserPresetLibraryDirectory();
     for (const auto& property : juce::StringArray { "ampFile1", "ampFile2", "boostNAMFile", "irFile1", "irFile2", "reverbIRFile" })
     {
         const auto storedPath = presetState.getProperty (property).toString();
@@ -991,6 +1028,7 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
             return false;
         presetState.setProperty (property, assetFile.getFullPathName(), nullptr);
     }
+    presetState.setProperty ("selectedUserPreset", name, nullptr);
     auto resolvedXml = presetState.createXml();
     if (resolvedXml == nullptr)
         return false;
@@ -1004,6 +1042,8 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
 
 bool NAMplifiedAudioProcessor::deleteUserPreset (const juce::String& name)
 {
+    if (name.containsChar ('/') && ! name.startsWith ("Artist/Sedosa/"))
+        return false;
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! file.existsAsFile() || ! file.deleteFile())
         return false;

@@ -5570,7 +5570,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     refreshUserPresets (audioProcessor.getSelectedUserPresetName());
     presetBox.onChange = [this]
     {
-        const auto name = presetBox.getText().trim();
+        const auto name = selectedPresetName();
         if (name.isNotEmpty() && audioProcessor.loadUserPreset (name))
         {
             audioProcessor.setSelectedUserPresetName (name);
@@ -5839,24 +5839,50 @@ void NAMplifiedAudioProcessorEditor::refreshUserPresets (const juce::String& sel
     auto previousName = selectName.isNotEmpty() ? selectName : selectedPresetName();
     if (previousName.isEmpty())
         previousName = audioProcessor.getSelectedUserPresetName();
-    const auto names = audioProcessor.getUserPresetNames();
+    presetMenuKeys = audioProcessor.getUserPresetNames();
     presetBox.clear (juce::dontSendNotification);
-    for (int i = 0; i < names.size(); ++i)
-        presetBox.addItem (names[i] + ((presetDirty && names[i] == previousName) ? " *" : juce::String()), i + 1);
-    const auto index = names.indexOf (previousName);
-    if (index >= 0)
-        presetBox.setSelectedId (index + 1, juce::dontSendNotification);
-    else
-        presetBox.setSelectedId (0, juce::dontSendNotification);
-    deletePresetButton.setEnabled (presetBox.getSelectedId() != 0);
+    juce::PopupMenu user, artists;
+    juce::StringArray artistNames { "Sedosa" };
+    std::vector<juce::PopupMenu> artistMenus (1);
+    for (int i = 0; i < presetMenuKeys.size(); ++i)
+    {
+        const auto& key = presetMenuKeys[i];
+        auto label = key.fromLastOccurrenceOf ("/", false, false);
+        if (presetDirty && key == previousName)
+            label += " *";
+
+        if (key.startsWith ("Artist/"))
+        {
+            const auto artist = key.substring (7).upToFirstOccurrenceOf ("/", false, false);
+            auto index = artistNames.indexOf (artist);
+            if (index < 0)
+            {
+                index = artistNames.size();
+                artistNames.add (artist);
+                artistMenus.emplace_back();
+            }
+            artistMenus[static_cast<size_t> (index)].addItem (i + 1, label);
+        }
+        else
+            user.addItem (i + 1, label);
+    }
+    if (artistMenus.front().getNumItems() == 0)
+        artistMenus.front().addItem (presetMenuKeys.size() + 1, "No presets yet", false);
+    for (int i = 0; i < artistNames.size(); ++i)
+        artists.addSubMenu (artistNames[i], artistMenus[static_cast<size_t> (i)]);
+
+    auto* menu = presetBox.getRootMenu();
+    menu->addSubMenu ("User", user);
+    menu->addSubMenu ("Artist", artists);
+    const auto index = presetMenuKeys.indexOf (previousName);
+    presetBox.setSelectedId (index + 1, juce::dontSendNotification);
+    deletePresetButton.setEnabled (index >= 0 && (! previousName.containsChar ('/') || previousName.startsWith ("Artist/Sedosa/")));
 }
 
 juce::String NAMplifiedAudioProcessorEditor::selectedPresetName() const
 {
-    auto name = presetBox.getText().trim();
-    if (name.endsWith (" *"))
-        name = name.dropLastCharacters (2).trimEnd();
-    return name;
+    const auto index = presetBox.getSelectedId() - 1;
+    return juce::isPositiveAndBelow (index, presetMenuKeys.size()) ? presetMenuKeys[index] : juce::String();
 }
 
 void NAMplifiedAudioProcessorEditor::timerCallback()
@@ -6016,8 +6042,12 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
     auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
                                          juce::MessageBoxIconType::NoIcon, this);
     alert->setLookAndFeel (editorLookAndFeel.get());
-    const auto currentName = selectedPresetName();
+    const auto currentKey = selectedPresetName();
+    const auto currentName = currentKey.fromLastOccurrenceOf ("/", false, false);
     alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "My Preset", "Preset name:");
+    alert->addComboBox ("presetDestination", { "User", "Artist / Sedosa" }, "Save to:");
+    alert->getComboBoxComponent ("presetDestination")->setSelectedId (
+        currentKey.startsWith ("Artist/Sedosa/") ? 2 : 1, juce::dontSendNotification);
     alert->addButton ("Save", 1);
     alert->addButton ("Cancel", 0);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
@@ -6027,17 +6057,18 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
         if (result != 1 || safeThis == nullptr)
             return;
         const auto name = alert->getTextEditorContents ("presetName").trim();
-        if (name.isEmpty() || ! safeThis->audioProcessor.saveUserPreset (name))
+        const auto sedosa = alert->getComboBoxComponent ("presetDestination")->getSelectedId() == 2;
+        const auto key = sedosa ? "Artist/Sedosa/" + name : name;
+        if (name.isEmpty() || ! safeThis->audioProcessor.saveUserPreset (key))
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                      "Could not save preset",
                                                      "Check the preset name and available storage space.");
             return;
         }
-        safeThis->audioProcessor.setSelectedUserPresetName (name);
         safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
-        safeThis->refreshUserPresets (name);
+        safeThis->refreshUserPresets (safeThis->audioProcessor.getSelectedUserPresetName());
         if (onSaved)
             onSaved();
     }), true);
@@ -6046,8 +6077,8 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
 void NAMplifiedAudioProcessorEditor::showDeletePresetPrompt()
 {
     const auto name = selectedPresetName();
-    if (name.isEmpty()) return;
-    auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your user presets?",
+    if (name.isEmpty() || (name.containsChar ('/') && ! name.startsWith ("Artist/Sedosa/"))) return;
+    auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your presets?",
                                          juce::MessageBoxIconType::NoIcon, this);
     alert->setLookAndFeel (editorLookAndFeel.get());
     alert->addButton ("Delete", 1);

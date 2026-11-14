@@ -82,6 +82,15 @@ if (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
     )
+    file(GLOB_RECURSE factory_assets CONFIGURE_DEPENDS
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/NAM/*.nam"
+        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/IR/*.wav")
+    foreach(asset IN LISTS factory_assets)
+        file(RELATIVE_PATH relative_asset "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${asset}")
+        get_filename_component(asset_directory "${relative_asset}" DIRECTORY)
+        set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${asset_directory}")
+        target_sources(NAMplified_Standalone PRIVATE "${asset}")
+    endforeach()
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"
