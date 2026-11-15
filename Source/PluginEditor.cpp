@@ -4340,7 +4340,10 @@ private:
                 return false;
         if (name.contains ("cabless") || name.contains ("nocab"))
             return false;
-        return words.contains ("cab") || words.contains ("cabinet");
+        const auto metadata = juce::JSON::parse (file).getProperty ("metadata", {});
+        const auto gearType = metadata.getProperty ("gear_type", {}).toString().trim().toLowerCase();
+        return gearType == "amp_cab" || words.contains ("ampcab")
+            || words.contains ("cab") || words.contains ("cabinet");
     }
 
     bool activeCaptureIncludesCab()
@@ -4753,6 +4756,9 @@ private:
     {
         constexpr auto extensions = "*.wav;*.aiff;*.aif;*.flac";
         auto files = library.getChildFile ("IRs").findChildFiles (juce::File::findFiles, true, extensions);
+        for (const auto& file : library.getSiblingFile ("Factory").getChildFile ("IR")
+                 .findChildFiles (juce::File::findFiles, true, extensions))
+            files.addIfNotAlreadyThere (file);
         const auto local = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Music/IR");
         for (const auto& file : local.findChildFiles (juce::File::findFiles, true, extensions))
             files.addIfNotAlreadyThere (file);
@@ -4831,6 +4837,9 @@ private:
 
         const auto library = audioProcessor.getUserPresetLibraryDirectory();
         captures = library.getChildFile ("Captures").findChildFiles (juce::File::findFiles, true, "*.nam");
+        for (const auto& file : library.getSiblingFile ("Factory").getChildFile ("NAM")
+                 .findChildFiles (juce::File::findFiles, true, "*.nam"))
+            captures.addIfNotAlreadyThere (file);
         for (int slot = 0; slot < NAMplifiedAudioProcessor::numAmpSlots; ++slot)
             if (const auto file = audioProcessor.getNAMCaptureFile (slot); file.existsAsFile())
                 captures.addIfNotAlreadyThere (file);
@@ -4869,7 +4878,7 @@ private:
             {
                 const auto name = compactName (file.getParentDirectory().getFileName() + " "
                                                + file.getFileNameWithoutExtension());
-                if (name.contains ("morgan") && name.contains ("ac20"))
+                if (name.contains ("ac20"))
                     exactMatches.add (file);
                 else if (name.contains ("morganac") || name.contains ("voxac15") || name.contains ("voxac30"))
                     alternatives.add (file);

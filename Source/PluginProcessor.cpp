@@ -1233,7 +1233,9 @@ bool NAMplifiedAudioProcessor::renderAudition (const juce::MemoryBlock& state,
                                                const std::function<bool()>& cancelled)
 {
     constexpr int blockSize = 512;
-    NAMplifiedAudioProcessor renderer;
+    // Keep the DSP buffers off the preset builder worker thread stack.
+    const auto rendererStorage = std::make_unique<NAMplifiedAudioProcessor>();
+    auto& renderer = *rendererStorage;
     renderer.modelSampleRate.store (sampleRate);
     renderer.modelMaxBlockSize.store (blockSize);
     renderer.setStateInformation (state.getData(), static_cast<int> (state.getSize()));
