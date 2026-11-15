@@ -99,7 +99,7 @@ public:
     void stopAudition();
 
     bool saveUserPreset (const juce::String& name);
-    bool loadUserPreset (const juce::String& name);
+    bool loadUserPreset (const juce::String& name, juce::StringArray& missingAssets);
     bool deleteUserPreset (const juce::String& name);
     juce::String getSelectedUserPresetName() const;
     void setSelectedUserPresetName (const juce::String& name);
@@ -198,7 +198,10 @@ private:
     std::array<std::atomic<int>, numPreFxStages> preFxOrder { 0, 1, 2, 3 };
     std::array<std::atomic<int>, numAmpSlots> ampSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numIRSlots> irSlotOrder { 0, 1 };
-    std::array<std::atomic<int>, numPostFxStages> postFxOrder { 0, 1, 2, 3 };
+    static constexpr std::array<int, numPostFxStages> defaultPostFxOrder { 2, 0, 1, 3 };
+    std::array<std::atomic<int>, numPostFxStages> postFxOrder {
+        defaultPostFxOrder[0], defaultPostFxOrder[1], defaultPostFxOrder[2], defaultPostFxOrder[3]
+    };
     juce::MemoryBlock presetSnapshotState;
     std::array<int, numPreFxStages> presetPreFxOrder {};
     std::array<int, numPostFxStages> presetPostFxOrder {};
@@ -226,7 +229,7 @@ private:
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
     std::array<std::vector<float>, 2> pitchBuffers;
     int pitchBufferSize = 0, pitchWritePosition = 0;
-    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f;
+    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f, pitchCurrentBlend = 1.0f;
     std::atomic<bool> inputClipped { false }, outputClipped { false };
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
     std::array<std::array<BiquadState, 9>, 2> postEqFilters {};

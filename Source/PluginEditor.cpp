@@ -4607,7 +4607,7 @@ private:
         {
             auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (raw);
             if (parameter == nullptr || parameter->paramID == "compBright"
-                || parameter->paramID == "masterVolume")
+                || parameter->paramID == "masterVolume" || parameter->paramID == "outputMode")
                 continue;
 
             const auto& range = parameter->getNormalisableRange();
@@ -4646,7 +4646,8 @@ private:
             for (const auto& property : object->getProperties())
             {
                 const auto id = property.name.toString();
-                if (id == "compBright" || id == "masterVolume" || id == "ir1On" || id == "ir2On" || isBuilderGain (id)
+                if (id == "compBright" || id == "masterVolume" || id == "outputMode"
+                    || id == "ir1On" || id == "ir2On" || isBuilderGain (id)
                     || id == "boostOn" || id == "boostSource" || id == "boostGain" || id == "boost808Level"
                     || id == "boostNAMIn" || id == "boostNAMOut")
                     continue;
@@ -5704,6 +5705,29 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         pitchValueLabel.setText (prefix + juce::String (semitones) + " ST", juce::dontSendNotification);
     };
     pitchSlider.onValueChange = updatePitchValue;
+    pitchBlendLabel.setText ("BLEND", juce::dontSendNotification);
+    pitchBlendLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
+    pitchBlendLabel.setColour (juce::Label::textColourId, secondaryText);
+    addAndMakeVisible (pitchBlendLabel);
+    pitchBlendSlider.setName ("pitchBlend");
+    pitchBlendSlider.setTitle ("Pitch Blend");
+    pitchBlendSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    pitchBlendSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    pitchBlendSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    pitchBlendSlider.setTooltip ("Blend the original guitar signal with the pitch-shifted signal.");
+    addAndMakeVisible (pitchBlendSlider);
+    pitchBlendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.parameters, "pitchBlend", pitchBlendSlider);
+    pitchBlendValueLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
+    pitchBlendValueLabel.setColour (juce::Label::textColourId, text);
+    pitchBlendValueLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (pitchBlendValueLabel);
+    pitchBlendSlider.onValueChange = [this]
+    {
+        pitchBlendValueLabel.setText (juce::String (juce::roundToInt (pitchBlendSlider.getValue() * 100.0))
+                                         + "%", juce::dontSendNotification);
+    };
+    pitchBlendSlider.onValueChange();
     updatePitchValue();
     masterVolumeLabel.setText ("MASTER", juce::dontSendNotification);
     masterVolumeLabel.setFont (namplifiedFontOptions (12.0f, juce::Font::bold));
@@ -5727,6 +5751,14 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (masterVolumeSlider);
     masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "masterVolume", masterVolumeSlider);
+    outputModeBox.addItem ("Stereo", 1);
+    outputModeBox.addItem ("Mono", 2);
+    outputModeBox.setName ("outputMode");
+    outputModeBox.setTitle ("Output mode");
+    outputModeBox.setTooltip ("Mono averages the left and right signals and sends the result to both outputs.");
+    addAndMakeVisible (outputModeBox);
+    outputModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        audioProcessor.parameters, "outputMode", outputModeBox);
     masterVolumeSlider.onValueChange = [this]
     {
         auto& settings = namplifiedSettings();
@@ -5830,7 +5862,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetBox.onChange = [this]
     {
         const auto name = selectedPresetName();
-        if (name.isNotEmpty() && audioProcessor.loadUserPreset (name))
+        juce::StringArray missingAssets;
+        if (name.isNotEmpty() && audioProcessor.loadUserPreset (name, missingAssets))
         {
             audioProcessor.setSelectedUserPresetName (name);
             audioProcessor.capturePresetSnapshot();
@@ -5839,7 +5872,15 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
             updateRoutingDisplay();
         }
         else
+        {
             refreshUserPresets (audioProcessor.getSelectedUserPresetName());
+            if (! missingAssets.isEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
+                    "Missing preset files",
+                    "Could not load “" + name.fromLastOccurrenceOf ("/", false, false)
+                        + "”. Restore the missing NAM or IR files and select the preset again.\n\n"
+                        + missingAssets.joinIntoString ("\n"), "OK", this);
+        }
     };
     savePresetButton.onClick = [this] { showSavePresetPrompt(); };
     deletePresetButton.onClick = [this] { showDeletePresetPrompt(); };
@@ -5982,6 +6023,11 @@ void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
+    if (! eqFullscreen)
+    {
+        g.setColour (juce::Colour (0xff394b5e));
+        g.drawRoundedRectangle (pitchGroupBounds.toFloat().reduced (0.5f), 7.0f, 1.0f);
+    }
 }
 
 void NAMplifiedAudioProcessorEditor::resized()
@@ -6007,14 +6053,14 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     auto presetArea = top;
-    const auto compactHeader = presetArea.getWidth() < 980;
-    const auto presetWidth = compactHeader ? 122 : 165;
-    const auto pitchSliderWidth = compactHeader ? 62 : 112;
+    const auto compactHeader = presetArea.getWidth() < 1100;
+    const auto presetWidth = compactHeader ? 102 : 165;
+    const auto pitchSliderWidth = compactHeader ? 48 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
     const auto masterLabelWidth = compactHeader ? 52 : 60;
     const auto masterValueWidth = compactHeader ? 42 : 48;
-    const auto masterSliderWidth = compactHeader ? 54 : 96;
+    const auto masterSliderWidth = compactHeader ? 42 : 96;
     presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 46 : 58));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
@@ -6028,17 +6074,28 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
     resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
-    pitchLabel.setBounds (presetArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    pitchSlider.setBounds (presetArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
-    presetArea.removeFromLeft (compactHeader ? 2 : 4);
-    pitchValueLabel.setBounds (presetArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
+    const auto pitchControlsWidth = pitchLabelWidth + pitchSliderWidth + pitchValueWidth
+                                  + (compactHeader ? 6 : 10);
+    const auto blendSliderWidth = compactHeader ? 44 : 70;
+    pitchGroupBounds = presetArea.removeFromLeft (pitchControlsWidth + blendSliderWidth + 92).reduced (0, 4);
+    auto pitchArea = pitchGroupBounds.expanded (0, 4).reduced (5, 0);
+    pitchLabel.setBounds (pitchArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
+    pitchArea.removeFromLeft (compactHeader ? 4 : 6);
+    pitchSlider.setBounds (pitchArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
+    pitchArea.removeFromLeft (compactHeader ? 2 : 4);
+    pitchValueLabel.setBounds (pitchArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
+    pitchArea.removeFromLeft (5);
+    pitchBlendLabel.setBounds (pitchArea.removeFromLeft (38).reduced (0, 4));
+    pitchBlendSlider.setBounds (pitchArea.removeFromLeft (blendSliderWidth).reduced (0, 10));
+    pitchBlendValueLabel.setBounds (pitchArea.removeFromLeft (39).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeSlider.setBounds (presetArea.removeFromLeft (masterSliderWidth).reduced (0, 10));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
+    presetArea.removeFromLeft (8);
+    outputModeBox.setBounds (presetArea.removeFromLeft (88).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     parallelRoutingButton.setBounds (controlRow.removeFromRight (44).reduced (0, 2));
@@ -6086,9 +6143,13 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
+    pitchBlendLabel.setVisible (showChrome);
+    pitchBlendSlider.setVisible (showChrome);
+    pitchBlendValueLabel.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
     masterVolumeValueLabel.setVisible (showChrome);
+    outputModeBox.setVisible (showChrome);
     blendLabel.setVisible (showChrome);
     blendValueLabel.setVisible (showChrome);
     blendSlider.setVisible (showChrome);
