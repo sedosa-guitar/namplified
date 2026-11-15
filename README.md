@@ -47,12 +47,13 @@ The amp slots can run **in series** or **in parallel**. In series, the output of
 
 Both NAM slots can run in series or parallel without changing the overall routing layout.
 
-### Cabinet IRs
+### Cabinet IRs and Virtual Cab
 
 - Load up to two cabinet impulse responses in WAV, AIFF, FLAC, or OGG format.
 - Blend the two IR paths in parallel; the IRs are summed from their input rather than cascaded one after another.
 - Use **IR Shape EQ** on each cabinet slot for low, mid, and high tone shaping.
 - In Shared IR 1 routing, both amp paths feed the shared first IR.
+- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview currently requires a local Standalone build with the generated cab responses.
 
 ### Effects and tone shaping
 
@@ -104,9 +105,19 @@ See the [official API documentation](https://www.tone3000.com/api) and [API term
 
 ## Screenshots
 
-### Signal chain and compressor controls
+### Signal chain and Amp 1 controls
 
-![NAMplified in Series mode with the routing icons and compressor controls visible](docs/images/namplified-signal-chain.png)
+![NAMplified in parallel mode with paired cabinet paths and Amp 1 controls](docs/images/namplified-signal-chain.png)
+
+### Cab sources
+
+**IR** loads a cabinet impulse response and offers independent low, mid, and high EQ.
+
+![Cab 1 with a WAV impulse response selected and the cabinet EQ controls visible](docs/images/namplified-cab-ir.png)
+
+**Virtual Cab (development preview)** shows the Oversized 4x12, selectable microphones, and position controls directly in the cab block.
+
+![Cab 1 in Virtual Cab mode with the Oversized 4x12, SM57, and microphone position controls](docs/images/namplified-virtual-cab.png)
 
 ### Amp and cabinet routing
 

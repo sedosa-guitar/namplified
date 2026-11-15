@@ -59,6 +59,11 @@ public:
     bool loadReverbIR (const juce::File& file);
     juce::String getReverbIRName() const;
     void loadImpulseResponse (int slot, const juce::File& file);
+    bool selectVirtualCab (int slot, int offset, int distance, int mic);
+    void selectFileCab (int slot);
+    bool hasVirtualCab() const;
+    struct CabPosition { int x = -1, y = 0, mic = 1; bool operator== (const CabPosition& other) const { return x == other.x && y == other.y && mic == other.mic; } };
+    CabPosition getVirtualCabPosition (int slot) const;
     bool isImpulseResponseActive (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
     bool cycleNAMCapture (int slot, int direction);
@@ -182,6 +187,7 @@ private:
     juce::AudioBuffer<float> ampMixBuffer;
     juce::AudioBuffer<float> ampWorkBuffers[numAmpSlots];
     juce::String irFilePaths[numIRSlots];
+    std::array<CabPosition, numIRSlots> virtualCabPositions {};
     juce::String namFilePaths[numAmpSlots];
     juce::String namDisplayNames[numAmpSlots];
     juce::String boostNAMFilePath;

@@ -1972,7 +1972,13 @@ void NAMplifiedAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     auto state = parameters.copyState();
     for (int slot = 0; slot < numIRSlots; ++slot)
+    {
         state.setProperty ("irFile" + juce::String (slot + 1), irFilePaths[slot], nullptr);
+        const auto point = getVirtualCabPosition (slot);
+        state.setProperty ("virtualCabOffset" + juce::String (slot + 1), point.x, nullptr);
+        state.setProperty ("virtualCabMic" + juce::String (slot + 1), point.mic, nullptr);
+        state.setProperty ("virtualCabDistance" + juce::String (slot + 1), point.y, nullptr);
+    }
     for (int slot = 0; slot < numAmpSlots; ++slot)
         state.setProperty ("ampFile" + juce::String (slot + 1), namFilePaths[slot], nullptr);
     for (int slot = 0; slot < numAmpSlots; ++slot)
@@ -2050,11 +2056,17 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         setIRSlotOrder (irOrder);
         for (int slot = 0; slot < numIRSlots; ++slot)
         {
+            virtualCabPositions[slot] = { -1, 0 };
             irFilePaths[slot] = state.getProperty ("irFile" + juce::String (slot + 1)).toString();
             const juce::File file (irFilePaths[slot]);
             irLoaded[slot].store (file.existsAsFile());
             if (irLoaded[slot].load())
                 loadImpulseResponse (slot, file);
+            const auto suffix = juce::String (slot + 1);
+            const auto offset = static_cast<int> (state.getProperty ("virtualCabOffset" + suffix, -1));
+            if (offset >= 0)
+                selectVirtualCab (slot, offset, static_cast<int> (state.getProperty ("virtualCabDistance" + suffix, 0)),
+                                  static_cast<int> (state.getProperty ("virtualCabMic" + suffix, 1)));
         }
         for (int slot = 0; slot < numAmpSlots; ++slot)
         {
@@ -2124,12 +2136,60 @@ void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& 
     irConvolvers[slot].loadImpulseResponse (file, juce::dsp::Convolution::Stereo::yes,
                                             juce::dsp::Convolution::Trim::yes, 0,
                                             juce::dsp::Convolution::Normalise::yes);
+    virtualCabPositions[slot] = { -1, 0 };
     irFilePaths[slot] = file.getFullPathName();
     irLoaded[slot].store (true);
 }
 
+static juce::File virtualCabDirectory()
+{
+    return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
+        .getParentDirectory().getSiblingFile ("Resources").getChildFile ("LocalVirtualCab");
+}
+
+bool NAMplifiedAudioProcessor::hasVirtualCab() const
+{
+    return juce::JUCEApplicationBase::isStandaloneApp()
+        && virtualCabDirectory().getChildFile ("1-0-0.wav").existsAsFile();
+}
+
+NAMplifiedAudioProcessor::CabPosition NAMplifiedAudioProcessor::getVirtualCabPosition (int slot) const
+{
+    return virtualCabPositions[slot];
+}
+
+bool NAMplifiedAudioProcessor::selectVirtualCab (int slot, int offset, int distance, int mic)
+{
+    if (! hasVirtualCab())
+        return false;
+    const CabPosition point { juce::jlimit (0, 8, offset), juce::jlimit (0, 6, distance), juce::jlimit (0, 2, mic) };
+    if (virtualCabPositions[slot] == point)
+        return true;
+    const auto file = virtualCabDirectory().getChildFile (juce::String (point.mic) + "-" + juce::String (point.x) + "-" + juce::String (point.y) + ".wav");
+    if (! file.existsAsFile())
+        return false;
+    irConvolvers[slot].loadImpulseResponse (file, juce::dsp::Convolution::Stereo::no,
+                                            juce::dsp::Convolution::Trim::no, 0,
+                                            juce::dsp::Convolution::Normalise::yes);
+    virtualCabPositions[slot] = point;
+    irLoaded[slot].store (true);
+    return true;
+}
+
+void NAMplifiedAudioProcessor::selectFileCab (int slot)
+{
+    virtualCabPositions[slot] = { -1, 0 };
+    const juce::File file (irFilePaths[slot]);
+    if (file.existsAsFile())
+        loadImpulseResponse (slot, file);
+    else
+        irLoaded[slot].store (false);
+}
+
 juce::String NAMplifiedAudioProcessor::getImpulseResponseName (int slot) const
 {
+    if (slot >= 0 && slot < numIRSlots && virtualCabPositions[slot].x >= 0)
+        return "Oversized 4x12";
     if (slot < 0 || slot >= numIRSlots || irFilePaths[slot].isEmpty())
         return "No IR loaded";
     return juce::File (irFilePaths[slot]).getFileName();
