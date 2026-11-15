@@ -1747,27 +1747,17 @@ public:
 
         if (loadKind == FileKind::impulseResponse)
         {
-            irSourceButton = std::make_unique<juce::TextButton> ("IR");
-            virtualSourceButton = std::make_unique<juce::TextButton> ("Virtual Cab");
-            for (auto* button : { irSourceButton.get(), virtualSourceButton.get() })
+            cabSourceButton = std::make_unique<juce::TextButton> ("Impulse Response");
+            addAndMakeVisible (*cabSourceButton);
+            cabSourceButton->onClick = [this]
             {
-                button->setColour (juce::TextButton::buttonColourId, detailSurface);
-                button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff21473f));
-                button->setColour (juce::TextButton::textColourOnId, knobAccent);
-                addAndMakeVisible (*button);
-            }
-            virtualSourceButton->setEnabled (audioProcessor.hasVirtualCab());
-            irSourceButton->onClick = [this]
-            {
-                audioProcessor.selectFileCab (slot);
-                setFileNameText (audioProcessor.getImpulseResponseName (slot));
-            };
-            virtualSourceButton->onClick = [this]
-            {
-                auto point = audioProcessor.getVirtualCabPosition (slot);
-                if (point.x < 0)
-                    point = { 2, 2 };
-                if (audioProcessor.selectVirtualCab (slot, point.x, point.y, point.mic))
+                if (audioProcessor.getVirtualCabPosition (slot).x >= 0)
+                {
+                    audioProcessor.selectFileCab (slot);
+                    setFileNameText (audioProcessor.getImpulseResponseName (slot));
+                    return;
+                }
+                if (audioProcessor.selectVirtualCab (slot, 2, 2, 1))
                     if (auto* enabled = audioProcessor.parameters.getParameter (enableParameterId))
                         enabled->setValueNotifyingHost (1.0f);
                 setFileNameText (audioProcessor.getImpulseResponseName (slot));
@@ -2098,7 +2088,7 @@ public:
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = usesCompactControls() ? 132 : controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
-        const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
+        const auto fileControlsHeight = loadKind == FileKind::nam ? 38
             : (showsFileLoader() ? 46 : 0);
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
@@ -2138,21 +2128,8 @@ public:
             dragHandle.setBounds (header.removeFromLeft (24).withHeight (32));
             header.removeFromLeft (8);
         }
-        if (sourceIndex >= 0)
-        {
-            heading.setBounds (header.withTrimmedLeft (38).withWidth (96));
-            controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
-                header.withTrimmedLeft (142).withWidth (142).withHeight (30).withY (header.getY() + 3));
-        }
-        else
-            heading.setBounds (header.withTrimmedLeft (38));
+        heading.setBounds (header.withTrimmedLeft (38));
 
-        // NAM capture controls belong to NAM profile blocks as well as the NAM
-        // source of the Boost block. They must not depend on a Source selector:
-        // NAM profile blocks deliberately have no source selector.
-        if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
-        {
-        }
         if (hasEnableControl)
             enableButton.setBounds (right.removeFromLeft (36).withSizeKeepingCentre (24, 24));
         if (hasMoveControls)
@@ -2166,29 +2143,42 @@ public:
         if (expandButton != nullptr)
             expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
 
-        if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
+        if (loadKind == FileKind::nam)
         {
+            const auto builtInBoost = isUsingBuiltInBoost();
             fileName.setBounds ({});
             auto actionRow = area.removeFromTop (38);
             constexpr int loadWidth = 44, browserWidth = 44, navWidth = 38, toneWidth = 210;
             constexpr int gap = 10;
-            constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
-            const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
+            constexpr int sourceWidth = 148;
+            constexpr int captureWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
+            const auto actionWidth = builtInBoost ? sourceWidth
+                : captureWidth + (sourceIndex >= 0 ? sourceWidth + gap : 0);
+            const auto nameWidth = builtInBoost ? 0 : juce::jlimit (0, 420, actionRow.getWidth() - actionWidth - 16);
             const auto combinedWidth = actionWidth + (nameWidth > 0 ? 16 + nameWidth : 0);
             auto actions = actionRow.withSizeKeepingCentre (combinedWidth, actionRow.getHeight());
-            loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            libraryButton.setBounds (actions.removeFromLeft (browserWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
-            actions.removeFromLeft (4);
-            nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            tone3000Button.setBounds (actions.removeFromLeft (toneWidth).reduced (0, 2));
-            if (nameWidth > 0)
+            if (sourceIndex >= 0)
             {
-                actions.removeFromLeft (16);
-                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
+                controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
+                    actions.removeFromLeft (sourceWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+            }
+            if (! builtInBoost)
+            {
+                loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                libraryButton.setBounds (actions.removeFromLeft (browserWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+                actions.removeFromLeft (4);
+                nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                tone3000Button.setBounds (actions.removeFromLeft (toneWidth).reduced (0, 2));
+                if (nameWidth > 0)
+                {
+                    actions.removeFromLeft (16);
+                    fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
+                }
             }
             fileName.setJustificationType (juce::Justification::centredLeft);
         }
@@ -2198,14 +2188,20 @@ public:
             if (loadKind != FileKind::nam)
             {
                 auto fileRow = area.removeFromTop (40);
-                loadButton.setBounds (fileRow.removeFromLeft (44));
-                fileRow.removeFromLeft (10);
-                if (irSourceButton != nullptr)
+                constexpr int loadWidth = 44, gap = 10, sourceWidth = 148;
+                if (cabSourceButton != nullptr)
                 {
-                    irSourceButton->setBounds (fileRow.removeFromLeft (48).reduced (0, 3));
-                    fileRow.removeFromLeft (4);
-                    virtualSourceButton->setBounds (fileRow.removeFromLeft (116).reduced (0, 3));
-                    fileRow.removeFromLeft (10);
+                    constexpr int controlsWidth = loadWidth + gap + sourceWidth;
+                    const auto nameWidth = juce::jlimit (0, 420, fileRow.getWidth() - controlsWidth - gap);
+                    fileRow = fileRow.withSizeKeepingCentre (
+                        controlsWidth + (nameWidth > 0 ? gap + nameWidth : 0), fileRow.getHeight());
+                }
+                loadButton.setBounds (fileRow.removeFromLeft (loadWidth));
+                fileRow.removeFromLeft (gap);
+                if (cabSourceButton != nullptr)
+                {
+                    cabSourceButton->setBounds (fileRow.removeFromLeft (sourceWidth).reduced (0, 3));
+                    fileRow.removeFromLeft (gap);
                 }
                 const auto nameWidth = juce::jmin (620, fileRow.getWidth());
                 fileName.setBounds (fileRow.removeFromLeft (nameWidth));
@@ -2607,9 +2603,9 @@ private:
                 {
                     sourceButton->setButtonText (isSim ? "NAM CAPTURE" : "BOOST");
                     sourceButton->setColour (juce::TextButton::buttonColourId,
-                                             isSim ? juce::Colour (0xff21473f) : juce::Colour::fromRGB (40, 45, 54));
+                                             isSim ? juce::Colour (0xff245348) : juce::Colour (0xff594321));
                     sourceButton->setColour (juce::TextButton::textColourOffId,
-                                             isSim ? knobAccent : text);
+                                             isSim ? knobAccent : juce::Colour (0xffffcf72));
                     sourceButton->setTooltip (isSim ? "NAM capture loaded in this boost slot. Click to switch to the built-in boost."
                                                      : "Built-in Clean Boost / 808 Drive. Click to switch to a NAM capture.");
                 }
@@ -2762,8 +2758,17 @@ private:
         {
             heading.setText ("CAB " + juce::String (slot + 1), juce::dontSendNotification);
             const auto position = audioProcessor.getVirtualCabPosition (slot);
-            irSourceButton->setToggleState (position.x < 0, juce::dontSendNotification);
-            virtualSourceButton->setToggleState (position.x >= 0, juce::dontSendNotification);
+            const auto virtualCabActive = position.x >= 0;
+            const auto virtualCabAvailable = audioProcessor.hasVirtualCab();
+            cabSourceButton->setButtonText (virtualCabActive ? "Virtual Cab" : "Impulse Response");
+            cabSourceButton->setColour (juce::TextButton::buttonColourId,
+                                        juce::Colour (virtualCabActive ? 0xff245348 : 0xff594321));
+            cabSourceButton->setColour (juce::TextButton::textColourOffId,
+                                        virtualCabActive ? knobAccent : juce::Colour (0xffffcf72));
+            cabSourceButton->setTooltip (virtualCabActive ? "Switch to Impulse Response."
+                                        : virtualCabAvailable ? "Switch to Virtual Cab."
+                                                              : "Virtual Cab is unavailable in this build.");
+            cabSourceButton->setEnabled (virtualCabActive || virtualCabAvailable);
             if (position.x < 0)
                 virtualCabPreview.reset();
             else if (virtualCabPreview == nullptr)
@@ -2812,7 +2817,7 @@ private:
     StatusLightButton enableButton;
     CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
     juce::TextButton tone3000Button, moveUpButton, moveDownButton;
-    std::unique_ptr<juce::TextButton> irSourceButton, virtualSourceButton;
+    std::unique_ptr<juce::TextButton> cabSourceButton;
     std::unique_ptr<VirtualCabPreview> virtualCabPreview;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::DrawableButton> expandButton;
