@@ -4340,7 +4340,10 @@ private:
                 return false;
         if (name.contains ("cabless") || name.contains ("nocab"))
             return false;
-        return words.contains ("cab") || words.contains ("cabinet");
+        const auto metadata = juce::JSON::parse (file).getProperty ("metadata", {});
+        const auto gearType = metadata.getProperty ("gear_type", {}).toString().trim().toLowerCase();
+        return gearType == "amp_cab" || words.contains ("ampcab")
+            || words.contains ("cab") || words.contains ("cabinet");
     }
 
     bool activeCaptureIncludesCab()
