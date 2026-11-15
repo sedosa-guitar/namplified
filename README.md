@@ -53,7 +53,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - Blend the two IR paths in parallel; the IRs are summed from their input rather than cascaded one after another.
 - Use **IR Shape EQ** on each cabinet slot for low, mid, and high tone shaping.
 - In Shared IR 1 routing, both amp paths feed the shared first IR.
-- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview currently requires a local Standalone build with the generated cab responses.
+- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in a local Standalone build. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
 
 ### Effects and tone shaping
 
@@ -172,7 +172,7 @@ Third-party attributions and license information are collected in [`THIRD_PARTY_
 
 **NAMplified's own code is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only).** See [`LICENSE`](LICENSE). Third-party components retain their own licenses and notices listed above and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 
-Copyright (C) 2026 Ronny Wels (sedosa). Git commits may also appear under the author's GitLab identity `scalanakamoto`.
+Copyright (C) 2026 Ronny Wels (sedosa).
 
 NAMplified is currently distributed free of charge, without paid features or donation links. This describes the maintainers' distribution; AGPL-3.0-only still permits compliant third-party forks to charge for copies.
 
