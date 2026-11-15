@@ -91,6 +91,12 @@ if (APPLE)
         set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${asset_directory}")
         target_sources(NAMplified_Standalone PRIVATE "${asset}")
     endforeach()
+    # Local audition assets. Keep generated model output out of the source tree.
+    file(GLOB local_virtual_cab CONFIGURE_DEPENDS "${CMAKE_BINARY_DIR}/LocalVirtualCab/*.wav")
+    foreach(asset IN LISTS local_virtual_cab)
+        set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/LocalVirtualCab")
+        target_sources(NAMplified_Standalone PRIVATE "${asset}")
+    endforeach()
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"

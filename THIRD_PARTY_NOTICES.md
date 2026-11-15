@@ -191,3 +191,12 @@ The vendored BBD and SIMD headers come from its pinned
 [chowdsp_utils revision](https://github.com/Chowdhury-DSP/chowdsp_utils/tree/c34df5539c97412988d2ad2ca59c357032c99cd4).
 That revision supplies the GPLv3 license in
 [Source/ThirdParty/ChowBBD/LICENSE](Source/ThirdParty/ChowBBD/LICENSE).
+
+## ConeTracer (local Virtual Cab prototype)
+
+The Oversized 4x12 prototype uses impulse responses generated locally with
+[ConeTracer's conetrace-godscab-v0.1 model](https://github.com/vessel-dsp/ConeTracer/tree/f7f0488b8383779180b7d2087ecc5123f030616a).
+The model was trained on God's Cab measurements. ConeTracer's MIT notice
+covers its source code and documentation. Redistribution rights for the
+generated WAV files have not been confirmed. Keep builds containing
+`Contents/Resources/LocalVirtualCab` local until those rights are confirmed.
