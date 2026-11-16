@@ -779,6 +779,15 @@ void NAMplifiedAudioProcessor::resetToDefaults()
     setAmpSlotOrder ({ 0, 1 });
     setIRSlotOrder ({ 0, 1 });
     setPostFxOrder (defaultPostFxOrder);
+
+    const auto defaultCapture = getUserPresetDirectory().getChildFile ("Factory/NAM/AC20_boosted_lowgain_AmpCab.nam");
+    if (defaultCapture.existsAsFile())
+    {
+        loadNAMCapture (0, defaultCapture);
+        // The factory capture includes its cabinet, so start with both IR slots bypassed.
+        if (auto* cab = parameters.getParameter ("ir1On"))
+            cab->setValueNotifyingHost (0.0f);
+    }
 }
 
 bool NAMplifiedAudioProcessor::acceptsMidi() const { return JucePlugin_WantsMidiInput != 0; }

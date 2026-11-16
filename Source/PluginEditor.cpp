@@ -2983,6 +2983,7 @@ public:
         if (std::abs (drag) > 5 && ! isDragging)
         {
             isDragging = true;
+            toFront (false);
             repaint();
         }
         const auto direction = verticalBranch ? 1 : (getY() >= 140 ? -1 : 1);
@@ -3326,13 +3327,17 @@ public:
 
     void setOrderedTiles (std::vector<StageTile*> ordered)
     {
+        if (tiles == ordered)
+            return;
+
+        const auto animate = ! tiles.empty() && isShowing();
         tiles = std::move (ordered);
         for (auto* tile : tiles)
         {
             tile->setParallelRouting (parallelRouting, parallelSharedIR);
             tile->setVisible (! (parallelRouting && parallelSharedIR && tile->getName() == "Cab IR 2"));
         }
-        resized();
+        layoutTiles (animate);
     }
 
     int getRequiredWidth() const { return 48 + (parallelRouting ? 12 : 13) * 86; }
@@ -3348,7 +3353,10 @@ public:
         return branchTop + tileSize + branchGap + tileSize + bottomPadding;
     }
 
-    void resized() override
+    void resized() override { layoutTiles (false); }
+
+private:
+    void layoutTiles (bool animate)
     {
         constexpr int sideInset = 24;
         const auto contentWidth = getWidth() - 2 * sideInset;
@@ -3366,38 +3374,48 @@ public:
             return sideInset + juce::roundToInt ((static_cast<float> (column) + 0.5f) * pitch
                                                    - static_cast<float> (tileWidth) * 0.5f);
         };
+        const auto placeTile = [this, animate, tileWidth, tileHeight] (StageTile* tile, int x, int y)
+        {
+            const juce::Rectangle<int> destination (x, y, tileWidth, tileHeight);
+            if (animate && tile->isVisible() && tile->getBounds() != destination)
+                tileAnimator.animateComponent (tile, destination, 1.0f, 150, false, 1.0, 0.0);
+            else
+            {
+                tileAnimator.cancelAnimation (tile, false);
+                tile->setBounds (destination);
+            }
+        };
+
         int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
         for (auto* tile : tiles)
         {
             const auto name = tile->getName();
             if (name == "Input")
-                tile->setBounds (columnX (0), branchY, tileWidth, tileHeight);
+                placeTile (tile, columnX (0), branchY);
             else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
                      || name == "Boost Pedal" || name == "PreEQ")
-                tile->setBounds (columnX (++preIndex), branchY, tileWidth, tileHeight);
+                placeTile (tile, columnX (++preIndex), branchY);
             else if (name.startsWith ("NAM Profile"))
             {
-                tile->setBounds (columnX (parallelRouting ? 5 : 5 + namIndex % 2),
-                                 branchY + (parallelRouting ? namIndex : 0) * branchPitch,
-                                 tileWidth, tileHeight);
+                placeTile (tile, columnX (parallelRouting ? 5 : 5 + namIndex % 2),
+                           branchY + (parallelRouting ? namIndex : 0) * branchPitch);
                 ++namIndex;
             }
             else if (name.startsWith ("Cab IR"))
             {
                 const auto y = parallelRouting && parallelSharedIR
                     ? branchY + (branchPitch / 2) : branchY + (irIndex % 2) * branchPitch;
-                tile->setBounds (columnX (parallelRouting ? 6 : 7), y, tileWidth, tileHeight);
+                placeTile (tile, columnX (parallelRouting ? 6 : 7), y);
                 ++irIndex;
             }
             else if (name == "Output")
-                tile->setBounds (columnX (parallelRouting ? 11 : 12), postRowY, tileWidth, tileHeight);
+                placeTile (tile, columnX (parallelRouting ? 11 : 12), postRowY);
             else
-                tile->setBounds (columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY, tileWidth, tileHeight);
+                placeTile (tile, columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY);
         }
-        return;
+        repaint();
     }
 
-private:
     void drawWiring (juce::Graphics& g)
     {
         if (parallelRouting)
@@ -3614,6 +3632,7 @@ private:
         drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
+    juce::ComponentAnimator tileAnimator;
     std::vector<StageTile*> tiles;
     bool parallelRouting = false;
     bool parallelSharedIR = false;
