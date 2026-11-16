@@ -1984,7 +1984,7 @@ public:
                 addAndMakeVisible (*choice);
                 comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
                     audioProcessor.parameters, control.id, *choice));
-                if (stageName == "Boost Pedal" && juce::String (control.id) == "boostModel")
+                if (choice->getName() == "boostModel" || choice->getName() == "chorusMode")
                     choice->addListener (this);
                 controlWidgets.push_back (choice.get());
                 controlIds.emplace_back (control.id);
@@ -2355,8 +2355,7 @@ private:
         if (box == nullptr)
             return;
         const auto id = box->getName();
-        const auto isBoostModel = stageName == "Boost Pedal" && id == "boostModel";
-        if (! isBoostModel)
+        if (id != "boostModel" && id != "chorusMode")
             return;
         const juce::Component::SafePointer<StageCard> safeThis (this);
         juce::MessageManager::callAsync ([safeThis]
@@ -2583,6 +2582,15 @@ private:
         if (loadKind == FileKind::reverbIR && showsFileLoader())
             return controlIds[index] != "reverbSize" && controlIds[index] != "reverbDamping"
                 && controlIds[index] != "reverbWidth";
+        if (stageName == "Chorus")
+        {
+            const auto& id = controlIds[index];
+            if (id == "chorusMode" || id == "chorusRate" || id == "chorusDepth" || id == "chorusMix")
+                return true;
+
+            const auto* mode = audioProcessor.parameters.getRawParameterValue ("chorusMode");
+            return mode != nullptr && mode->load() >= 0.5f;
+        }
         if (stageName != "Boost Pedal")
             return true;
         const auto* source = audioProcessor.parameters.getRawParameterValue ("boostSource");
@@ -3724,7 +3732,8 @@ public:
                    { "roomEarlyMix", "Early / Late Balance", true }, { "roomSpin", "Spin (Hz)" },
                    { "roomWander", "Wander", true }});
         addStage ("Chorus", "chorusOn",
-                  {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true },
+                  {{ "chorusMode", "Mode", false, juce::StringArray { "Classic", "Advanced (TakeCare)" } },
+                   { "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true },
                    { "chorusRandom", "Random", true }, { "chorusRegen", "Regen", true },
                    { "chorusDerez", "Derez", true }, { "chorusBuffer", "Buffer", true },
                    { "chorusOutput", "Output", true }},

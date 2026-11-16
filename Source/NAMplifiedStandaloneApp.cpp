@@ -52,11 +52,17 @@ private:
             heading.setColour (juce::Label::textColourId, juce::Colour (0xffeef2f7));
             addAndMakeVisible (heading);
 
+            instructions.setText ("Select your interface, guitar input channel, and output. Allow microphone access if macOS asks.",
+                                  juce::dontSendNotification);
+            instructions.setFont (namplifiedFontOptions (14.0f, juce::Font::plain));
+            instructions.setColour (juce::Label::textColourId, juce::Colour (0xffc5cfdd));
+            addAndMakeVisible (instructions);
+
             mute.getToggleStateValue().referTo (holder.getMuteInputValue());
             mute.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffc5cfdd));
             mute.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xff70d9b6));
             addChildComponent (mute);
-            mute.setVisible (holder.getProcessorHasPotentialFeedbackLoop());
+            mute.setVisible (holder.processor->getBus (true, 0) != nullptr);
 
             selector.setItemHeight (32);
             viewport.setViewedComponent (&selector, false);
@@ -79,6 +85,7 @@ private:
             auto area = getLocalBounds().reduced (24, 14);
             heading.setBounds (area.removeFromTop (40));
             area.removeFromTop (12);
+            instructions.setBounds (area.removeFromTop (42));
             if (mute.isVisible())
                 mute.setBounds (area.removeFromTop (36));
             auto footer = area.removeFromBottom (38);
@@ -90,7 +97,8 @@ private:
 
     private:
         juce::Label heading;
-        juce::ToggleButton mute { "Mute audio input to prevent feedback" };
+        juce::Label instructions;
+        juce::ToggleButton mute { "Mute audio input (uncheck when using an interface or headphones)" };
         juce::AudioDeviceSelectorComponent selector;
         juce::Viewport viewport;
         juce::TextButton close { "Close" };
@@ -159,6 +167,10 @@ public:
                 juce::LookAndFeel::getDefaultLookAndFeel().findColour (juce::ResizableWindow::backgroundColourId),
                 createPluginHolder());
             mainWindow->setVisible (true);
+            if (auto* processor = mainWindow->getNAMplifiedProcessor())
+                if (appProperties.getUserSettings()->getXmlValue ("audioSetup") == nullptr
+                    || processor->getAudioStatus().isNotEmpty())
+                    processor->showAudioSettings();
         }
         else
             pluginHolder = createPluginHolder();
