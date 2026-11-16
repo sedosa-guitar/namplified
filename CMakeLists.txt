@@ -82,22 +82,22 @@ if (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
     )
-    file(GLOB_RECURSE factory_assets CONFIGURE_DEPENDS
-        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/NAM/*.nam"
-        "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/IR/*.wav")
-    foreach(asset IN LISTS factory_assets)
-        file(RELATIVE_PATH relative_asset "${CMAKE_CURRENT_SOURCE_DIR}/Assets" "${asset}")
-        get_filename_component(asset_directory "${relative_asset}" DIRECTORY)
-        set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/${asset_directory}")
-        target_sources(NAMplified_Standalone PRIVATE "${asset}")
-    endforeach()
-    # Local audition assets. Keep generated model output out of the source tree.
-    file(GLOB local_virtual_cab CONFIGURE_DEPENDS "${CMAKE_BINARY_DIR}/LocalVirtualCab/*.wav")
-    foreach(asset IN LISTS local_virtual_cab)
-        set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/LocalVirtualCab")
-        target_sources(NAMplified_Standalone PRIVATE "${asset}")
-    endforeach()
+    option(NAMPLIFIED_LOCAL_VIRTUAL_CAB "Include local Virtual Cab audition WAVs" OFF)
+    if (NAMPLIFIED_LOCAL_VIRTUAL_CAB)
+        file(GLOB local_virtual_cab CONFIGURE_DEPENDS "${CMAKE_BINARY_DIR}/LocalVirtualCab/*.wav")
+        foreach(asset IN LISTS local_virtual_cab)
+            set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/LocalVirtualCab")
+            target_sources(NAMplified_Standalone PRIVATE "${asset}")
+        endforeach()
+    else()
+        add_custom_command(TARGET NAMplified_Standalone POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E rm -rf
+                "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/LocalVirtualCab"
+            VERBATIM)
+    endif()
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/Factory"
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"
             "-DICON_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
@@ -117,6 +117,15 @@ juce_add_binary_data(NAMplifiedAssets
         Assets/Branding/TONE3000Logo.svg
         Assets/Branding/NAMplifiedAppIcon.png
 )
+
+file(GLOB factory_assets CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/NAM/*.nam"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/IR/*.wav"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Factory/Artist/Sedosa/*.tlpreset")
+juce_add_binary_data(NAMplifiedFactoryAssets
+    HEADER_NAME FactoryAssets.h
+    NAMESPACE FactoryAssets
+    SOURCES ${factory_assets})
 
 target_sources(NAMplified PRIVATE
     Source/TakeCareChorus.cpp
@@ -154,6 +163,7 @@ target_compile_definitions(NAMplified PUBLIC
 
 target_link_libraries(NAMplified PRIVATE
     NAMplifiedAssets
+    NAMplifiedFactoryAssets
     juce::juce_audio_utils
     juce::juce_dsp
     juce::juce_cryptography

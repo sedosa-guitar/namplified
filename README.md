@@ -99,9 +99,7 @@ This integration uses the TONE3000 **publishable key** as its public OAuth clien
 
 The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api). This README links to the [TONE3000 website](https://www.tone3000.com).
 
-An automated TONE3000 response stated that a free, open-source product with no paid features or upsell may use the free tier without a separate agreement or sign-off. The integration must use OAuth 2.0 with PKCE, keep the secret key out of distributed binaries, preserve creator and license details, follow the design requirements, and stay within the default 100 requests per minute. The free tier is limited to the `select_tone` and `load_tone` flows and the `favorited`, `downloaded`, `created`, `trending`, and `latest` endpoints. NAMplified downloads only the capture selected by the user and does not host or redistribute it. TONE3000 may revoke access if an integration stops meeting its guidelines. Recheck the current terms before each public release; this note records the response received and is not a separate TONE3000 endorsement or legal opinion.
-
-See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMplified is an independent project and is not endorsed by TONE3000.
+The TONE3000 API terms effective July 7, 2026 allow free-tier integrations for free, open, non-commercial products without paid features or upsells. Free-tier integrations do not require prior sign-off. The terms limit free-tier access to the `select_tone` and `load_tone` flows and the documented bounded lists. Catalog content may only be downloaded on an authenticated user's request, and the integration must preserve creator names, metadata, and license information. The terms also require “Powered by TONE3000” branding and adherence to TONE3000's design guidance. NAMplified is an independent project. [TONE3000 API terms](https://www.tone3000.com/api/terms) · [API documentation](https://www.tone3000.com/api)
 
 ## Cabinet sources and routing
 
@@ -145,6 +143,10 @@ Build products are placed under `build`. The CMake project currently generates *
 ## Installation
 
 Build from source using the instructions above. Public installers are not available yet.
+
+Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
+
+The local Virtual Cab audition WAVs are excluded by default. To build the local Standalone preview with your existing generated WAVs in the build directory's `LocalVirtualCab` folder, configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
 
 ## Third-party software and licenses
 
