@@ -53,9 +53,7 @@ private:
     std::unique_ptr<juce::Component> aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
-    juce::Slider pitchSlider, pitchBlendSlider;
-    juce::Label pitchBlendLabel, pitchBlendValueLabel;
-    juce::Rectangle<int> pitchGroupBounds;
+    juce::Slider pitchSlider;
     juce::Slider masterVolumeSlider;
     juce::ComboBox outputModeBox;
     juce::Label blendLabel;
@@ -70,7 +68,7 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampCrossoverAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampCrossoverSliderAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment, pitchBlendAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterVolumeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> outputModeAttachment;
     std::unique_ptr<ChainControls> chainControls;

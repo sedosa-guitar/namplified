@@ -75,6 +75,60 @@ juce::String displayNameForNAMFile (const juce::File& file, int slot)
 }
 }
 
+float NAMplifiedAudioProcessor::ClassicPitchTracker::process (
+    float sample, float dcCoefficient, float lowPassCoefficient,
+    float rangeCoefficient, float defaultRange, float sampleRate) noexcept
+{
+    dc += dcCoefficient * (sample - dc);
+    low += lowPassCoefficient * (sample - dc - low);
+    const auto previous = filtered;
+    filtered += lowPassCoefficient * (low - filtered);
+
+    const auto timeout = juce::roundToInt (sampleRate * 0.06f);
+    samplesSinceCrossing = juce::jmin (samplesSinceCrossing + 1, timeout);
+    if (previous <= 0.0f && filtered > 0.0f && filtered - previous > 1.0e-7f)
+    {
+        const auto fraction = filtered / (filtered - previous);
+        const auto period = static_cast<float> (samplesSinceCrossing) + crossingFraction - fraction;
+        if (period >= sampleRate / 145.0f && period <= sampleRate / 55.0f
+            && samplesSinceCrossing < timeout)
+        {
+            if (std::abs (period - trackedPeriod) <= trackedPeriod * 0.04f)
+            {
+                stablePeriods = juce::jmin (3, stablePeriods + 1);
+                trackedPeriod += (period - trackedPeriod) * 0.25f;
+            }
+            else
+            {
+                trackedPeriod = period;
+                stablePeriods = 1;
+            }
+        }
+        else
+        {
+            stablePeriods = 0;
+        }
+        samplesSinceCrossing = 0;
+        crossingFraction = fraction;
+    }
+    else if (samplesSinceCrossing == timeout)
+    {
+        stablePeriods = 0;
+    }
+
+    // A whole number of source cycles between the two taps keeps their crossfade coherent.
+    auto targetRange = defaultRange;
+    if (stablePeriods >= 3)
+    {
+        const auto twoCycles = 2.0f * trackedPeriod;
+        targetRange = static_cast<float> (juce::roundToInt (defaultRange / twoCycles)) * twoCycles;
+    }
+    if (range == 0.0f)
+        range = defaultRange;
+    range += rangeCoefficient * (targetRange - range);
+    return range;
+}
+
 struct NAMplifiedAudioProcessor::NAMModel
 {
     mutable juce::SpinLock lock;
@@ -375,9 +429,8 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         juce::StringArray { "Stereo", "Mono" }, 0));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
-        juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 1.0f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("st")));
-    addKnob ("pitchBlend", "Pitch Blend", 0.0f, 1.0f, 1.0f);
     addToggle ("gateOn", "Noise Gate", true);
     // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
@@ -1213,8 +1266,8 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         channel.assign (static_cast<size_t> (pitchBufferSize), 0.0f);
     pitchWritePosition = 0;
     pitchPhase = 0.0f;
+    classicPitchTracker = {};
     pitchCurrentSemitones = 0.0f;
-    pitchCurrentBlend = parameters.getRawParameterValue ("pitchBlend")->load();
     for (int slot = 0; slot < numAmpSlots; ++slot)
         namModels[slot]->prepare (sampleRate, samplesPerBlock);
     boostNAMModel->prepare (sampleRate, samplesPerBlock);
@@ -1479,11 +1532,20 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Two crossfaded delay taps provide a low-latency, monophonic-style pitch
     // shift before the rest of the chain. The 20 ms minimum delay prevents the
     // read heads from catching the write head; all memory is allocated in prepareToPlay.
-    const auto pitchTarget = juce::jlimit (-24.0f, 24.0f, get ("pitchSemitones"));
-    const auto pitchBlend = get ("pitchBlend", 1.0f);
+    const auto pitchTarget = juce::jlimit (-12.0f, 12.0f, get ("pitchSemitones"));
     const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
     const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
-    const auto pitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto defaultPitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto trackLowNotes = pitchTarget < 0.0f && numChannels > 0;
+    const auto coefficientFor = [sampleRate] (double hz)
+    {
+        return static_cast<float> (1.0 - std::exp (-juce::MathConstants<double>::twoPi * hz / sampleRate));
+    };
+    const auto pitchTrackerDc = trackLowNotes ? coefficientFor (15.0) : 0.0f;
+    const auto pitchTrackerLowPass = trackLowNotes ? coefficientFor (150.0) : 0.0f;
+    const auto pitchTrackerSmoothing = trackLowNotes ? coefficientFor (3.0) : 0.0f;
+    if (! trackLowNotes)
+        classicPitchTracker = {};
     const auto wrapReadIndex = [this] (float position)
     {
         while (position < 0.0f) position += static_cast<float> (pitchBufferSize);
@@ -1492,7 +1554,6 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        pitchCurrentBlend += (pitchBlend - pitchCurrentBlend) * pitchSmoothing;
         pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
         for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
             pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
@@ -1500,6 +1561,16 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
         if (std::abs (pitchCurrentSemitones) > 0.01f)
         {
+            auto pitchRange = defaultPitchRange;
+            if (trackLowNotes)
+            {
+                auto analysisInput = buffer.getSample (0, sample);
+                if (numChannels == 2)
+                    analysisInput = 0.5f * (analysisInput + buffer.getSample (1, sample));
+                pitchRange = classicPitchTracker.process (analysisInput, pitchTrackerDc, pitchTrackerLowPass,
+                                                          pitchTrackerSmoothing, defaultPitchRange,
+                                                          static_cast<float> (sampleRate));
+            }
             const auto ratio = std::exp2 (pitchCurrentSemitones / 12.0f);
             const auto phaseIncrement = std::abs (1.0f - ratio) / pitchRange;
             auto phaseA = pitchPhase;
@@ -1528,7 +1599,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 };
                 auto& sampleValue = buffer.getWritePointer (channel)[sample];
                 const auto shifted = readTap (delayA) * weightA + readTap (delayB) * weightB;
-                sampleValue = std::lerp (sampleValue, shifted, pitchCurrentBlend);
+                sampleValue = shifted;
             }
             pitchPhase += phaseIncrement;
             if (pitchPhase >= 1.0f)
@@ -2095,7 +2166,7 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
-        for (const auto* id : { "outputMode", "pitchBlend", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
+        for (const auto* id : { "outputMode", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput" })
         {
             if (state.getChildWithProperty ("id", id).isValid())

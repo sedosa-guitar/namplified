@@ -5996,7 +5996,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
-    pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -24 to +24 semitones.");
+    pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -12 to +12 semitones.");
     addAndMakeVisible (pitchLabel);
     pitchSlider.setName ("pitchSemitones");
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
@@ -6018,29 +6018,6 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         pitchValueLabel.setText (prefix + juce::String (semitones) + " ST", juce::dontSendNotification);
     };
     pitchSlider.onValueChange = updatePitchValue;
-    pitchBlendLabel.setText ("BLEND", juce::dontSendNotification);
-    pitchBlendLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
-    pitchBlendLabel.setColour (juce::Label::textColourId, secondaryText);
-    addAndMakeVisible (pitchBlendLabel);
-    pitchBlendSlider.setName ("pitchBlend");
-    pitchBlendSlider.setTitle ("Pitch Blend");
-    pitchBlendSlider.setSliderStyle (juce::Slider::LinearHorizontal);
-    pitchBlendSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
-    pitchBlendSlider.setColour (juce::Slider::trackColourId, knobAccent);
-    pitchBlendSlider.setTooltip ("Blend the original guitar signal with the pitch-shifted signal.");
-    addAndMakeVisible (pitchBlendSlider);
-    pitchBlendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-        audioProcessor.parameters, "pitchBlend", pitchBlendSlider);
-    pitchBlendValueLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
-    pitchBlendValueLabel.setColour (juce::Label::textColourId, text);
-    pitchBlendValueLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (pitchBlendValueLabel);
-    pitchBlendSlider.onValueChange = [this]
-    {
-        pitchBlendValueLabel.setText (juce::String (juce::roundToInt (pitchBlendSlider.getValue() * 100.0))
-                                         + "%", juce::dontSendNotification);
-    };
-    pitchBlendSlider.onValueChange();
     updatePitchValue();
     masterVolumeLabel.setText ("MASTER", juce::dontSendNotification);
     masterVolumeLabel.setFont (namplifiedFontOptions (12.0f, juce::Font::bold));
@@ -6338,11 +6315,6 @@ void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
     g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
-    if (! eqFullscreen)
-    {
-        g.setColour (juce::Colour (0xff514a41));
-        g.drawRoundedRectangle (pitchGroupBounds.toFloat().reduced (0.5f), 7.0f, 1.0f);
-    }
 }
 
 void NAMplifiedAudioProcessorEditor::resized()
@@ -6391,22 +6363,15 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
     const auto pitchLabelsWidth = pitchLabelWidth + pitchValueWidth + (compactHeader ? 6 : 10);
     const auto masterLabelsWidth = masterLabelWidth + masterValueWidth + (compactHeader ? 11 : 16);
-    const auto sliderSpace = juce::jmax (0, presetArea.getWidth() - pitchLabelsWidth - 92 - masterLabelsWidth);
-    const auto blendSliderWidth = juce::jmin (sliderSpace, juce::jmax (44, sliderSpace / 4));
-    const auto pitchSliderWidth = (sliderSpace - blendSliderWidth) / 2;
-    const auto masterSliderWidth = sliderSpace - pitchSliderWidth - blendSliderWidth;
-    const auto pitchControlsWidth = pitchLabelsWidth + pitchSliderWidth;
-    pitchGroupBounds = presetArea.removeFromLeft (pitchControlsWidth + blendSliderWidth + 92).reduced (0, 4);
-    auto pitchArea = pitchGroupBounds.expanded (0, 4).reduced (5, 0);
+    const auto sliderSpace = juce::jmax (0, presetArea.getWidth() - pitchLabelsWidth - masterLabelsWidth);
+    const auto pitchSliderWidth = sliderSpace / 2;
+    const auto masterSliderWidth = sliderSpace - pitchSliderWidth;
+    auto pitchArea = presetArea.removeFromLeft (pitchLabelsWidth + pitchSliderWidth);
     pitchLabel.setBounds (pitchArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
     pitchArea.removeFromLeft (compactHeader ? 4 : 6);
     pitchSlider.setBounds (pitchArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
     pitchArea.removeFromLeft (compactHeader ? 2 : 4);
     pitchValueLabel.setBounds (pitchArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
-    pitchArea.removeFromLeft (5);
-    pitchBlendLabel.setBounds (pitchArea.removeFromLeft (38).reduced (0, 4));
-    pitchBlendSlider.setBounds (pitchArea.removeFromLeft (blendSliderWidth).reduced (0, 10));
-    pitchBlendValueLabel.setBounds (pitchArea.removeFromLeft (39).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
@@ -6460,9 +6425,6 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
-    pitchBlendLabel.setVisible (showChrome);
-    pitchBlendSlider.setVisible (showChrome);
-    pitchBlendValueLabel.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
     masterVolumeValueLabel.setVisible (showChrome);

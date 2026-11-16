@@ -29,7 +29,7 @@ NAMplified is a free hobby project. If you’d like to help cover development co
 
 ### Build a signal chain
 
-- **Input section:** input trim and global pitch shift from −24 to +24 semitones.
+- **Input section:** input trim and global pitch shift from −12 to +12 semitones.
 - **Pre-amp blocks:** Noise Gate, 1176-style compressor, Boost, and five-band Pre EQ. Reorder these blocks within the section and enable or disable them individually.
 - **Two NAM slots:** load a Neural Amp Modeler (NAM) capture into either slot, adjust its input/output levels, and shape it with a Bass/Mid/Treble EQ placed before or after the capture.
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
@@ -68,7 +68,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode uses the 16,384-stage bucket-brigade DSP from ChowMatrix for bandwidth-limited repeats.
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
 - **Chorus:** Uses Airwindows TakeCare, a stereo chorus ensemble. Adjust Rate, Depth, and Mix, with Random, Regen, Derez, Buffer, and Output grouped under Advanced.
-- **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −24 to +24 semitones.
+- **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −12 to +12 semitones.
 
 ### Preset Builder (Beta, macOS)
 
