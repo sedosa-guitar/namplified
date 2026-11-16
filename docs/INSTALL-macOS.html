@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>NAMplified für macOS installieren</title>
+<title>Install NAMplified on macOS</title>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; background: #171816; color: #f4eee5; font: 17px/1.6 system-ui, sans-serif; }
@@ -18,32 +18,29 @@
   footer { margin-top: 24px; }
 </style>
 <main>
-  <h1>NAMplified installieren</h1>
-  <p><strong>Voraussetzung</strong> · Mac mit Apple Silicon und macOS 14.4 oder neuer.<br>Entpacke das ZIP im Finder. Wähle danach das Format, das du nutzen möchtest.</p>
-
+  <h1>Install NAMplified</h1>
+  <p><strong>Requirements</strong> · Apple Silicon Mac with macOS 14.4 or later.</p>
+  <p>Unzip the download in Finder and choose the format you want to install.</p>
   <section>
     <h2>Standalone</h2>
-    <p>Ziehe <strong>NAMplified.app</strong> in <strong>Programme</strong> und öffne die App dort.</p>
-    <p>Wenn macOS den ersten Start blockiert und du der Downloadquelle vertraust:</p>
+    <p>Drag <strong>NAMplified.app</strong> into <strong>Applications</strong> and open it from there.</p>
+    <p>If macOS blocks the first launch and you trust the download source:</p>
     <ol>
-      <li>Schließe die Warnmeldung.</li>
-      <li>Öffne <strong>Systemeinstellungen → Datenschutz &amp; Sicherheit</strong>.</li>
-      <li>Klicke bei NAMplified auf <strong>Dennoch öffnen</strong> und bestätige.</li>
+      <li>Dismiss the warning.</li>
+      <li>Open <strong>System Settings → Privacy &amp; Security</strong>.</li>
+      <li>Under Security, click <strong>Open Anyway</strong> and confirm.</li>
     </ol>
-    <p>Fehlt die Schaltfläche, starte die App erneut und öffne anschließend direkt die Systemeinstellungen.
-    <a href="https://support.apple.com/de-de/102445">Apple-Hilfe</a></p>
+    <p>If the button is missing, try opening the app again and return to Privacy &amp; Security. <a href="https://support.apple.com/en-us/102445">Apple Support</a></p>
   </section>
-
   <section>
-    <h2>VST3 und AU</h2>
-    <p>Beende deine DAW. Öffne im Finder mit <strong>⌘ ⇧ G</strong> den gewünschten Ordner und kopiere das passende Plug-in hinein.</p>
+    <h2>VST3 and Audio Unit</h2>
+    <p>Quit your DAW. In Finder, press <strong>⌘ ⇧ G</strong> to open the destination folder, then copy the plug-in into it.</p>
     <ul>
-      <li><strong>VST3</strong> · <code>NAMplified.vst3</code> nach <code>/Library/Audio/Plug-Ins/VST3</code></li>
-      <li><strong>AU</strong> · <code>NAMplified.component</code> nach <code>/Library/Audio/Plug-Ins/Components</code></li>
+      <li><strong>VST3</strong> · Copy <code>NAMplified.vst3</code> to <code>/Library/Audio/Plug-Ins/VST3</code>.</li>
+      <li><strong>AU</strong> · Copy <code>NAMplified.component</code> to <code>/Library/Audio/Plug-Ins/Components</code>.</li>
     </ul>
-    <p>Starte die DAW neu und suche nach <strong>NAMplified</strong>. Falls das Plug-in fehlt, starte die Plug-in-Suche in deiner DAW erneut.</p>
+    <p>Reopen your DAW and look for <strong>NAMplified</strong>. If it does not appear, rescan plug-ins.</p>
   </section>
-
-  <footer><a href="Begleitdateien/NAMplified-Quellcode.zip">Passender Quellcode</a> · <a href="Begleitdateien/THIRD_PARTY_NOTICES.md">Lizenzhinweise</a></footer>
+  <footer><a href="Licenses-and-Source/NAMplified-Source.zip">Matching source code</a> · <a href="Licenses-and-Source/THIRD_PARTY_NOTICES.md">License notices</a></footer>
 </main>
 </html>

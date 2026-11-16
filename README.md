@@ -12,6 +12,10 @@ NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to
 
 See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
+## Support NAMplified
+
+NAMplified is a free hobby project. If you’d like to help cover development costs, you can [leave a tip on Ko-fi](https://ko-fi.com/sedosa).
+
 ## Key features
 
 - **A complete guitar rig around NAM captures.** See the signal flow from input to output and edit each block in place. Move pre-amp and post-amp effects within their sections.

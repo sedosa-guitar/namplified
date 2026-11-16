@@ -4091,7 +4091,7 @@ public:
         : NAMplifiedDialog (parent, "About NAMplified", 560, 352)
     {
         styleLabel (description, "Neural Amp Modeling Workstation", 20.0f, juce::Colour (0xffeef2f7), true);
-        styleLabel (credit, "Free, open-source amp and effects plugin.\nCreated by Ronny Wels (sedosa).", 16.0f);
+        styleLabel (credit, "Free, open-source amp and effects plugin.\nCreated by sedosa.", 16.0f);
         styleLabel (licenseTitle, "LICENSE", 13.0f, knobAccent, true);
         styleLabel (license, "Project code: AGPL-3.0. Captures, IRs and third-party assets remain under their respective licenses. Retain required attribution.", 15.0f);
         projectLink.setFont (license.getFont(), false);
