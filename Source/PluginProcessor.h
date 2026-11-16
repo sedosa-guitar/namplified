@@ -64,7 +64,8 @@ public:
     bool hasVirtualCab() const;
     struct CabPosition { int x = -1, y = 0, mic = 1; bool operator== (const CabPosition& other) const { return x == other.x && y == other.y && mic == other.mic; } };
     CabPosition getVirtualCabPosition (int slot) const;
-    bool isImpulseResponseActive (int slot) const;
+    bool isAmpEnabled (int slot) const;
+    bool isCabEnabled (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
     bool cycleNAMCapture (int slot, int direction);
     juce::String getImpulseResponseName (int slot) const;
@@ -99,6 +100,8 @@ public:
     void stopAudition();
 
     static constexpr int maxPresetNameLength = 32;
+    static constexpr auto presetNameCharacters =
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-+().";
     bool canSavePresetName (const juce::String& name) const;
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name, juce::StringArray& missingAssets);
@@ -121,6 +124,8 @@ public:
     void setAudioSettingsCallback (std::function<void()> callback) { audioSettingsCallback = std::move (callback); }
     bool hasAudioSettingsCallback() const noexcept { return static_cast<bool> (audioSettingsCallback); }
     void showAudioSettings() { if (audioSettingsCallback) audioSettingsCallback(); }
+    void setAudioStatusCallback (std::function<juce::String()> callback) { audioStatusCallback = std::move (callback); }
+    juce::String getAudioStatus() const { return audioStatusCallback ? audioStatusCallback() : juce::String(); }
 
 
     //==============================================================================
@@ -222,6 +227,7 @@ private:
 
     std::atomic<int> learnedMidiParameterIndex { -1 };
     std::function<void()> audioSettingsCallback;
+    std::function<juce::String()> audioStatusCallback;
 
     std::array<float, 2> gateEnvelope {};
     std::array<float, 2> gateGain { 1.0f, 1.0f };
