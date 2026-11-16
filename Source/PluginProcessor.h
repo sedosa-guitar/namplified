@@ -98,6 +98,8 @@ public:
     void playAudition (juce::AudioBuffer<float> audio, double sampleRate);
     void stopAudition();
 
+    static constexpr int maxPresetNameLength = 32;
+    bool canSavePresetName (const juce::String& name) const;
     bool saveUserPreset (const juce::String& name);
     bool loadUserPreset (const juce::String& name, juce::StringArray& missingAssets);
     bool deleteUserPreset (const juce::String& name);

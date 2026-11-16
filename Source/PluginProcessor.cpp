@@ -1,3 +1,4 @@
+#include <FactoryAssets.h>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <get_dsp.h>
@@ -210,22 +211,25 @@ NAMplifiedAudioProcessor::NAMplifiedAudioProcessor()
 
     const auto presets = getUserPresetDirectory();
     const auto factory = presets.getChildFile ("Factory");
-    factory.getChildFile ("NAM").createDirectory();
-    factory.getChildFile ("IR").createDirectory();
-    presets.getChildFile ("Artist/Sedosa").createDirectory();
-   #if JUCE_MAC
-    if (juce::JUCEApplicationBase::isStandaloneApp())
+    const auto namFolder = factory.getChildFile ("NAM");
+    const auto irFolder = factory.getChildFile ("IR");
+    const auto artistFolder = presets.getChildFile ("Artist/Sedosa");
+    for (const auto& folder : { namFolder, irFolder, artistFolder })
+        folder.createDirectory();
+
+    for (int index = 0; index < FactoryAssets::namedResourceListSize; ++index)
     {
-        const auto bundledFactory = juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-            .getParentDirectory().getSiblingFile ("Resources").getChildFile ("Factory");
-        for (const auto& asset : bundledFactory.findChildFiles (juce::File::findFiles, true, "*.nam;*.wav"))
-        {
-            const auto destination = factory.getChildFile (asset.getRelativePathFrom (bundledFactory));
-            if (! destination.exists() && destination.getParentDirectory().createDirectory().wasOk())
-                asset.copyFileTo (destination);
-        }
+        const juce::String name (FactoryAssets::originalFilenames[index]);
+        const auto& folder = name.endsWithIgnoreCase (".nam") ? namFolder
+                           : name.endsWithIgnoreCase (".wav") ? irFolder : artistFolder;
+        const auto destination = folder.getChildFile (name);
+        if (destination.exists())
+            continue;
+
+        int size = 0;
+        if (const auto* data = FactoryAssets::getNamedResource (FactoryAssets::namedResourceList[index], size))
+            destination.replaceWithData (data, static_cast<size_t> (size));
     }
-   #endif
 }
 
 juce::File NAMplifiedAudioProcessor::getMidiMappingsFile() const
@@ -853,8 +857,26 @@ juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
     return names;
 }
 
+bool NAMplifiedAudioProcessor::canSavePresetName (const juce::String& name) const
+{
+    const auto leaf = name.startsWith ("Artist/Sedosa/") ? name.substring (14) : name;
+    if (leaf.isEmpty() || leaf.containsAnyOf ("/\\"))
+        return false;
+
+    constexpr auto allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    if (leaf.length() <= maxPresetNameLength && leaf.containsOnly (allowed))
+        return true;
+
+    // Preserve existing names, including the bundled Sedosa presets with spaces.
+    const auto file = getUserPresetFile (name);
+    return file.existsAsFile() && file.getFileNameWithoutExtension() == leaf;
+}
+
 bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
 {
+    if (! canSavePresetName (name))
+        return false;
+
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! file.getParentDirectory().createDirectory().wasOk())
         return false;
@@ -1034,8 +1056,10 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name, juce::S
         if (storedPath.isEmpty())
             continue;
         const auto presetRelative = storedPath.startsWith ("@preset-assets/");
-        const auto assetFile = shared || presetRelative
-            ? (shared ? library : assetsFolder).getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false))
+        const auto factoryRelative = storedPath.startsWith ("@factory/");
+        const auto assetFile = shared || presetRelative || factoryRelative
+            ? (shared ? library : factoryRelative ? getUserPresetDirectory().getChildFile ("Factory") : assetsFolder)
+                .getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false))
             : juce::File (storedPath);
         if (! assetFile.existsAsFile())
         {

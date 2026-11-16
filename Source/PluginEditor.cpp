@@ -6395,27 +6395,35 @@ void NAMplifiedAudioProcessorEditor::updateBlendValue()
 
 void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()> onSaved)
 {
-    auto* alert = new juce::AlertWindow ("Save preset", "Name this signal-chain preset.",
+    const auto nameRule = "New names use 1–" + juce::String (NAMplifiedAudioProcessor::maxPresetNameLength)
+        + " letters (A–Z) or digits (0–9).";
+    auto* alert = new juce::AlertWindow ("Save preset", nameRule,
                                          juce::MessageBoxIconType::NoIcon, this);
     alert->setLookAndFeel (editorLookAndFeel.get());
     const auto currentKey = selectedPresetName();
     const auto currentName = currentKey.fromLastOccurrenceOf ("/", false, false);
-    alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "My Preset", "Preset name:");
+    alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "MyPreset", "Preset name:");
     alert->addComboBox ("presetDestination", { "User", "Artist / Sedosa" }, "Save to:");
     alert->getComboBoxComponent ("presetDestination")->setSelectedId (
         currentKey.startsWith ("Artist/Sedosa/") ? 2 : 1, juce::dontSendNotification);
     alert->addButton ("Save", 1);
     alert->addButton ("Cancel", 0);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
-    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, onSaved = std::move (onSaved)] (int result)
+    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, nameRule, onSaved = std::move (onSaved)] (int result)
     {
         alert->setLookAndFeel (nullptr);
         if (result != 1 || safeThis == nullptr)
             return;
-        const auto name = alert->getTextEditorContents ("presetName").trim();
+        const auto name = alert->getTextEditorContents ("presetName");
         const auto sedosa = alert->getComboBoxComponent ("presetDestination")->getSelectedId() == 2;
         const auto key = sedosa ? "Artist/Sedosa/" + name : name;
-        if (name.isEmpty() || ! safeThis->audioProcessor.saveUserPreset (key))
+        if (name.containsAnyOf ("/\\") || ! safeThis->audioProcessor.canSavePresetName (key))
+        {
+            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
+                                                     "Invalid preset name", nameRule);
+            return;
+        }
+        if (! safeThis->audioProcessor.saveUserPreset (key))
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                      "Could not save preset",
