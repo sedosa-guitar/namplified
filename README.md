@@ -103,43 +103,23 @@ An automated TONE3000 response stated that a free, open-source product with no p
 
 See the [official API documentation](https://www.tone3000.com/api) and [API terms](https://www.tone3000.com/api/terms). NAMplified is an independent project and is not endorsed by TONE3000.
 
-## Screenshots
+## Cabinet sources and routing
 
-### Signal chain and Amp 1 controls
-
-![NAMplified in parallel mode with paired cabinet paths and Amp 1 controls](docs/images/namplified-signal-chain.png)
+See the current screenshots in the [NAMplified Web project](https://github.com/sedosa-guitar/namplified-web).
 
 ### Cab sources
 
-**IR** loads a cabinet impulse response and offers independent low, mid, and high EQ.
-
-![Cab 1 with a WAV impulse response selected and the cabinet EQ controls visible](docs/images/namplified-cab-ir.png)
+**Impulse Response** loads a cabinet impulse response and offers independent low, mid, and high EQ.
 
 **Virtual Cab (development preview)** shows the Oversized 4x12, selectable microphones, and position controls directly in the cab block.
-
-![Cab 1 in Virtual Cab mode with the Oversized 4x12, SM57, and microphone position controls](docs/images/namplified-virtual-cab.png)
 
 ### Amp and cabinet routing
 
 **Series** feeds one active amp into the next, then blends the two cabinet IRs.
 
-![Series routing with the amp blocks in line and two cabinet branches](docs/images/namplified-series.png)
-
 **Parallel with paired IRs** sends each amp to its own cabinet IR.
 
-![Parallel routing with Amp 1 feeding IR 1 and Amp 2 feeding IR 2](docs/images/namplified-paired.png)
-
 **Parallel with a shared IR** blends the two amp paths before a single cabinet IR.
-
-![Parallel routing with both amp paths merging into IR 1](docs/images/namplified-shared.png)
-
-### TONE3000 capture selection
-
-![TONE3000 Browse button next to the selected capture name in the amp editor](docs/images/namplified-tone.png)
-
-### Preset Builder
-
-![Preset Builder with a tone prompt, DI recording and import controls, and Original, A and B audition buttons](docs/images/namplified-builder.png)
 
 ## Build from source (macOS)
 

@@ -8,16 +8,16 @@
 #include <array>
 #include <cmath>
 
-const auto background = juce::Colour::fromRGB (10, 12, 18);
-const auto panel = juce::Colour::fromRGB (22, 25, 32);
-const auto chainSurface = juce::Colour::fromRGB (15, 18, 24);
-const auto tileSurface = juce::Colour::fromRGB (26, 30, 38);
-const auto detailSurface = juce::Colour::fromRGB (13, 16, 22);
+const auto background = juce::Colour::fromRGB (25, 24, 23);
+const auto panel = juce::Colour::fromRGB (39, 37, 35);
+const auto chainSurface = juce::Colour::fromRGB (28, 27, 26);
+const auto tileSurface = juce::Colour::fromRGB (39, 37, 36);
+const auto detailSurface = juce::Colour::fromRGB (25, 24, 23);
 const auto accent = juce::Colour::fromRGB (238, 119, 57);
 const auto selectionAccent = juce::Colour (0xff5ca9ff);
 const auto knobAccent = juce::Colour (0xff70d9b6);
-const auto text = juce::Colour::fromRGB (235, 236, 239);
-const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
+const auto text = juce::Colour::fromRGB (244, 238, 229);
+const auto secondaryText = juce::Colour::fromRGB (193, 184, 172);
 
 namespace
 {
@@ -475,7 +475,7 @@ public:
             path.closeSubPath();
             return path.createPathWithRoundedCorners (10.0f);
         };
-        g.setColour (juce::Colour (0xff343b48));
+        g.setColour (juce::Colour (0xff48423a));
         g.fillPath (face (-30));
         g.setColour (tileSurface);
         const auto front = face (0);
@@ -904,7 +904,7 @@ public:
                        r.getRight() - 6.0f, r.getCentreY() - 7.0f);
         g.setColour (accent);
         g.strokePath (curve, juce::PathStrokeType (2.2f));
-        g.setColour (juce::Colour::fromRGB (235, 236, 239));
+        g.setColour (juce::Colour::fromRGB (244, 238, 229));
         g.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
         g.drawText (getButtonText(), getLocalBounds().removeFromBottom (16), juce::Justification::centred);
     }
@@ -976,9 +976,9 @@ public:
     {
         auto bounds = getLocalBounds().toFloat();
         auto graph = bounds.reduced (22.0f, 18.0f);
-        g.setColour (juce::Colour::fromRGB (19, 24, 32));
+        g.setColour (detailSurface);
         g.fillRoundedRectangle (graph, 12.0f);
-        g.setColour (juce::Colour::fromRGB (52, 59, 72));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (graph, 12.0f, 1.0f);
 
         const auto plot = getPlotBounds();
@@ -986,7 +986,7 @@ public:
         for (int db = -12; db <= 12; db += 6)
         {
             const auto y = gainToY (static_cast<float> (db), plot);
-            g.setColour (db == 0 ? juce::Colour::fromRGB (88, 99, 114) : juce::Colour::fromRGB (43, 51, 63));
+            g.setColour (db == 0 ? juce::Colour (0xff766e63) : juce::Colour (0xff48423a));
             g.drawHorizontalLine (juce::roundToInt (y), plot.getX(), plot.getRight());
             g.setColour (secondaryText);
             g.drawText (juce::String (db) + " dB", 4, juce::roundToInt (y - 9.0f), 54, 18,
@@ -996,7 +996,7 @@ public:
         for (const auto frequency : { 100.0f, 1000.0f, 10000.0f })
         {
             const auto x = frequencyToX (frequency, plot);
-            g.setColour (juce::Colour::fromRGB (36, 44, 56));
+            g.setColour (juce::Colour (0xff37332e));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
             g.setColour (secondaryText);
             g.setFont (namplifiedFontOptions (12.0f));
@@ -1013,7 +1013,7 @@ public:
             const auto gain = bandGain (band);
             const juce::Point<float> point (x, gainToY (gain, plot));
             points.push_back (point);
-            g.setColour (juce::Colour::fromRGB (41, 49, 61));
+            g.setColour (juce::Colour (0xff423c35));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
             g.setFont (namplifiedFontOptions (12.0f));
             g.setColour (text);
@@ -1056,7 +1056,7 @@ public:
                               || audioProcessor.isParameterModified (frequencyIds[band])
                               || audioProcessor.isParameterModified (qParameterIds[band]);
             const auto pointColour = changed ? accent : juce::Colour (0xff66d6b2);
-            g.setColour (juce::Colour::fromRGB (19, 24, 32));
+            g.setColour (detailSurface);
             g.fillEllipse (point.x - 10.0f, point.y - 10.0f, 20.0f, 20.0f);
             g.setColour (pointColour);
             g.fillEllipse (point.x - 5.5f, point.y - 5.5f, 11.0f, 11.0f);
@@ -1328,7 +1328,7 @@ public:
 
         listBox.setRowHeight (54);
         listBox.setColour (juce::ListBox::backgroundColourId, detailSurface);
-        listBox.setColour (juce::ListBox::outlineColourId, juce::Colour (0xff303845));
+        listBox.setColour (juce::ListBox::outlineColourId, juce::Colour (0xff48423a));
         listBox.setOutlineThickness (1);
         addAndMakeVisible (listBox);
 
@@ -1398,9 +1398,9 @@ private:
         for (int i = 0; i < choices.size(); ++i)
             box.addItem (choices[i], i + 1);
         box.setSelectedId (1, juce::dontSendNotification);
-        box.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff131820));
+        box.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff191817));
         box.setColour (juce::ComboBox::textColourId, text);
-        box.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff38424f));
+        box.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff514a41));
     }
 
     static juce::String findSetting (const juce::String& textToInspect,
@@ -2025,10 +2025,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto card = getLocalBounds().toFloat().reduced (1.0f);
-        g.setGradientFill ({ juce::Colour (0xff202b3b), card.getTopLeft(),
-                             juce::Colour (0xff151d2a), card.getBottomLeft(), false });
+        g.setGradientFill ({ juce::Colour (0xff34312d), card.getTopLeft(),
+                             juce::Colour (0xff282624), card.getBottomLeft(), false });
         g.fillRoundedRectangle (card, 16.0f);
-        g.setColour (juce::Colour (0xff394b60));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (card, 16.0f, 1.25f);
         drawBlockIcon (g, juce::Rectangle<float> (26.0f, 18.0f, 32.0f, 32.0f));
     }
@@ -2936,7 +2936,7 @@ public:
             const auto markerSize = juce::jlimit (15.0f, 19.0f, r.getWidth() * 0.18f);
             auto marker = juce::Rectangle<float> (markerSize, markerSize)
                               .withPosition (r.getRight() - markerSize - 8.0f, r.getY() + 8.0f);
-            g.setColour (juce::Colour (0xff12171e).withAlpha (0.96f));
+            g.setColour (juce::Colour (0xff191817).withAlpha (0.96f));
             g.fillEllipse (marker);
             g.setColour (juce::Colour (0xff70d9b6));
             g.drawEllipse (marker, 1.5f);
@@ -3139,7 +3139,7 @@ private:
                              signet.getY() + signet.getHeight() * 0.73f);
             monogram.lineTo (signet.getX() + signet.getWidth() * 0.73f,
                              signet.getY() + signet.getHeight() * 0.27f);
-            g.setColour (juce::Colour (0xff141920));
+            g.setColour (juce::Colour (0xff201e1c));
             g.strokePath (monogram, juce::PathStrokeType (juce::jmax (2.0f, signet.getWidth() * 0.09f),
                                                            juce::PathStrokeType::curved,
                                                            juce::PathStrokeType::rounded));
@@ -3716,10 +3716,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto area = getLocalBounds().toFloat().reduced (1.0f);
-        g.setGradientFill ({ juce::Colour (0xff182638), area.getCentreX(), area.getY(),
+        g.setGradientFill ({ juce::Colour (0xff282e2b), area.getCentreX(), area.getY(),
                              chainSurface, area.getRight(), area.getBottom(), true });
         g.fillRoundedRectangle (area, 18.0f);
-        g.setColour (juce::Colour (0xff2c3c50));
+        g.setColour (juce::Colour (0xff48423a));
         g.drawRoundedRectangle (area, 18.0f, 1.25f);
         const auto now = juce::Time::getMillisecondCounterHiRes();
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
@@ -4023,9 +4023,9 @@ public:
     {
         g.fillAll (juce::Colours::black.withAlpha (0.64f));
         const auto frame = panel().toFloat();
-        g.setColour (juce::Colour (0xff141922));
+        g.setColour (juce::Colour (0xff242220));
         g.fillRoundedRectangle (frame, 16.0f);
-        g.setColour (juce::Colour (0xff384553));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (frame.reduced (0.5f), 16.0f, 1.0f);
         g.drawHorizontalLine (panel().getY() + 87, frame.getX() + 24.0f, frame.getRight() - 24.0f);
     }
@@ -4152,7 +4152,7 @@ public:
         {
             field->setFont (namplifiedFontOptions (16.0f));
             field->setIndents (12, 8);
-            field->setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff10151c));
+            field->setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff191817));
             field->setColour (juce::TextEditor::outlineColourId, juce::Colour (0xff435061));
             field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
             addAndMakeVisible (*field);
@@ -6018,14 +6018,14 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setGradientFill ({ juce::Colour (0xff162338), bounds.getTopLeft(),
+    g.setGradientFill ({ juce::Colour (0xff2b3531), bounds.getTopLeft(),
                          background, bounds.getBottomRight(), false });
     g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
     if (! eqFullscreen)
     {
-        g.setColour (juce::Colour (0xff394b5e));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (pitchGroupBounds.toFloat().reduced (0.5f), 7.0f, 1.0f);
     }
 }
