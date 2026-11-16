@@ -68,7 +68,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode uses the 16,384-stage bucket-brigade DSP from ChowMatrix for bandwidth-limited repeats.
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
 - **Chorus:** Uses Airwindows TakeCare, a stereo chorus ensemble. Adjust Rate, Depth, and Mix, with Random, Regen, Derez, Buffer, and Output grouped under Advanced.
-- **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −12 to +12 semitones.
+- **Pitch:** transpose the guitar before the signal chain by up to one octave down or up (−12 to +12 semitones). When shifting down, the shifter adapts to steady low notes to help retain their fundamental.
 
 ### Preset Builder (Beta, macOS)
 
