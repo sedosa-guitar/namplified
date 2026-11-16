@@ -2844,7 +2844,7 @@ private:
     juce::String displayedNAMPath;
 };
 
-class StageTile final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class StageTile final : public juce::Component, private juce::Timer
 {
 public:
     StageTile (juce::AudioProcessorValueTreeState& state, juce::String name, juce::String enableId,
@@ -2854,8 +2854,6 @@ public:
           selectHandler (std::move (select))
     {
         setName (stageName);
-        if (stageName.startsWith ("NAM Profile"))
-            setTooltip ("Load a NAM capture into this slot. Capture switching uses other files in the same folder.");
         startTimerHz (4);
     }
 
@@ -2930,18 +2928,6 @@ public:
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
             drawModuleIcon (g, iconBounds, getModuleKind());
-        }
-        if (kind == ModuleKind::nam)
-        {
-            const auto markerSize = juce::jlimit (15.0f, 19.0f, r.getWidth() * 0.18f);
-            auto marker = juce::Rectangle<float> (markerSize, markerSize)
-                              .withPosition (r.getRight() - markerSize - 8.0f, r.getY() + 8.0f);
-            g.setColour (juce::Colour (0xff191817).withAlpha (0.96f));
-            g.fillEllipse (marker);
-            g.setColour (juce::Colour (0xff70d9b6));
-            g.drawEllipse (marker, 1.5f);
-            g.setFont (namplifiedFontOptions (markerSize * 0.72f, juce::Font::bold));
-            g.drawText ("?", marker.translated (0.0f, -0.5f), juce::Justification::centred, false);
         }
         g.endTransparencyLayer();
 
