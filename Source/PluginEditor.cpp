@@ -2084,7 +2084,7 @@ public:
             else
                 ++knobCount;
         }
-        const auto columns = selectorCount > 0 ? 4 : 5;
+        const auto columns = getKnobColumnLimit (selectorCount > 0);
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = usesCompactControls() ? 132 : controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
@@ -2282,9 +2282,8 @@ public:
                 return;
             }
         }
-        const auto isNamCapture = stageName.startsWith ("NAM Profile");
-        const auto columns = isNamCapture ? juce::jmin (3, static_cast<int> (knobs.size()))
-                                         : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
+        const auto columns = juce::jmin (getKnobColumnLimit (! selectors.empty()),
+                                         static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
         const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
         const auto baseRowPitch = usesCompactControls() ? 132 : controlRowPitch;
@@ -2809,6 +2808,13 @@ private:
     std::function<void()> contentSizeChangedHandler;
     std::function<void (bool)> fullscreenHandler;
     bool usesCompactControls() const { return stageName == "Delay" || stageName == "Reverb"; }
+
+    int getKnobColumnLimit (bool hasSelectors) const
+    {
+        if (stageName == "Delay" || stageName.startsWith ("NAM Profile"))
+            return 3;
+        return hasSelectors ? 4 : 5;
+    }
 
     static constexpr int rotarySize = 102;
     static constexpr int controlRowPitch = 156;
