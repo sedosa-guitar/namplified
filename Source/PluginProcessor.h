@@ -123,6 +123,7 @@ public:
 
     bool saveMidiMappings() const;
 
+    void setCenteredInput (bool centered) noexcept { centeredInput.store (centered, std::memory_order_relaxed); }
     void setAudioSettingsCallback (std::function<void()> callback) { audioSettingsCallback = std::move (callback); }
     bool hasAudioSettingsCallback() const noexcept { return static_cast<bool> (audioSettingsCallback); }
     void showAudioSettings() { if (audioSettingsCallback) audioSettingsCallback(); }
@@ -230,6 +231,7 @@ private:
     std::atomic<int> learnedMidiCC { -1 };
 
     std::atomic<int> learnedMidiParameterIndex { -1 };
+    std::atomic<bool> centeredInput { false };
     std::function<void()> audioSettingsCallback;
     std::function<juce::String()> audioStatusCallback;
 
@@ -239,9 +241,19 @@ private:
     std::array<chowdsp::BBD::BBDDelayLine<16384>, 2> analogDelay;
     std::array<float, 2> analogDelayInput {};
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
+    struct ClassicPitchTracker
+    {
+        float process (float sample, float dcCoefficient, float lowPassCoefficient,
+                       float rangeCoefficient, float defaultRange, float sampleRate) noexcept;
+
+        float dc = 0.0f, low = 0.0f, filtered = 0.0f;
+        float crossingFraction = 0.0f, trackedPeriod = 0.0f, range = 0.0f;
+        int samplesSinceCrossing = 0, stablePeriods = 0;
+    };
+    ClassicPitchTracker classicPitchTracker;
     std::array<std::vector<float>, 2> pitchBuffers;
     int pitchBufferSize = 0, pitchWritePosition = 0;
-    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f, pitchCurrentBlend = 1.0f;
+    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f;
     std::atomic<bool> inputClipped { false }, outputClipped { false };
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
     std::array<std::array<BiquadState, 9>, 2> postEqFilters {};

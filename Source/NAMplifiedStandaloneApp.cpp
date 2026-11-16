@@ -17,14 +17,14 @@ namespace
 class AudioMidiSettingsWindow final : public juce::DialogWindow
 {
 public:
-    explicit AudioMidiSettingsWindow (juce::StandalonePluginHolder& holder)
+    AudioMidiSettingsWindow (juce::StandalonePluginHolder& holder, juce::PropertiesFile& settings)
         : DialogWindow ("Audio / MIDI Settings", juce::Colour (0xff141922), true, true)
     {
         setUsingNativeTitleBar (false);
         setResizable (false, false);
         if (auto* editor = holder.processor->getActiveEditor())
             setLookAndFeel (&editor->getLookAndFeel());
-        setContentOwned (new Content (holder, [this] { closeButtonPressed(); }), true);
+        setContentOwned (new Content (holder, settings, [this] { closeButtonPressed(); }), true);
     }
 
     ~AudioMidiSettingsWindow() override
@@ -39,13 +39,13 @@ private:
     class Content final : public Component
     {
     public:
-        Content (juce::StandalonePluginHolder& holder, std::function<void()> onClose)
+        Content (juce::StandalonePluginHolder& holder, juce::PropertiesFile& settings, std::function<void()> onClose)
             : selector (holder.deviceManager,
                         0, holder.processor->getBus (true, 0) != nullptr
                             ? holder.processor->getBus (true, 0)->getDefaultLayout().size() : 0,
                         0, holder.processor->getBus (false, 0) != nullptr
                             ? holder.processor->getBus (false, 0)->getDefaultLayout().size() : 0,
-                        true, holder.processor->producesMidi(), true, false)
+                        true, holder.processor->producesMidi(), false, false)
         {
             heading.setText ("Audio / MIDI", juce::dontSendNotification);
             heading.setFont (namplifiedFontOptions (24.0f, juce::Font::bold));
@@ -63,6 +63,21 @@ private:
             mute.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xff70d9b6));
             addChildComponent (mute);
             mute.setVisible (holder.processor->getBus (true, 0) != nullptr);
+
+            if (auto* processor = dynamic_cast<NAMplifiedAudioProcessor*> (holder.processor.get()))
+            {
+                centerInput.setToggleState (settings.getBoolValue ("centerGuitarInput", true), juce::dontSendNotification);
+                centerInput.setColour (juce::ToggleButton::textColourId, juce::Colour (0xffc5cfdd));
+                centerInput.setColour (juce::ToggleButton::tickColourId, juce::Colour (0xff70d9b6));
+                centerInput.setTooltip ("Center the guitar before the amps and keep stereo effects on the output.");
+                centerInput.onClick = [this, processor, &settings]
+                {
+                    const auto centered = centerInput.getToggleState();
+                    processor->setCenteredInput (centered);
+                    settings.setValue ("centerGuitarInput", centered);
+                };
+                addAndMakeVisible (centerInput);
+            }
 
             selector.setItemHeight (32);
             viewport.setViewedComponent (&selector, false);
@@ -88,6 +103,8 @@ private:
             instructions.setBounds (area.removeFromTop (42));
             if (mute.isVisible())
                 mute.setBounds (area.removeFromTop (36));
+            if (centerInput.isVisible())
+                centerInput.setBounds (area.removeFromTop (36));
             auto footer = area.removeFromBottom (38);
             close.setBounds (footer.removeFromRight (94));
             area.removeFromBottom (8);
@@ -99,6 +116,7 @@ private:
         juce::Label heading;
         juce::Label instructions;
         juce::ToggleButton mute { "Mute audio input (uncheck when using an interface or headphones)" };
+        juce::ToggleButton centerInput { "Center guitar input" };
         juce::AudioDeviceSelectorComponent selector;
         juce::Viewport viewport;
         juce::TextButton close { "Close" };
@@ -268,6 +286,7 @@ private:
                                                                        channelConfig, false);
         if (auto* processor = dynamic_cast<NAMplifiedAudioProcessor*> (holder->processor.get()))
         {
+            processor->setCenteredInput (appProperties.getUserSettings()->getBoolValue ("centerGuitarInput", true));
             auto* holderForCallback = holder.get();
             processor->setAudioStatusCallback ([holderForCallback]() -> juce::String
             {
@@ -290,7 +309,7 @@ private:
             {
                 if (audioSettings == nullptr)
                 {
-                    audioSettings = std::make_unique<AudioMidiSettingsWindow> (*holderForCallback);
+                    audioSettings = std::make_unique<AudioMidiSettingsWindow> (*holderForCallback, *appProperties.getUserSettings());
                     audioSettings->centreAroundComponent (mainWindow.get(), audioSettings->getWidth(),
                                                           audioSettings->getHeight());
                 }

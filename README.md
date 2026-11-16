@@ -29,7 +29,7 @@ NAMplified is a free hobby project. If you’d like to help cover development co
 
 ### Build a signal chain
 
-- **Input section:** input trim and global pitch shift from −24 to +24 semitones.
+- **Input section:** input trim and global pitch shift from −12 to +12 semitones.
 - **Pre-amp blocks:** Noise Gate, 1176-style compressor, Boost, and five-band Pre EQ. Reorder these blocks within the section and enable or disable them individually.
 - **Two NAM slots:** load a Neural Amp Modeler (NAM) capture into either slot, adjust its input/output levels, and shape it with a Bass/Mid/Treble EQ placed before or after the capture.
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
@@ -57,7 +57,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - Blend the two IR paths in parallel; the IRs are summed from their input rather than cascaded one after another.
 - Use **IR Shape EQ** on each cabinet slot for low, mid, and high tone shaping.
 - In Shared IR 1 routing, both amp paths feed the shared first IR.
-- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in a local Standalone build. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
+- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in local Standalone, AU, and VST3 builds. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
 
 ### Effects and tone shaping
 
@@ -68,7 +68,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode uses the 16,384-stage bucket-brigade DSP from ChowMatrix for bandwidth-limited repeats.
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
 - **Chorus:** Uses Airwindows TakeCare, a stereo chorus ensemble. Adjust Rate, Depth, and Mix, with Random, Regen, Derez, Buffer, and Output grouped under Advanced.
-- **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −24 to +24 semitones.
+- **Pitch:** transpose the guitar before the signal chain by up to one octave down or up (−12 to +12 semitones). When shifting down, the shifter adapts to steady low notes to help retain their fundamental.
 
 ### Preset Builder (Beta, macOS)
 
@@ -150,7 +150,7 @@ Build from source using the instructions above. Public installers are not availa
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 
-The local Virtual Cab audition WAVs are excluded by default. To build the local Standalone preview with your existing generated WAVs in the build directory's `LocalVirtualCab` folder, configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
+The local Virtual Cab audition WAVs are excluded by default. To embed your existing generated WAVs in local Standalone, AU, and VST3 builds, put them in the build directory’s `LocalVirtualCab` folder and configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
 
 ## Third-party software and licenses
 

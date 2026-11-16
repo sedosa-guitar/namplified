@@ -82,22 +82,10 @@ if (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
     )
-    option(NAMPLIFIED_LOCAL_VIRTUAL_CAB "Include local Virtual Cab audition WAVs" OFF)
-    if (NAMPLIFIED_LOCAL_VIRTUAL_CAB)
-        file(GLOB local_virtual_cab CONFIGURE_DEPENDS "${CMAKE_BINARY_DIR}/LocalVirtualCab/*.wav")
-        foreach(asset IN LISTS local_virtual_cab)
-            set_source_files_properties("${asset}" PROPERTIES MACOSX_PACKAGE_LOCATION "Resources/LocalVirtualCab")
-            target_sources(NAMplified_Standalone PRIVATE "${asset}")
-        endforeach()
-    else()
-        add_custom_command(TARGET NAMplified_Standalone POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E rm -rf
-                "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/LocalVirtualCab"
-            VERBATIM)
-    endif()
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/Factory"
+            "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/LocalVirtualCab"
         COMMAND ${CMAKE_COMMAND}
             "-DPLIST_PATH=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Info.plist"
             "-DICON_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
@@ -126,6 +114,26 @@ juce_add_binary_data(NAMplifiedFactoryAssets
     HEADER_NAME FactoryAssets.h
     NAMESPACE FactoryAssets
     SOURCES ${factory_assets})
+
+option(NAMPLIFIED_LOCAL_VIRTUAL_CAB "Embed local Virtual Cab WAVs in Standalone, AU, and VST3" OFF)
+if (NAMPLIFIED_LOCAL_VIRTUAL_CAB)
+    file(GLOB local_virtual_cab CONFIGURE_DEPENDS "${CMAKE_BINARY_DIR}/LocalVirtualCab/*.wav")
+    foreach(mic RANGE 0 2)
+        foreach(offset RANGE 0 8)
+            foreach(distance RANGE 0 6)
+                if (NOT EXISTS "${CMAKE_BINARY_DIR}/LocalVirtualCab/${mic}-${offset}-${distance}.wav")
+                    message(FATAL_ERROR "Missing Virtual Cab WAV: ${mic}-${offset}-${distance}.wav in ${CMAKE_BINARY_DIR}/LocalVirtualCab")
+                endif()
+            endforeach()
+        endforeach()
+    endforeach()
+    juce_add_binary_data(NAMplifiedVirtualCabAssets
+        HEADER_NAME VirtualCabAssets.h
+        NAMESPACE VirtualCabAssets
+        SOURCES ${local_virtual_cab})
+    target_link_libraries(NAMplified PRIVATE NAMplifiedVirtualCabAssets)
+    target_compile_definitions(NAMplified PRIVATE NAMPLIFIED_HAS_VIRTUAL_CAB=1)
+endif()
 
 target_sources(NAMplified PRIVATE
     Source/TakeCareChorus.cpp

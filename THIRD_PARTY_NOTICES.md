@@ -199,5 +199,4 @@ The Oversized 4x12 prototype uses impulse responses generated locally with
 [ConeTracer's conetrace-godscab-v0.1 model](https://github.com/vessel-dsp/ConeTracer/tree/f7f0488b8383779180b7d2087ecc5123f030616a).
 The model was trained on God's Cab measurements. ConeTracer's MIT notice
 covers its source code and documentation. Redistribution rights for the
-generated WAV files have not been confirmed. Keep builds containing
-`Contents/Resources/LocalVirtualCab` local until those rights are confirmed.
+generated WAV files have not been confirmed. Keep builds with the Virtual Cab WAVs embedded local until those rights are confirmed.

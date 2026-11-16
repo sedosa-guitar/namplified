@@ -1,4 +1,7 @@
 #include <FactoryAssets.h>
+#if NAMPLIFIED_HAS_VIRTUAL_CAB
+#include <VirtualCabAssets.h>
+#endif
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <get_dsp.h>
@@ -70,6 +73,60 @@ juce::String displayNameForNAMFile (const juce::File& file, int slot)
         name = name.substring (prefix.length());
     return name;
 }
+}
+
+float NAMplifiedAudioProcessor::ClassicPitchTracker::process (
+    float sample, float dcCoefficient, float lowPassCoefficient,
+    float rangeCoefficient, float defaultRange, float sampleRate) noexcept
+{
+    dc += dcCoefficient * (sample - dc);
+    low += lowPassCoefficient * (sample - dc - low);
+    const auto previous = filtered;
+    filtered += lowPassCoefficient * (low - filtered);
+
+    const auto timeout = juce::roundToInt (sampleRate * 0.06f);
+    samplesSinceCrossing = juce::jmin (samplesSinceCrossing + 1, timeout);
+    if (previous <= 0.0f && filtered > 0.0f && filtered - previous > 1.0e-7f)
+    {
+        const auto fraction = filtered / (filtered - previous);
+        const auto period = static_cast<float> (samplesSinceCrossing) + crossingFraction - fraction;
+        if (period >= sampleRate / 145.0f && period <= sampleRate / 55.0f
+            && samplesSinceCrossing < timeout)
+        {
+            if (std::abs (period - trackedPeriod) <= trackedPeriod * 0.04f)
+            {
+                stablePeriods = juce::jmin (3, stablePeriods + 1);
+                trackedPeriod += (period - trackedPeriod) * 0.25f;
+            }
+            else
+            {
+                trackedPeriod = period;
+                stablePeriods = 1;
+            }
+        }
+        else
+        {
+            stablePeriods = 0;
+        }
+        samplesSinceCrossing = 0;
+        crossingFraction = fraction;
+    }
+    else if (samplesSinceCrossing == timeout)
+    {
+        stablePeriods = 0;
+    }
+
+    // A whole number of source cycles between the two taps keeps their crossfade coherent.
+    auto targetRange = defaultRange;
+    if (stablePeriods >= 3)
+    {
+        const auto twoCycles = 2.0f * trackedPeriod;
+        targetRange = static_cast<float> (juce::roundToInt (defaultRange / twoCycles)) * twoCycles;
+    }
+    if (range == 0.0f)
+        range = defaultRange;
+    range += rangeCoefficient * (targetRange - range);
+    return range;
 }
 
 struct NAMplifiedAudioProcessor::NAMModel
@@ -372,9 +429,8 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         juce::StringArray { "Stereo", "Mono" }, 0));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
-        juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
+        juce::NormalisableRange<float> (-12.0f, 12.0f, 1.0f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("st")));
-    addKnob ("pitchBlend", "Pitch Blend", 0.0f, 1.0f, 1.0f);
     addToggle ("gateOn", "Noise Gate", true);
     // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
@@ -1210,8 +1266,8 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         channel.assign (static_cast<size_t> (pitchBufferSize), 0.0f);
     pitchWritePosition = 0;
     pitchPhase = 0.0f;
+    classicPitchTracker = {};
     pitchCurrentSemitones = 0.0f;
-    pitchCurrentBlend = parameters.getRawParameterValue ("pitchBlend")->load();
     for (int slot = 0; slot < numAmpSlots; ++slot)
         namModels[slot]->prepare (sampleRate, samplesPerBlock);
     boostNAMModel->prepare (sampleRate, samplesPerBlock);
@@ -1281,7 +1337,9 @@ bool NAMplifiedAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
     if (output != juce::AudioChannelSet::mono() && output != juce::AudioChannelSet::stereo())
         return false;
    #if ! JucePlugin_IsSynth
-    if (output != layouts.getMainInputChannelSet())
+    const auto input = layouts.getMainInputChannelSet();
+    if (output != input && ! (input == juce::AudioChannelSet::mono()
+                              && output == juce::AudioChannelSet::stereo()))
         return false;
    #endif
     return true;
@@ -1456,6 +1514,15 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto inputMeterChannels = juce::jmin (getTotalNumInputChannels(), buffer.getNumChannels());
     for (int channel = 0; channel < inputMeterChannels; ++channel)
         inputBlockPeak = juce::jmax (inputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    if (inputMeterChannels == 1 && numChannels == 2)
+        buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+    else if (inputMeterChannels == 2 && numChannels == 2 && centeredInput.load (std::memory_order_relaxed))
+    {
+        auto* left = buffer.getWritePointer (0);
+        auto* right = buffer.getWritePointer (1);
+        for (int sample = 0; sample < numSamples; ++sample)
+            left[sample] = right[sample] = 0.5f * (left[sample] + right[sample]);
+    }
     if (inputBlockPeak >= 1.0f)
         inputClipped.store (true, std::memory_order_relaxed);
     const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
@@ -1465,11 +1532,20 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // Two crossfaded delay taps provide a low-latency, monophonic-style pitch
     // shift before the rest of the chain. The 20 ms minimum delay prevents the
     // read heads from catching the write head; all memory is allocated in prepareToPlay.
-    const auto pitchTarget = juce::jlimit (-24.0f, 24.0f, get ("pitchSemitones"));
-    const auto pitchBlend = get ("pitchBlend", 1.0f);
+    const auto pitchTarget = juce::jlimit (-12.0f, 12.0f, get ("pitchSemitones"));
     const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
     const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
-    const auto pitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto defaultPitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
+    const auto trackLowNotes = pitchTarget < 0.0f && numChannels > 0;
+    const auto coefficientFor = [sampleRate] (double hz)
+    {
+        return static_cast<float> (1.0 - std::exp (-juce::MathConstants<double>::twoPi * hz / sampleRate));
+    };
+    const auto pitchTrackerDc = trackLowNotes ? coefficientFor (15.0) : 0.0f;
+    const auto pitchTrackerLowPass = trackLowNotes ? coefficientFor (150.0) : 0.0f;
+    const auto pitchTrackerSmoothing = trackLowNotes ? coefficientFor (3.0) : 0.0f;
+    if (! trackLowNotes)
+        classicPitchTracker = {};
     const auto wrapReadIndex = [this] (float position)
     {
         while (position < 0.0f) position += static_cast<float> (pitchBufferSize);
@@ -1478,7 +1554,6 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     for (int sample = 0; sample < numSamples; ++sample)
     {
-        pitchCurrentBlend += (pitchBlend - pitchCurrentBlend) * pitchSmoothing;
         pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
         for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
             pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
@@ -1486,6 +1561,16 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
         if (std::abs (pitchCurrentSemitones) > 0.01f)
         {
+            auto pitchRange = defaultPitchRange;
+            if (trackLowNotes)
+            {
+                auto analysisInput = buffer.getSample (0, sample);
+                if (numChannels == 2)
+                    analysisInput = 0.5f * (analysisInput + buffer.getSample (1, sample));
+                pitchRange = classicPitchTracker.process (analysisInput, pitchTrackerDc, pitchTrackerLowPass,
+                                                          pitchTrackerSmoothing, defaultPitchRange,
+                                                          static_cast<float> (sampleRate));
+            }
             const auto ratio = std::exp2 (pitchCurrentSemitones / 12.0f);
             const auto phaseIncrement = std::abs (1.0f - ratio) / pitchRange;
             auto phaseA = pitchPhase;
@@ -1514,7 +1599,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 };
                 auto& sampleValue = buffer.getWritePointer (channel)[sample];
                 const auto shifted = readTap (delayA) * weightA + readTap (delayB) * weightB;
-                sampleValue = std::lerp (sampleValue, shifted, pitchCurrentBlend);
+                sampleValue = shifted;
             }
             pitchPhase += phaseIncrement;
             if (pitchPhase >= 1.0f)
@@ -1818,7 +1903,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 static_cast<double> (get ("delayTime", 360.0f)) * sampleRate / 1000.0));
             const auto feedback = juce::jlimit (0.0f, 0.9f, get ("delayFeedback", 0.32f));
             const auto mix = juce::jlimit (0.0f, 1.0f, get ("delayMix", 0.25f));
-            const auto mode = juce::jlimit (0, 2, juce::roundToInt (get ("delayMode", 1.0f)));
+            const auto pingPong = get ("delayMode", 1.0f) >= 1.5f;
             const auto analog = get ("delayType", 0.0f) >= 0.5f;
             const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
             const auto highPass = get ("delayHighPass", 100.0f);
@@ -1874,16 +1959,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     (detectorDb - duckThreshold) * 0.75f);
                 const auto duckGain = juce::Decibels::decibelsToGain (-duckDb);
 
-                if (mode == 0) // Mono repeats sit in the centre of a stereo output.
-                {
-                    const auto wet = readRepeat (0);
-                    writeRepeat (0, monoInput + wet * feedback);
-                    const auto outputWet = wet * duckGain * mix;
-                    left[i] = dryLeft * (1.0f - mix) + outputWet;
-                    if (numChannels > 1)
-                        right[i] = dryRight * (1.0f - mix) + outputWet;
-                }
-                else if (mode == 2) // Mono input alternates between the left and right delay lines.
+                if (pingPong) // Mono input alternates between the left and right delay lines.
                 {
                     const auto wetLeft = readRepeat (0);
                     const auto wetRight = readRepeat (1);
@@ -2090,7 +2166,7 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
-        for (const auto* id : { "outputMode", "pitchBlend", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
+        for (const auto* id : { "outputMode", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput" })
         {
             if (state.getChildWithProperty ("id", id).isValid())
@@ -2235,16 +2311,13 @@ void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& 
     irLoaded[slot].store (true);
 }
 
-static juce::File virtualCabDirectory()
-{
-    return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-        .getParentDirectory().getSiblingFile ("Resources").getChildFile ("LocalVirtualCab");
-}
-
 bool NAMplifiedAudioProcessor::hasVirtualCab() const
 {
-    return juce::JUCEApplicationBase::isStandaloneApp()
-        && virtualCabDirectory().getChildFile ("1-0-0.wav").existsAsFile();
+   #if NAMPLIFIED_HAS_VIRTUAL_CAB
+    return true;
+   #else
+    return false;
+   #endif
 }
 
 NAMplifiedAudioProcessor::CabPosition NAMplifiedAudioProcessor::getVirtualCabPosition (int slot) const
@@ -2254,20 +2327,35 @@ NAMplifiedAudioProcessor::CabPosition NAMplifiedAudioProcessor::getVirtualCabPos
 
 bool NAMplifiedAudioProcessor::selectVirtualCab (int slot, int offset, int distance, int mic)
 {
-    if (! hasVirtualCab())
+   #if NAMPLIFIED_HAS_VIRTUAL_CAB
+    if (! juce::isPositiveAndBelow (slot, numIRSlots))
         return false;
+
     const CabPosition point { juce::jlimit (0, 8, offset), juce::jlimit (0, 6, distance), juce::jlimit (0, 2, mic) };
     if (virtualCabPositions[slot] == point)
         return true;
-    const auto file = virtualCabDirectory().getChildFile (juce::String (point.mic) + "-" + juce::String (point.x) + "-" + juce::String (point.y) + ".wav");
-    if (! file.existsAsFile())
-        return false;
-    irConvolvers[slot].loadImpulseResponse (file, juce::dsp::Convolution::Stereo::no,
-                                            juce::dsp::Convolution::Trim::no, 0,
-                                            juce::dsp::Convolution::Normalise::yes);
-    virtualCabPositions[slot] = point;
-    irLoaded[slot].store (true);
-    return true;
+
+    const auto filename = juce::String (point.mic) + "-" + juce::String (point.x) + "-" + juce::String (point.y) + ".wav";
+    for (int index = 0; index < VirtualCabAssets::namedResourceListSize; ++index)
+    {
+        if (filename != VirtualCabAssets::originalFilenames[index])
+            continue;
+
+        int size = 0;
+        if (const auto* data = VirtualCabAssets::getNamedResource (VirtualCabAssets::namedResourceList[index], size))
+        {
+            irConvolvers[slot].loadImpulseResponse (data, static_cast<size_t> (size), juce::dsp::Convolution::Stereo::no,
+                                                    juce::dsp::Convolution::Trim::no, 0,
+                                                    juce::dsp::Convolution::Normalise::yes);
+            virtualCabPositions[slot] = point;
+            irLoaded[slot].store (true);
+            return true;
+        }
+    }
+   #else
+    juce::ignoreUnused (slot, offset, distance, mic);
+   #endif
+    return false;
 }
 
 void NAMplifiedAudioProcessor::selectFileCab (int slot)
