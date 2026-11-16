@@ -1729,9 +1729,23 @@ public:
             row.label.setText ("Track " + juce::String (i + 1), juce::dontSendNotification);
             row.label.setFont (namplifiedFontOptions (22.0f, juce::Font::bold));
             row.label.setColour (juce::Label::textColourId, text);
-            for (auto* component : std::initializer_list<juce::Component*> { &row.label, &row.status, &row.record, &row.mute, &row.clear })
+            for (auto* component : std::initializer_list<juce::Component*> { &row.label, &row.status, &row.level,
+                                                                           &row.record, &row.mute, &row.clear })
                 addAndMakeVisible (*component);
             row.status.setFont (namplifiedFontOptions (18.0f));
+            row.level.setSliderStyle (juce::Slider::LinearHorizontal);
+            row.level.setTextBoxStyle (juce::Slider::TextBoxRight, false, 62, 26);
+            row.level.setRange (0.0, 100.0, 1.0);
+            row.level.setTextValueSuffix (" %");
+            row.level.setTitle ("Track " + juce::String (i + 1) + " volume");
+            row.level.setTooltip ("Adjust the playback volume of this track.");
+            row.level.setColour (juce::Slider::trackColourId, knobAccent);
+            row.level.setValue (looper.getTrackLevel (i) * 100.0f, juce::dontSendNotification);
+            row.level.setDoubleClickReturnValue (true, 100.0);
+            row.level.onValueChange = [this, i]
+            {
+                looper.setTrackLevel (i, static_cast<float> (rows[static_cast<size_t> (i)].level.getValue() / 100.0));
+            };
             for (auto* button : { &row.record, &row.mute, &row.clear })
                 button->getProperties().set ("namButtonFontHeight", 20.0);
             row.record.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff573137));
@@ -1794,6 +1808,8 @@ public:
             row.clear.setBounds (bounds.removeFromRight (buttonWidth).reduced (3, 0));
             row.mute.setBounds (bounds.removeFromRight (buttonWidth).reduced (3, 0));
             row.record.setBounds (bounds.removeFromRight (buttonWidth + 36).reduced (3, 0));
+            const auto levelWidth = juce::jmin (280, bounds.getWidth() / 2);
+            row.level.setBounds (bounds.removeFromRight (levelWidth).reduced (8, 0));
             row.label.setBounds (bounds.removeFromLeft (juce::jmin (130, bounds.getWidth() / 2)));
             row.status.setBounds (bounds.reduced (8, 0));
         }
@@ -1805,6 +1821,7 @@ private:
         using State = TrackLooper::TrackState;
         bool hasTracks = false;
         const auto settingLength = looper.isSettingLength();
+        const auto finishing = looper.isFinishingAtBarEnd();
         const auto elapsed = looper.getElapsedSeconds();
         const auto duration = looper.getLengthSeconds();
         const auto displayedLength = duration > 0.0f ? duration : static_cast<float> (TrackLooper::maxSeconds);
@@ -1836,8 +1853,9 @@ private:
                                  : state == State::playing ? (looper.isPlaying() ? "Playing" : "Paused")
                                  : state == State::muted ? "Muted" : "Empty", juce::dontSendNotification);
             const auto recorded = state == State::playing || state == State::muted;
-            const auto canFinish = settingLength && state == State::recording;
-            row.record.setButtonText (canFinish ? "Finish loop"
+            const auto canFinish = settingLength && state == State::recording && ! finishing;
+            row.record.setButtonText (finishing && state == State::recording ? "Finishing…"
+                                     : canFinish ? "Finish loop"
                                      : state == State::queued ? "Queued" : state == State::recording ? "Recording"
                                      : recorded ? "Recorded" : "Record");
             row.record.setEnabled (active && (canFinish || state == State::queued
@@ -1854,7 +1872,8 @@ private:
         transport.setButtonText (looper.isPlaying() ? "Pause" : "Play");
         status.setText (! active ? "Enable the Looper block to record or play."
                        : countTrack >= 0 ? "Count-in before recording."
-                       : settingLength ? "Finish the first take to set the loop length."
+                       : finishing ? "Recording continues to the end of the bar."
+                       : settingLength ? "Finish loop snaps the recording to a bar line."
                        : hasTracks ? "Record another track to layer over the loop."
                                    : "Record a track for up to 60 seconds.",
                         juce::dontSendNotification);
@@ -1864,6 +1883,7 @@ private:
     {
         juce::Rectangle<int> bounds;
         juce::Label label, status;
+        juce::Slider level;
         juce::Colour indicator = secondaryText;
         juce::TextButton record { "Record" }, mute { "Mute" }, clear { "Clear" };
     };

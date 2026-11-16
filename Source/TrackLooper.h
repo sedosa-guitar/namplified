@@ -18,14 +18,27 @@ public:
     {
         rate = sampleRate;
         for (auto& track : tracks)
+        {
             track.audio.setSize (2, static_cast<int> (maxSeconds * rate));
+            track.gain.reset (rate, 0.02);
+            track.gain.setCurrentAndTargetValue (track.level.load (std::memory_order_relaxed));
+        }
         reset();
     }
 
     void request (int track, Action action) { commands[static_cast<size_t> (track)].store (action); }
+    void setTrackLevel (int track, float level)
+    {
+        tracks[static_cast<size_t> (track)].level.store (juce::jlimit (0.0f, 1.0f, level), std::memory_order_relaxed);
+    }
+    float getTrackLevel (int track) const
+    {
+        return tracks[static_cast<size_t> (track)].level.load (std::memory_order_relaxed);
+    }
     TrackState getState (int track) const { return states[static_cast<size_t> (track)].load(); }
     bool isPlaying() const { return playing.load(); }
     bool isSettingLength() const { return settingLength.load(); }
+    bool isFinishingAtBarEnd() const { return finishingAtBarEnd.load(); }
     int getCountInTrack() const { return countInTrack.load(); }
     int getCountInBeat() const { return countInBeat.load(); }
     float getElapsedSeconds() const { return elapsedSeconds.load(); }
@@ -48,10 +61,19 @@ public:
             const auto action = commands[index].exchange (Action::none);
             if (action == Action::record && enabled)
             {
-                if (static_cast<int> (index) == firstRecording && position > 0)
+                if (static_cast<int> (index) == firstRecording && position > 0 && ! finishPending)
                 {
-                    length = position;
-                    finishRecording();
+                    const auto samplesPerBar = samplesPerBeat * beatsPerBar;
+                    const auto barsElapsed = position / samplesPerBar;
+                    const auto completedBars = static_cast<int> (barsElapsed);
+                    const auto previousBar = juce::roundToInt (completedBars * samplesPerBar);
+                    const auto lateClick = completedBars > 0 && position - previousBar <= samplesPerBeat * 0.5;
+                    const auto targetBar = lateClick ? completedBars : completedBars + 1;
+                    length = juce::jmin (length, juce::roundToInt (targetBar * samplesPerBar));
+                    if (position >= length)
+                        finishRecording();
+                    else
+                        finishPending = true;
                 }
                 else if (track.state == TrackState::queued)
                 {
@@ -64,7 +86,9 @@ public:
                     {
                         samplesPerBeat = rate * 60.0 / juce::jlimit (60.0f, 180.0f, bpm);
                         beatsPerBar = meterBeats;
-                        length = track.audio.getNumSamples();
+                        const auto samplesPerBar = samplesPerBeat * beatsPerBar;
+                        const auto maxBars = static_cast<int> (track.audio.getNumSamples() / samplesPerBar);
+                        length = juce::roundToInt (maxBars * samplesPerBar);
                         position = 0;
                         firstRecording = static_cast<int> (index);
                     }
@@ -94,7 +118,10 @@ public:
                 if (static_cast<int> (index) == armedTrack)
                     armedTrack = -1;
                 if (static_cast<int> (index) == firstRecording)
+                {
                     firstRecording = -1;
+                    finishPending = false;
+                }
             }
         }
 
@@ -108,6 +135,8 @@ public:
         int flashBeat = 0;
         if (enabled && playing.load() && length > 0)
         {
+            for (auto& track : tracks)
+                track.gain.setTargetValue (track.level.load (std::memory_order_relaxed));
             const auto edgeSamples = juce::jmax (1.0f, static_cast<float> (0.003 * rate));
             for (int sample = 0; sample < samples; ++sample)
             {
@@ -130,14 +159,18 @@ public:
                     : 0.0f;
                 const auto distanceToEdge = juce::jmin (position, length - 1 - position);
                 const auto playbackGain = 0.65f * juce::jmin (1.0f, static_cast<float> (distanceToEdge) / edgeSamples);
+                std::array<float, trackCount> trackGains;
+                for (size_t index = 0; index < tracks.size(); ++index)
+                    trackGains[index] = playbackGain * tracks[index].gain.getNextValue();
 
                 for (int channel = 0; channel < channels; ++channel)
                 {
                     const auto input = audio.getSample (channel, sample);
                     auto output = input + click;
                     // Every track records the processed guitar alone, before playback and the click are added.
-                    for (auto& track : tracks)
+                    for (size_t index = 0; index < tracks.size(); ++index)
                     {
+                        auto& track = tracks[index];
                         if (track.state == TrackState::recording)
                         {
                             track.audio.setSample (channel, position, input);
@@ -145,7 +178,7 @@ public:
                                 track.audio.setSample (1, position, input);
                         }
                         else if (track.state == TrackState::playing)
-                            output += playbackGain * track.audio.getSample (channel, position);
+                            output += trackGains[index] * track.audio.getSample (channel, position);
                     }
                     audio.setSample (channel, sample, output);
                 }
@@ -160,6 +193,7 @@ public:
         countInTrack.store (armedTrack);
         countInBeat.store (flashBeat);
         settingLength.store (firstRecording >= 0);
+        finishingAtBarEnd.store (finishPending);
         elapsedSeconds.store (static_cast<float> (position / rate));
         lengthSeconds.store (static_cast<float> (length / rate));
         for (size_t index = 0; index < tracks.size(); ++index)
@@ -171,6 +205,7 @@ private:
     {
         position = 0;
         firstRecording = -1;
+        finishPending = false;
         for (auto& track : tracks)
             if (track.state == TrackState::recording)
                 track.state = TrackState::playing;
@@ -183,6 +218,8 @@ private:
         countInTrack.store (-1);
         countInBeat.store (0);
         settingLength.store (false);
+        finishPending = false;
+        finishingAtBarEnd.store (false);
         elapsedSeconds.store (0.0f);
         lengthSeconds.store (0.0f);
         playing.store (false);
@@ -197,6 +234,8 @@ private:
     struct Track
     {
         juce::AudioBuffer<float> audio;
+        std::atomic<float> level { 1.0f };
+        juce::SmoothedValue<float> gain { 1.0f };
         TrackState state = TrackState::empty;
     };
 
@@ -206,6 +245,8 @@ private:
     std::atomic<bool> playing { false }, toggleRequested { false }, resetRequested { false };
     double rate = 44100.0;
     std::atomic<bool> settingLength { false };
+    std::atomic<bool> finishingAtBarEnd { false };
+    bool finishPending = false;
     std::atomic<float> elapsedSeconds { 0.0f }, lengthSeconds { 0.0f };
     double samplesPerBeat = 22050.0;
     std::atomic<int> countInTrack { -1 }, countInBeat { 0 };
