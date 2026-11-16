@@ -529,6 +529,9 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         addKnob (id, "Post EQ Band Q", 0.30f, 4.0f, 0.707f);
     // Keep unity gain at the rotary's midpoint so 0 dB points to 12 o'clock.
     addKnob ("outputGain", "Output Gain", -24.0f, 24.0f, 0.0f);
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "chorusMode", 1 }, "Chorus Mode",
+        juce::StringArray { "Classic", "Advanced (TakeCare)" }, 0));
     return layout;
 }
 
@@ -1242,6 +1245,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     }
     reverbWorkBuffer.setSize (2, samplesPerBlock);
     delayDuckEnvelope = 0.0f;
+    classicChorus.prepare (spec);
     chorus.prepare (spec);
     outputSafetyLimiter.prepare (spec);
     outputSafetyLimiter.setThreshold (0.0f);
@@ -1988,12 +1992,20 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
         else if (stage == 2 && enabled ("chorusOn"))
         {
-            chorus.process (buffer, numChannels, numSamples,
-                            get ("chorusRate", 0.8f), get ("chorusDepth", 0.35f),
-                            get ("chorusMix", 0.25f),
-                            { get ("chorusRandom", 0.5f), get ("chorusRegen", 0.5f),
-                              get ("chorusDerez", 0.5f), get ("chorusBuffer", 0.5f),
-                              get ("chorusOutput", 1.0f) });
+            const auto rate = get ("chorusRate", 0.8f);
+            const auto depth = get ("chorusDepth", 0.35f);
+            const auto mix = get ("chorusMix", 0.25f);
+            if (enabled ("chorusMode"))
+            {
+                chorus.process (buffer, numChannels, numSamples, rate, depth, mix,
+                                { get ("chorusRandom", 0.5f), get ("chorusRegen", 0.5f),
+                                  get ("chorusDerez", 0.5f), get ("chorusBuffer", 0.5f),
+                                  get ("chorusOutput", 1.0f) });
+            }
+            else
+            {
+                classicChorus.process (buffer, numChannels, numSamples, rate, depth, mix);
+            }
         }
         else if (stage == 3 && enabled ("postOn"))
             processEqualizer (buffer, numChannels, numSamples, "post", false);
@@ -2065,7 +2077,8 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         if (! xml->hasTagName (parameters.state.getType()))
             return;
         auto state = juce::ValueTree::fromXml (*xml);
-        for (const auto* id : { "outputMode", "pitchBlend", "chorusRandom", "chorusRegen",
+        const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
+        for (const auto* id : { "outputMode", "pitchBlend", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput" })
         {
             if (state.getChildWithProperty ("id", id).isValid())
@@ -2073,7 +2086,9 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             juce::ValueTree parameterState { "PARAM" };
             parameterState.setProperty ("id", id, nullptr);
             const auto* parameter = parameters.getParameter (id);
-            parameterState.setProperty ("value", parameter->convertFrom0to1 (parameter->getDefaultValue()), nullptr);
+            const auto value = juce::StringRef (id) == juce::StringRef ("chorusMode") && usedAdvancedChorus
+                ? 1.0f : parameter->convertFrom0to1 (parameter->getDefaultValue());
+            parameterState.setProperty ("value", value, nullptr);
             state.appendChild (parameterState, nullptr);
         }
         parameters.replaceState (state);
