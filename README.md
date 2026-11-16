@@ -141,6 +141,21 @@ The first configure fetches JUCE 9.0.5, NeuralAmpModelerCore 0.5.4, and `chowdsp
 
 Build products are placed under `build`. The CMake project currently generates **AU**, **VST3**, and **Standalone** macOS targets. The standalone application can be opened from the generated `NAMplified_artefacts` directory; plugin bundles are generated alongside it.
 
+### Regression tests
+
+On macOS, build and run the test suites with CMake and CTest:
+
+```sh
+cmake -S . -B build -DNAMPLIFIED_BUILD_TESTS=ON
+cmake --build build --target NAMplifiedTests
+ctest --test-dir build --output-on-failure
+```
+
+The suites check looper count-in, bar boundaries and multitrack playback,
+preset name validation and save/load, parallel amp and cabinet mixing, Standard
+and Ping Pong delay, both chorus modes, and pitch shifting one octave in either
+direction. The processor tests use a separate home directory inside the build folder.
+
 ## Installation
 
 Build from source using the instructions above. Public installers are not available yet. For the macOS ZIP, see the [installation guide](docs/INSTALL-macOS.html).
