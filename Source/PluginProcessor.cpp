@@ -532,6 +532,12 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "chorusMode", 1 }, "Chorus Mode",
         juce::StringArray { "Classic", "Advanced (TakeCare)" }, 0));
+    addToggle ("looperOn", "Looper");
+    addToggle ("looperClick", "Looper Click");
+    addKnob ("looperTempo", "Looper Tempo", 60.0f, 180.0f, 120.0f);
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "looperMeter", 1 }, "Looper Time Signature",
+        juce::StringArray { "2/4", "3/4", "4/4", "5/4", "6/8", "7/8" }, 2));
     return layout;
 }
 
@@ -782,6 +788,7 @@ void NAMplifiedAudioProcessor::resetToDefaults()
     setAmpSlotOrder ({ 0, 1 });
     setIRSlotOrder ({ 0, 1 });
     setPostFxOrder (defaultPostFxOrder);
+    looper.requestReset();
 
     const auto defaultCapture = getUserPresetDirectory().getChildFile ("Factory/NAM/AC20_boosted_lowgain_AmpCab.nam");
     if (defaultCapture.existsAsFile())
@@ -1247,6 +1254,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     delayDuckEnvelope = 0.0f;
     classicChorus.prepare (spec);
     chorus.prepare (spec);
+    looper.prepare (sampleRate);
     outputSafetyLimiter.prepare (spec);
     outputSafetyLimiter.setThreshold (0.0f);
     outputSafetyLimiter.setRelease (80.0f);
@@ -2012,6 +2020,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     for (const auto stage : getPostFxOrder())
         processPostFx (stage);
+    constexpr int looperBeats[] { 2, 3, 4, 5, 6, 7 };
+    const auto meterIndex = juce::jlimit (0, 5, juce::roundToInt (get ("looperMeter", 2.0f)));
+    looper.process (buffer, numChannels, numSamples, enabled ("looperOn"), enabled ("looperClick"),
+                    get ("looperTempo", 120.0f), looperBeats[meterIndex]);
     const auto outputGainDb = get ("outputGain");
     buffer.applyGain (juce::Decibels::decibelsToGain (outputGainDb));
     buffer.applyGain (juce::Decibels::decibelsToGain (get ("masterVolume")));
@@ -2078,7 +2090,7 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
-        for (const auto* id : { "outputMode", "pitchBlend", "chorusMode", "chorusRandom", "chorusRegen",
+        for (const auto* id : { "outputMode", "pitchBlend", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput" })
         {
             if (state.getChildWithProperty ("id", id).isValid())

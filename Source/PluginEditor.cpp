@@ -1683,6 +1683,207 @@ private:
     }
 };
 
+class LooperControls final : public juce::Component, private juce::Timer
+{
+public:
+    explicit LooperControls (NAMplifiedAudioProcessor& processor)
+        : looper (processor.getLooper()),
+          enabled (processor.parameters.getRawParameterValue ("looperOn"))
+    {
+        tempo.setSliderStyle (juce::Slider::IncDecButtons);
+        tempo.setTextBoxStyle (juce::Slider::TextBoxLeft, false, 100, 42);
+        tempo.setTextValueSuffix (" BPM");
+        tempo.setNumDecimalPlacesToDisplay (0);
+        tempo.setTitle ("Loop tempo");
+        meter.addItemList ({ "2/4", "3/4", "4/4", "5/4", "6/8", "7/8" }, 1);
+        meter.setTitle ("Time signature");
+        meter.setTooltip ("One count per beat. In 6/8 and 7/8 the count follows eighth notes.");
+        addAndMakeVisible (meter);
+        click.setClickingTogglesState (true);
+        click.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff245348));
+        transport.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff245348));
+        addAndMakeVisible (tempo);
+        addAndMakeVisible (click);
+        addAndMakeVisible (transport);
+        transport.onClick = [this] { looper.togglePlayback(); };
+        tempoAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+            processor.parameters, "looperTempo", tempo);
+        meterAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.parameters, "looperMeter", meter);
+        clickAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+            processor.parameters, "looperClick", click);
+
+        tempo.setNumDecimalPlacesToDisplay (0);
+        click.getProperties().set ("namButtonFontHeight", 21.0);
+        transport.getProperties().set ("namButtonFontHeight", 21.0);
+        status.setFont (namplifiedFontOptions (18.0f));
+        status.setColour (juce::Label::textColourId, secondaryText);
+        addAndMakeVisible (status);
+        timeLabel.setFont (namplifiedFontOptions (24.0f, juce::Font::bold));
+        timeLabel.setColour (juce::Label::textColourId, text);
+        timeLabel.setJustificationType (juce::Justification::centredRight);
+        addAndMakeVisible (timeLabel);
+        for (int i = 0; i < TrackLooper::trackCount; ++i)
+        {
+            auto& row = rows[static_cast<size_t> (i)];
+            row.label.setText ("Track " + juce::String (i + 1), juce::dontSendNotification);
+            row.label.setFont (namplifiedFontOptions (22.0f, juce::Font::bold));
+            row.label.setColour (juce::Label::textColourId, text);
+            for (auto* component : std::initializer_list<juce::Component*> { &row.label, &row.status, &row.record, &row.mute, &row.clear })
+                addAndMakeVisible (*component);
+            row.status.setFont (namplifiedFontOptions (18.0f));
+            for (auto* button : { &row.record, &row.mute, &row.clear })
+                button->getProperties().set ("namButtonFontHeight", 20.0);
+            row.record.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff573137));
+            row.record.onClick = [this, i] { looper.request (i, TrackLooper::Action::record); };
+            row.mute.onClick = [this, i] { looper.request (i, TrackLooper::Action::mute); };
+            row.clear.onClick = [this, i] { looper.request (i, TrackLooper::Action::clear); };
+        }
+        timerCallback();
+        startTimerHz (30);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto accentColour = recording ? juce::Colour (0xffef7287) : knobAccent;
+        g.setColour (background);
+        g.fillRoundedRectangle (timelineBounds.toFloat(), 8.0f);
+        const auto rail = timelineBounds.toFloat().reduced (2.0f);
+        if (progress > 0.0)
+        {
+            g.setColour (accentColour.withAlpha (0.28f));
+            g.fillRoundedRectangle (rail.withWidth (rail.getWidth() * static_cast<float> (progress)), 6.0f);
+            g.setColour (accentColour);
+            const auto playhead = rail.getX() + rail.getWidth() * static_cast<float> (progress);
+            g.drawVerticalLine (juce::roundToInt (playhead), rail.getY() + 3.0f, rail.getBottom() - 3.0f);
+        }
+
+        for (size_t i = 0; i < rows.size(); ++i)
+        {
+            const auto& row = rows[i];
+            const auto flashing = static_cast<int> (i) == flashingTrack && flashBeat > 0;
+            auto bounds = row.bounds.toFloat();
+            g.setColour (flashing ? juce::Colour (0xffa32e42) : background);
+            g.fillRoundedRectangle (bounds, 9.0f);
+            g.setColour (row.indicator.withAlpha (flashing ? 1.0f : 0.26f));
+            g.drawRoundedRectangle (bounds.reduced (0.5f), 9.0f, 1.0f);
+            g.setColour (row.indicator);
+            g.fillRoundedRectangle (bounds.removeFromLeft (4.0f).reduced (0.0f, 11.0f), 2.0f);
+        }
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds();
+        auto settings = area.removeFromTop (46);
+        const auto toolWidth = juce::jlimit (86, 160, settings.getWidth() / 5);
+        tempo.setBounds (settings.removeFromLeft (toolWidth + 16).reduced (2));
+        meter.setBounds (settings.removeFromLeft (toolWidth).reduced (2));
+        click.setBounds (settings.removeFromLeft (toolWidth).reduced (2));
+        transport.setBounds (settings.removeFromRight (toolWidth).reduced (2));
+        area.removeFromTop (10);
+        timelineBounds = area.removeFromTop (42);
+        timeLabel.setBounds (timelineBounds.reduced (12, 0));
+        status.setBounds (area.removeFromTop (34));
+        const auto rowHeight = area.getHeight() / static_cast<int> (rows.size());
+        for (auto& row : rows)
+        {
+            row.bounds = area.removeFromTop (rowHeight).reduced (0, 4);
+            auto bounds = row.bounds.reduced (18, 6);
+            const auto buttonWidth = juce::jlimit (72, 144, bounds.getWidth() / 7);
+            row.clear.setBounds (bounds.removeFromRight (buttonWidth).reduced (3, 0));
+            row.mute.setBounds (bounds.removeFromRight (buttonWidth).reduced (3, 0));
+            row.record.setBounds (bounds.removeFromRight (buttonWidth + 36).reduced (3, 0));
+            row.label.setBounds (bounds.removeFromLeft (juce::jmin (130, bounds.getWidth() / 2)));
+            row.status.setBounds (bounds.reduced (8, 0));
+        }
+    }
+
+private:
+    void timerCallback() override
+    {
+        using State = TrackLooper::TrackState;
+        bool hasTracks = false;
+        const auto settingLength = looper.isSettingLength();
+        const auto elapsed = looper.getElapsedSeconds();
+        const auto duration = looper.getLengthSeconds();
+        const auto displayedLength = duration > 0.0f ? duration : static_cast<float> (TrackLooper::maxSeconds);
+        progress = juce::jlimit (0.0, 1.0, static_cast<double> (elapsed / displayedLength));
+        timeLabel.setText (juce::String (elapsed, 1) + " s / " + juce::String (displayedLength, 1) + " s", juce::dontSendNotification);
+        const auto active = enabled->load() >= 0.5f;
+        const auto countTrack = looper.getCountInTrack();
+        const auto countBeat = looper.getCountInBeat();
+        if (flashingTrack != countTrack || flashBeat != countBeat)
+        {
+            flashingTrack = countTrack;
+            flashBeat = countBeat;
+            repaint();
+        }
+        recording = false;
+        for (int i = 0; i < TrackLooper::trackCount; ++i)
+        {
+            auto& row = rows[static_cast<size_t> (i)];
+            const auto state = looper.getState (i);
+            hasTracks |= state != State::empty;
+            recording |= state == State::recording;
+            const auto flashing = i == countTrack && countBeat > 0;
+            row.indicator = flashing || state == State::recording ? juce::Colour (0xffff8999)
+                          : state == State::playing ? knobAccent : secondaryText;
+            row.status.setColour (juce::Label::textColourId, row.indicator);
+            row.status.setText (flashing ? "Beat " + juce::String (countBeat)
+                                 : state == State::queued ? "Waiting"
+                                 : state == State::recording ? "Recording"
+                                 : state == State::playing ? (looper.isPlaying() ? "Playing" : "Paused")
+                                 : state == State::muted ? "Muted" : "Empty", juce::dontSendNotification);
+            const auto recorded = state == State::playing || state == State::muted;
+            const auto canFinish = settingLength && state == State::recording;
+            row.record.setButtonText (canFinish ? "Finish loop"
+                                     : state == State::queued ? "Queued" : state == State::recording ? "Recording"
+                                     : recorded ? "Recorded" : "Record");
+            row.record.setEnabled (active && (canFinish || state == State::queued
+                                              || (state == State::empty && ! settingLength && countTrack < 0)));
+            row.mute.setButtonText (state == State::muted ? "Unmute" : "Mute");
+            row.mute.setEnabled (recorded);
+            row.clear.setEnabled (state != State::empty);
+        }
+        if (isShowing())
+            repaint();
+        tempo.setEnabled (! hasTracks);
+        meter.setEnabled (! hasTracks);
+        transport.setEnabled (active && hasTracks && ! settingLength && countTrack < 0);
+        transport.setButtonText (looper.isPlaying() ? "Pause" : "Play");
+        status.setText (! active ? "Enable the Looper block to record or play."
+                       : countTrack >= 0 ? "Count-in before recording."
+                       : settingLength ? "Finish the first take to set the loop length."
+                       : hasTracks ? "Record another track to layer over the loop."
+                                   : "Record a track for up to 60 seconds.",
+                        juce::dontSendNotification);
+    }
+
+    struct Row
+    {
+        juce::Rectangle<int> bounds;
+        juce::Label label, status;
+        juce::Colour indicator = secondaryText;
+        juce::TextButton record { "Record" }, mute { "Mute" }, clear { "Clear" };
+    };
+    TrackLooper& looper;
+    const std::atomic<float>* enabled;
+    juce::Slider tempo;
+    juce::ComboBox meter;
+    int flashingTrack = -1, flashBeat = 0;
+    double progress = 0.0;
+    bool recording = false;
+    juce::Rectangle<int> timelineBounds;
+    juce::Label timeLabel;
+    juce::TextButton click { "Click" }, transport { "Play" };
+    juce::Label status;
+    std::array<Row, TrackLooper::trackCount> rows;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> tempoAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> clickAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> meterAttachment;
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -1699,6 +1900,11 @@ public:
         heading.setFont (namplifiedFontOptions (19.0f, juce::Font::bold));
         heading.setColour (juce::Label::textColourId, text);
         addAndMakeVisible (heading);
+        if (stageName == "Looper")
+        {
+            looperControls = std::make_unique<LooperControls> (audioProcessor);
+            addAndMakeVisible (*looperControls);
+        }
         if (stageName == "Chorus")
         {
             advancedHeading.setText ("ADVANCED", juce::dontSendNotification);
@@ -2077,6 +2283,8 @@ public:
     }
     int getPreferredHeight() const
     {
+        if (looperControls != nullptr)
+            return 442;
         if (graphicEq != nullptr)
             return 310;
         int selectorCount = 0;
@@ -2150,6 +2358,13 @@ public:
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
         if (expandButton != nullptr)
             expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
+
+        if (looperControls != nullptr)
+        {
+            area.removeFromTop (8);
+            looperControls->setBounds (area);
+            return;
+        }
 
         if (loadKind == FileKind::nam)
         {
@@ -2822,6 +3037,7 @@ private:
     NAMplifiedAudioProcessor& audioProcessor;
     NAMplifiedLookAndFeel lookAndFeel;
     juce::String stageName;
+    std::unique_ptr<LooperControls> looperControls;
     juce::String enableParameterId;
     FileKind loadKind;
     int slot;
@@ -3023,7 +3239,7 @@ public:
     }
 
 public:
-    enum class ModuleKind { pedal, noiseGate, compressor, boost, equalizer, nam, ir, input, output, delay, reverb, chorus };
+    enum class ModuleKind { pedal, noiseGate, compressor, boost, equalizer, nam, ir, input, output, delay, reverb, chorus, looper };
 
     static ModuleKind getKindForStageName (const juce::String& name)
     {
@@ -3038,6 +3254,7 @@ public:
         if (name == "Delay") return ModuleKind::delay;
         if (name == "Reverb") return ModuleKind::reverb;
         if (name == "Chorus") return ModuleKind::chorus;
+        if (name == "Looper") return ModuleKind::looper;
         return ModuleKind::pedal;
     }
 
@@ -3071,6 +3288,7 @@ private:
         if (stageName == "Delay") return ModuleKind::delay;
         if (stageName == "Reverb") return ModuleKind::reverb;
         if (stageName == "Chorus") return ModuleKind::chorus;
+        if (stageName == "Looper") return ModuleKind::looper;
         return ModuleKind::pedal;
     }
 
@@ -3078,6 +3296,17 @@ private:
     {
         const auto ink = getIconColour (kind);
         g.setColour (ink);
+        if (kind == ModuleKind::looper)
+        {
+            juce::Path loop;
+            loop.addCentredArc (r.getCentreX(), r.getCentreY(), r.getWidth() * 0.32f,
+                                r.getHeight() * 0.32f, 0.0f, 0.8f, 6.15f, true);
+            g.strokePath (loop, juce::PathStrokeType (2.2f));
+            const auto tip = loop.getCurrentPosition();
+            g.drawLine (tip.x, tip.y, tip.x - 5.5f, tip.y + 3.0f, 2.2f);
+            g.drawLine (tip.x, tip.y, tip.x - 5.0f, tip.y - 3.0f, 2.2f);
+            return;
+        }
         if (kind == ModuleKind::noiseGate)
         {
             const auto box = r.reduced (2.0f, 5.0f);
@@ -3248,6 +3477,7 @@ private:
             case ModuleKind::ir: return juce::Colour (0xffec8ed2);
             case ModuleKind::delay: return juce::Colour (0xff5bc5ef);
             case ModuleKind::reverb: return juce::Colour (0xffa792f5);
+            case ModuleKind::looper: return juce::Colour (0xff79d2a3);
             case ModuleKind::chorus: return juce::Colour (0xffef8fb4);
             case ModuleKind::pedal: return juce::Colour (0xff80d790);
         }
@@ -3348,7 +3578,7 @@ public:
         layoutTiles (animate);
     }
 
-    int getRequiredWidth() const { return 48 + (parallelRouting ? 12 : 13) * 86; }
+    int getRequiredWidth() const { return 48 + (parallelRouting ? 13 : 14) * 86; }
     int getRequiredHeight() const
     {
         // The tallest route is the two-row NAM/IR branch. Keep only enough
@@ -3368,7 +3598,7 @@ private:
     {
         constexpr int sideInset = 24;
         const auto contentWidth = getWidth() - 2 * sideInset;
-        const auto columns = parallelRouting ? 12.0f : 13.0f;
+        const auto columns = parallelRouting ? 13.0f : 14.0f;
         const auto pitch = static_cast<float> (contentWidth) / columns;
         const auto maxTileSize = 96;
         const auto width = juce::jlimit (70, maxTileSize, juce::roundToInt (pitch) - 20);
@@ -3417,7 +3647,7 @@ private:
                 ++irIndex;
             }
             else if (name == "Output")
-                placeTile (tile, columnX (parallelRouting ? 11 : 12), postRowY);
+                placeTile (tile, columnX (parallelRouting ? 12 : 13), postRowY);
             else
                 placeTile (tile, columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY);
         }
@@ -3438,7 +3668,7 @@ private:
 
     static bool isPostEffect (const juce::String& name)
     {
-        return name == "Delay" || name == "Reverb" || name == "Chorus" || name == "Post EQ";
+        return name == "Delay" || name == "Reverb" || name == "Chorus" || name == "Post EQ" || name == "Looper";
     }
 
     static int getNumberedSlot (const juce::String& name)
@@ -3739,6 +3969,7 @@ public:
                    { "chorusOutput", "Output", true }},
                   FileKind::none, 0, mover (false, 2));
         addStage ("Post EQ", "postOn", {}, FileKind::none, 0, mover (false, 3));
+        addStage ("Looper", "looperOn", {});
         addStage ("Output", {}, {{ "outputGain", "Level (dB)" }});
         refreshTileOrder();
         selectStage (findCard ("1176-Style FET Compressor"));
@@ -3980,6 +4211,7 @@ private:
         constexpr const char* postNames[] { "Delay", "Reverb", "Chorus", "Post EQ" };
         for (const auto stage : audioProcessor.getPostFxOrder())
             ordered.push_back (findCard (postNames[static_cast<size_t> (stage)]));
+        ordered.push_back (findCard ("Looper"));
         ordered.push_back (findCard ("Output"));
         return ordered;
     }

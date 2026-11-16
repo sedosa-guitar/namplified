@@ -18,6 +18,7 @@
 #include "Galactic2.h"
 #include "DragonflyRoom.h"
 #include "TakeCareChorus.h"
+#include "TrackLooper.h"
 #include "StereoChorus.h"
 
 #include <complex>
@@ -152,6 +153,8 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
+    TrackLooper& getLooper() noexcept { return looper; }
+
 private:
     static IRParameters::ParameterLayout createParameterLayout();
     juce::File getUserPresetDirectory() const;
@@ -268,6 +271,7 @@ private:
     juce::AudioBuffer<float> reverbWorkBuffer;
     StereoChorus classicChorus;
     TakeCareChorus chorus;
+    TrackLooper looper;
     juce::dsp::Limiter<float> outputSafetyLimiter;
     airwindows::KPlate140 plateReverb;
     DragonflyRoom roomReverb;
