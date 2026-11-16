@@ -34,6 +34,11 @@ items against the files that will actually be published.
 - [ ] Test the Preset Builder first-run flow. Verify the confirmation, download, cancellation, checksum verification, Finder location, and a second build using the cached files offline.
 - [ ] Verify all published download and source links, update installation instructions, and add the release notes to the changelog.
 
+## Publish the release
+
+- [ ] Build the latest release ZIP and generate its SHA-256 checksum.
+- [ ] Publish the same ZIP and SHA-256 checksum on both the project website and GitHub Releases.
+
 ## Release page draft
 
 Replace the placeholders with the actual public links before publishing.
