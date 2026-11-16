@@ -119,6 +119,7 @@ juce_add_binary_data(NAMplifiedAssets
 )
 
 target_sources(NAMplified PRIVATE
+    Source/TakeCareChorus.cpp
     Source/PluginProcessor.cpp
     Source/PluginEditor.cpp
     Source/Tone3000Client.cpp

@@ -496,6 +496,11 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addKnob ("chorusRate", "Chorus Rate", 0.1f, 5.0f, 0.8f);
     addKnob ("chorusDepth", "Chorus Depth", 0.0f, 1.0f, 0.35f);
     addKnob ("chorusMix", "Chorus Mix", 0.0f, 1.0f, 0.25f);
+    addKnob ("chorusRandom", "Chorus Random", 0.0f, 1.0f, 0.5f);
+    addKnob ("chorusRegen", "Chorus Regen", 0.0f, 1.0f, 0.5f);
+    addKnob ("chorusDerez", "Chorus Derez", 0.0f, 1.0f, 0.5f);
+    addKnob ("chorusBuffer", "Chorus Buffer", 0.0f, 1.0f, 0.5f);
+    addKnob ("chorusOutput", "Chorus Output", 0.0f, 1.0f, 1.0f);
     addToggle ("postOn", "Post EQ");
     addKnob ("postLow", "Post EQ Low", -12.0f, 12.0f, 0.0f);
     addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 50.0f);
@@ -1962,7 +1967,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         {
             chorus.process (buffer, numChannels, numSamples,
                             get ("chorusRate", 0.8f), get ("chorusDepth", 0.35f),
-                            get ("chorusMix", 0.25f));
+                            get ("chorusMix", 0.25f),
+                            { get ("chorusRandom", 0.5f), get ("chorusRegen", 0.5f),
+                              get ("chorusDerez", 0.5f), get ("chorusBuffer", 0.5f),
+                              get ("chorusOutput", 1.0f) });
         }
         else if (stage == 3 && enabled ("postOn"))
             processEqualizer (buffer, numChannels, numSamples, "post", false);
@@ -2034,7 +2042,8 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         if (! xml->hasTagName (parameters.state.getType()))
             return;
         auto state = juce::ValueTree::fromXml (*xml);
-        for (const auto* id : { "outputMode", "pitchBlend" })
+        for (const auto* id : { "outputMode", "pitchBlend", "chorusRandom", "chorusRegen",
+                                "chorusDerez", "chorusBuffer", "chorusOutput" })
         {
             if (state.getChildWithProperty ("id", id).isValid())
                 continue;
