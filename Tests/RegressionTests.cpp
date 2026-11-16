@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -83,6 +84,77 @@ void looperTests()
     advance (63000, 7, 60.0f);
     require (looper.getState (0) == State::playing && near (looper.getLengthSeconds(), 56.0, 0.001),
              "The time limit should stop at the last full 7/8 bar under 60 seconds");
+}
+
+void looperTrackTests()
+{
+    using Action = TrackLooper::Action;
+    using State = TrackLooper::TrackState;
+    constexpr int rate = 8000;
+    TrackLooper looper;
+    looper.prepare (rate);
+    juce::AudioBuffer<float> buffer (1, rate);
+    const auto render = [&] (int count, float input = 0.0f, bool click = false)
+    {
+        juce::FloatVectorOperations::fill (buffer.getWritePointer (0), input, count);
+        looper.process (buffer, 1, count, true, click, 120.0f, 2);
+    };
+
+    looper.request (0, Action::record);
+    render (rate);
+    render (rate, 0.1f);
+    looper.request (0, Action::record);
+    render (rate);
+    require (looper.getState (0) == State::playing, "First track should loop after recording");
+    const auto first = buffer.getSample (0, 100);
+    require (first > 0.05f, "First track should play its recorded input");
+
+    looper.request (1, Action::record);
+    render (rate);
+    render (rate, 0.2f, true);
+    require (looper.getState (1) == State::playing, "Second track should stop at the same loop boundary");
+    render (rate);
+    for (int i = 80; i < 160; ++i)
+        require (near (buffer.getSample (0, i), 3.0f * first, 0.0001),
+                 "Second track should record guitar alone, excluding playback and the click");
+
+    looper.setTrackLevel (1, 0.5f);
+    render (rate);
+    require (near (buffer.getSample (0, rate / 2), 2.0f * first, 0.0001),
+             "Track level should change only the selected track");
+    looper.request (1, Action::mute);
+    render (rate);
+    require (near (buffer.getSample (0, 100), first, 0.0001), "Muting should leave the other track audible");
+    looper.request (0, Action::clear);
+    render (rate);
+    require (looper.getState (0) == State::empty && looper.getState (1) == State::muted,
+             "Clearing one track should preserve the other");
+}
+
+void presetRoundtripTests (std::unique_ptr<NAMplifiedAudioProcessor>& processor)
+{
+    constexpr auto name = "Regression Roundtrip + FX";
+    constexpr std::array order { 3, 1, 0, 2 };
+    set (*processor, "delayTime", 320.0f);
+    set (*processor, "chorusOn", 1);
+    set (*processor, "masterVolume", -6.0f);
+    processor->setPreFxOrder (order);
+    require (processor->saveUserPreset (name), "Could not save the regression preset");
+
+    processor.reset();
+    processor = std::make_unique<NAMplifiedAudioProcessor>();
+    set (*processor, "delayTime", 120.0f);
+    set (*processor, "chorusOn", 0);
+    set (*processor, "masterVolume", -15.0f);
+    processor->setPreFxOrder ({ 0, 1, 2, 3 });
+    juce::StringArray missingAssets;
+    require (processor->loadUserPreset (name, missingAssets) && missingAssets.isEmpty(),
+             "Fresh processor should load the saved preset");
+    const auto value = [&] (const char* id) { return processor->parameters.getRawParameterValue (id)->load(); };
+    require (near (value ("delayTime"), 320.0f, 0.01) && value ("chorusOn") == 1.0f,
+             "Loading should restore saved effect parameters");
+    require (processor->getPreFxOrder() == order, "Loading should restore the saved effect order");
+    require (near (value ("masterVolume"), -15.0f, 0.01), "Loading should preserve the current global master volume");
 }
 
 void presetNameTests (NAMplifiedAudioProcessor& processor)
@@ -167,6 +239,156 @@ void routingTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
+void cabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
+{
+    const auto makeIR = [&] (const char* filename, float polarity)
+    {
+        const auto file = testHome.getChildFile (filename);
+        auto stream = std::unique_ptr<juce::OutputStream> (file.createOutputStream());
+        require (stream != nullptr, "Could not open the temporary IR file");
+        stream->setPosition (0);
+        juce::WavAudioFormat format;
+        auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions {}
+            .withSampleRate (sampleRate).withNumChannels (1).withBitsPerSample (24));
+        require (writer != nullptr, "Could not create the IR fixture");
+        juce::AudioBuffer<float> ir (1, 32);
+        ir.clear();
+        ir.setSample (0, 0, polarity * 0.5f);
+        ir.setSample (0, 8, polarity * 0.25f);
+        require (writer->writeFromAudioSampleBuffer (ir, 0, ir.getNumSamples()), "Could not write the IR fixture");
+        return file;
+    };
+    processor.loadImpulseResponse (0, makeIR ("cab-positive.wav", 1.0f));
+    processor.loadImpulseResponse (1, makeIR ("cab-negative.wav", -1.0f));
+    require (processor.getImpulseResponseName (0) == "cab-positive.wav"
+             && processor.getImpulseResponseName (1) == "cab-negative.wav", "Both fixtures should load");
+
+    processor.prepareToPlay (sampleRate, blockSize);
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    const auto render = [&] (bool cabOne, bool cabTwo)
+    {
+        set (processor, "ir1On", cabOne ? 1.0f : 0.0f);
+        set (processor, "ir2On", cabTwo ? 1.0f : 0.0f);
+        for (int block = 0; block < 12; ++block)
+        {
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                for (int i = 0; i < blockSize; ++i)
+                    buffer.setSample (ch, i, 0.02f);
+            processor.processBlock (buffer, midi);
+        }
+        return buffer.getSample (0, 64);
+    };
+
+    const auto dry = render (false, false);
+    const auto cabOne = render (true, false);
+    const auto cabTwo = render (false, true);
+    const auto both = render (true, true);
+    require (dry > 0.005f, "Both disabled cabs should pass the signal through");
+    require (cabOne > 0.005f && near (cabTwo, -cabOne, 0.0005),
+             "Each isolated cab should use its own IR and preserve its polarity");
+    require (std::abs (both) < 0.0005f, "The two opposite-polarity IRs should cancel at 50/50");
+    require (near (render (true, false), cabOne, 0.0005) && near (render (false, true), cabTwo, 0.0005),
+             "Turning either cab off should restore full level on the remaining branch");
+}
+
+void delayTests (NAMplifiedAudioProcessor& processor)
+{
+    set (processor, "delayOn", 1);
+    set (processor, "delayTime", 20);
+    set (processor, "delayFeedback", 0);
+    set (processor, "delayMix", 1);
+    set (processor, "delayMode", 1);
+    set (processor, "delayType", 0);
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    const auto render = [&] (bool monoOutput)
+    {
+        set (processor, "outputMode", monoOutput ? 1.0f : 0.0f);
+        processor.prepareToPlay (sampleRate, blockSize);
+        std::array<std::array<float, 2>, 3> peaks {};
+        for (int offset = 0; offset < 3072; offset += blockSize)
+        {
+            buffer.clear();
+            if (offset == 0)
+                buffer.setSample (1, 0, 0.25f);
+            processor.processBlock (buffer, midi);
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto position = offset + i;
+                const auto window = position >= 1890 ? 2u : position >= 930 ? 1u : 0u;
+                for (size_t ch = 0; ch < 2; ++ch)
+                    peaks[window][ch] = juce::jmax (peaks[window][ch],
+                        std::abs (buffer.getSample (static_cast<int> (ch), i)));
+            }
+        }
+        return peaks;
+    };
+
+    const auto stereo = render (false);
+    require (stereo[0][1] < 0.001f && stereo[1][1] > 0.02f && stereo[1][0] < 0.001f,
+             "Fully wet Standard delay should repeat only on the input side after the selected time");
+    require (stereo[2][1] < 0.001f, "Zero feedback should not create a second echo");
+    const auto mono = render (true);
+    require (near (mono[1][0], stereo[1][1] * 0.5, 0.001) && near (mono[1][0], mono[1][1], 0.00001),
+             "Global Mono must fold the Standard delay to both outputs");
+}
+
+void chorusTests (NAMplifiedAudioProcessor& processor)
+{
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    const auto render = [&] (bool enabled, float mode, float mix)
+    {
+        set (processor, "chorusOn", enabled ? 1.0f : 0.0f);
+        set (processor, "chorusMode", mode);
+        set (processor, "chorusMix", mix);
+        processor.prepareToPlay (sampleRate, blockSize);
+        std::vector<std::array<float, 2>> result;
+        for (int offset = 0; offset < sampleRate; offset += blockSize)
+        {
+            for (int i = 0; i < blockSize; ++i)
+            {
+                const auto time = static_cast<double> (offset + i) / sampleRate;
+                const auto signal = 0.05f * static_cast<float> (
+                    std::sin (juce::MathConstants<double>::twoPi * 330.0 * time));
+                for (int ch = 0; ch < 2; ++ch)
+                    buffer.setSample (ch, i, signal);
+            }
+            processor.processBlock (buffer, midi);
+            if (offset >= sampleRate / 2)
+                for (int i = 0; i < blockSize; ++i)
+                    result.push_back ({ buffer.getSample (0, i), buffer.getSample (1, i) });
+        }
+        return result;
+    };
+
+    const auto dry = render (false, 0, 0);
+    for (const auto mode : { 0.0f, 1.0f })
+    {
+        const auto zeroMix = render (true, mode, 0);
+        const auto wet = render (true, mode, 1);
+        double wetEnergy = 0.0, changeEnergy = 0.0, sideEnergy = 0.0;
+        for (size_t i = 0; i < dry.size(); ++i)
+        {
+            require (near (zeroMix[i][0], dry[i][0], 0.0001)
+                     && near (zeroMix[i][1], dry[i][1], 0.0001),
+                     "Zero chorus mix should match the dry signal on both channels");
+            const auto output = wet[i][0];
+            const auto change = output - dry[i][0];
+            const auto side = output - wet[i][1];
+            require (std::isfinite (output) && std::isfinite (wet[i][1]), "Chorus output must remain finite");
+            wetEnergy += output * output;
+            changeEnergy += change * change;
+            sideEnergy += side * side;
+        }
+        const auto samples = static_cast<double> (wet.size());
+        require (std::sqrt (wetEnergy / samples) > 0.005, "Fully wet chorus must produce an audible signal");
+        require (std::sqrt (changeEnergy / samples) > 0.005, "Fully wet chorus must change the dry signal");
+        require (std::sqrt (sideEnergy / samples) > 0.002, "Chorus must create stereo width from centered input");
+    }
+}
+
 void pitchTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
@@ -174,16 +396,18 @@ void pitchTests (NAMplifiedAudioProcessor& processor)
     juce::MidiBuffer midi;
     constexpr double lowE = 82.4069;
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
-    for (const auto shift : { 0.0f, -12.0f, 0.0f })
+    for (const auto shift : { 0.0f, -12.0f, 12.0f, 0.0f })
     {
         set (processor, "pitchSemitones", shift);
+        const auto frequency = shift > 0.0f ? 220.0 : lowE;
+        const auto ratio = shift > 0.0f ? 2.0 : 0.5;
         std::complex<double> original {}, octave {};
         int measured = 0;
         for (int offset = 0; offset < 2 * sampleRate; offset += blockSize)
         {
             for (int i = 0; i < blockSize; ++i)
             {
-                const auto phase = twoPi * lowE * (offset + i) / sampleRate;
+                const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<float> (0.1 * std::sin (phase));
                 buffer.setSample (0, i, signal);
                 buffer.setSample (1, i, signal);
@@ -194,16 +418,16 @@ void pitchTests (NAMplifiedAudioProcessor& processor)
             measured += blockSize;
             for (int i = 0; i < blockSize; ++i)
             {
-                const auto phase = twoPi * lowE * (offset + i) / sampleRate;
+                const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<double> (buffer.getSample (0, i));
                 original += signal * std::polar (1.0, -phase);
-                octave += signal * std::polar (1.0, -phase / 2.0);
+                octave += signal * std::polar (1.0, -phase * ratio);
             }
         }
         const auto dry = 2.0 * std::abs (original) / measured;
         const auto shifted = 2.0 * std::abs (octave) / measured;
         require (shift == 0 ? dry > 0.08 && shifted < 0.005 : shifted > 0.08 && dry < 0.01,
-                 "Low E must retain its fundamental at 0 semitones and shift cleanly by one octave at -12");
+                 "Pitch should preserve bypass or produce the requested octave without the original tone");
     }
 }
 }
@@ -218,6 +442,10 @@ int main (int argc, char** argv)
         {
             looperTests();
         }
+        else if (suite == "looper_tracks")
+        {
+            looperTrackTests();
+        }
         else
         {
             require (argc == 3, "Processor tests require an isolated test home");
@@ -231,8 +459,16 @@ int main (int argc, char** argv)
             set (*processor, "ir1On", 0);
             if (suite == "preset_names")
                 presetNameTests (*processor);
+            else if (suite == "preset_roundtrip")
+                presetRoundtripTests (processor);
             else if (suite == "routing")
                 routingTests (*processor);
+            else if (suite == "cab")
+                cabTests (*processor, testHome);
+            else if (suite == "delay")
+                delayTests (*processor);
+            else if (suite == "chorus")
+                chorusTests (*processor);
             else if (suite == "pitch")
                 pitchTests (*processor);
             else

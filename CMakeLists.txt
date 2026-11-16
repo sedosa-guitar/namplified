@@ -185,10 +185,11 @@ if (NAMPLIFIED_BUILD_TESTS)
     target_compile_features(NAMplifiedTests PRIVATE cxx_std_20)
 
     add_test(NAME looper_unit COMMAND NAMplifiedTests looper)
+    add_test(NAME looper_tracks COMMAND NAMplifiedTests looper_tracks)
     if (APPLE)
         set(test_home "${CMAKE_CURRENT_BINARY_DIR}/test-home")
         file(MAKE_DIRECTORY "${test_home}")
-        foreach(suite preset_names routing pitch)
+        foreach(suite preset_names preset_roundtrip routing cab delay chorus pitch)
             add_test(NAME ${suite} COMMAND NAMplifiedTests ${suite} "${test_home}")
             set_tests_properties(${suite} PROPERTIES
                 ENVIRONMENT "CFFIXED_USER_HOME=${test_home}"

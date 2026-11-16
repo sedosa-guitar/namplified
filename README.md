@@ -151,9 +151,10 @@ cmake --build build --target NAMplifiedTests
 ctest --test-dir build --output-on-failure
 ```
 
-The suites check looper count-in and bar boundaries, preset names, parallel amp mixing,
-stereo ping-pong echoes, and octave-down pitch on a low E test tone. The processor
-tests use a separate home directory inside the build folder.
+The suites check looper count-in, bar boundaries and multitrack playback,
+preset name validation and save/load, parallel amp and cabinet mixing, Standard
+and Ping Pong delay, both chorus modes, and pitch shifting one octave in either
+direction. The processor tests use a separate home directory inside the build folder.
 
 ## Installation
 
