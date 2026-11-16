@@ -857,8 +857,26 @@ juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
     return names;
 }
 
+bool NAMplifiedAudioProcessor::canSavePresetName (const juce::String& name) const
+{
+    const auto leaf = name.startsWith ("Artist/Sedosa/") ? name.substring (14) : name;
+    if (leaf.isEmpty() || leaf.containsAnyOf ("/\\"))
+        return false;
+
+    constexpr auto allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    if (leaf.length() <= maxPresetNameLength && leaf.containsOnly (allowed))
+        return true;
+
+    // Preserve existing names, including the bundled Sedosa presets with spaces.
+    const auto file = getUserPresetFile (name);
+    return file.existsAsFile() && file.getFileNameWithoutExtension() == leaf;
+}
+
 bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
 {
+    if (! canSavePresetName (name))
+        return false;
+
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! file.getParentDirectory().createDirectory().wasOk())
         return false;
