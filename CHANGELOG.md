@@ -8,7 +8,7 @@ All notable changes to NAMplified are summarized here. This changelog is reconst
 
 - Added the Sedosa artist presets and seven factory NAM captures to Standalone, AU, and VST3. Missing factory content is restored on startup.
 - Added a missing-file warning for presets that reference unavailable NAM captures or IRs, plus previous/next navigation within preset groups.
-- Added a Stereo/Mono output selector, a Pitch Blend control, and an IR/Virtual Cab switch. Virtual Cab audition WAVs are available in opt-in local builds.
+- Added a Stereo/Mono output selector and a Pitch Blend control.
 - Updated the effects with Airwindows TakeCare chorus, kPlate140 plate, Galactic2 cloud, Dragonfly Room, and ChowMatrix-based analog delay. Grouped the delay ducking controls and placed Chorus before Delay and Reverb by default.
 - Refreshed the editor and EQ plots with the graphite and turquoise theme.
 

@@ -7,7 +7,7 @@ items against the files that will actually be published.
 ## Preflight notes
 
 - The current local Standalone, AU, and VST3 builds are arm64 and declare macOS 14.4 as their minimum. Confirm the target versions and architectures again on the final artifacts.
-- All three local builds contain the seven intended factory NAM captures and ten Sedosa presets. No loose NAMs, IRs, TONE3000 sidecars, or GGUF files were found in the bundles. The source build defaults to excluding the local Virtual Cab WAVs.
+- All three local builds contain the seven intended factory NAM captures and twelve Sedosa presets. No loose NAMs, IRs, TONE3000 sidecars, or GGUF files were found in the bundles.
 - Source review confirmed that the Preset Builder downloads llama.cpp and Qwen on demand and that TONE3000 uses a publishable OAuth client ID and PKCE. Recheck packaged files before release.
 - The TONE3000 API terms effective July 7, 2026 were reviewed for Free Tier eligibility, branding, and attribution. Verify those requirements in the packaged app and recheck the terms before publication.
 
@@ -28,7 +28,7 @@ items against the files that will actually be published.
 
 ## Test the finished download
 
-- [ ] Verify that the package contains the intended Sedosa presets and factory captures. Check that a clean start restores them in each shipped format and that local Virtual Cab WAVs and user-library assets are absent.
+- [ ] Verify that the package contains the intended Sedosa presets and factory captures. Check that a clean start restores them in each shipped format and that user-library assets are absent.
 - [ ] Record the supported macOS versions and architectures. Verify signing and notarization for the artifacts being published.
 - [ ] Install from the finished package on a clean macOS setup. Launch Standalone and verify AU and VST3 discovery and loading in compatible hosts, as applicable.
 - [ ] Test the Preset Builder first-run flow. Verify the confirmation, download, cancellation, checksum verification, Finder location, and a second build using the cached files offline.

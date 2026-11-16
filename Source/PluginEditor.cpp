@@ -436,168 +436,6 @@ static juce::String formatControlValue (const ParameterControl& control, double 
     return juce::String (value, 2);
 }
 
-class VirtualCabPreview final : public juce::Component
-{
-public:
-    VirtualCabPreview (NAMplifiedAudioProcessor& processor, NAMplifiedAudioProcessor::CabPosition position,
-                       std::function<void (int, int, int)> onMove)
-        : micLookAndFeel (processor), updatePosition (std::move (onMove))
-    {
-        offset.x = position.x * (69.0f / 8.0f);
-        distance = position.y * (110.0f / 6.0f);
-        micChoice.setLookAndFeel (&micLookAndFeel);
-        micChoice.addItemList ({ "C414", "SM57", "SM7B" }, 1);
-        micChoice.setSelectedId (position.mic + 1, juce::dontSendNotification);
-        micChoice.onChange = [this] { applyPosition(); };
-        addAndMakeVisible (micChoice);
-        setSize (460, 300);
-    }
-
-    void resized() override { micChoice.setBounds (324, 15, 112, 28); }
-
-    void paint (juce::Graphics& g) override
-    {
-        const auto bounds = getLocalBounds().toFloat().reduced (1.0f);
-        g.setColour (detailSurface);
-        g.fillRoundedRectangle (bounds, 16.0f);
-        g.setColour (knobAccent.withAlpha (0.8f));
-        g.drawRoundedRectangle (bounds, 16.0f, 1.5f);
-        g.setColour (text);
-        g.setFont (namplifiedFontOptions (22.0f, juce::Font::bold));
-        g.drawText ("Oversized 4x12", 24, 12, 288, 32, juce::Justification::centredLeft);
-        const auto face = [this] (float z)
-        {
-            juce::Path path;
-            path.startNewSubPath (project (-110, -78, z));
-            path.lineTo (project (110, -78, z));
-            path.lineTo (project (110, 78, z));
-            path.lineTo (project (-110, 78, z));
-            path.closeSubPath();
-            return path.createPathWithRoundedCorners (10.0f);
-        };
-        g.setColour (juce::Colour (0xff48423a));
-        g.fillPath (face (-30));
-        g.setColour (tileSurface);
-        const auto front = face (0);
-        g.fillPath (front);
-        g.setColour (juce::Colour (0xff596577));
-        g.strokePath (front, juce::PathStrokeType (2.5f));
-        for (int ring = 0; ring < 6; ++ring)
-        {
-            const auto radius = 69.0f - 9.0f * ring;
-            juce::Path cone;
-            for (int i = 0; i <= 64; ++i)
-            {
-                const auto angle = juce::MathConstants<float>::twoPi * i / 64.0f;
-                const auto point = project (radius * std::cos (angle), radius * std::sin (angle), 0);
-                if (i == 0)
-                    cone.startNewSubPath (point);
-                else
-                    cone.lineTo (point);
-            }
-            cone.closeSubPath();
-            g.setColour (juce::Colour (0xff454e5e).darker (0.16f * ring));
-            g.fillPath (cone);
-        }
-        const auto aim = project (offset.x, offset.y, 0);
-        const auto mic = project (offset.x, offset.y, distance);
-        g.setColour (dragAxis == DragAxis::distance ? knobAccent : knobAccent.withAlpha (0.55f));
-        g.drawLine ({ aim, mic }, dragAxis == DragAxis::distance ? 3.0f : 1.5f);
-        g.fillEllipse (aim.x - 3, aim.y - 3, 6, 6);
-        g.setColour (knobAccent);
-        const auto handle = juce::Rectangle<float> (24.0f, 24.0f).withCentre (mic);
-        g.setColour (background);
-        g.fillEllipse (handle);
-        g.setColour (knobAccent);
-        g.drawEllipse (handle.reduced (1.0f), 2.0f);
-        g.fillEllipse (handle.reduced (8.0f));
-        g.setColour (secondaryText);
-        g.setFont (namplifiedFontOptions (13.0f));
-        g.drawFittedText ("X/Y: Drag   |   Z: Scroll or Shift + drag   |   View: Option + drag", 24, 247, 412, 22,
-                          juce::Justification::centredLeft, 1);
-        const auto drawAxis = [&] (int x, const juce::String& label, bool active)
-        {
-            const juce::Rectangle<int> badge (x, 272, 128, 22);
-            g.setColour (active ? knobAccent.withAlpha (0.2f) : tileSurface);
-            g.fillRoundedRectangle (badge.toFloat(), 5.0f);
-            g.setColour (active ? knobAccent : secondaryText);
-            g.drawText (label, badge, juce::Justification::centred);
-        };
-        drawAxis (24, "X " + juce::String (juce::roundToInt (offset.x * 80.0f / 69.0f)) + " mm", dragAxis == DragAxis::plane);
-        drawAxis (166, "Y " + juce::String (juce::roundToInt (-offset.y * 80.0f / 69.0f)) + " mm", dragAxis == DragAxis::plane);
-        drawAxis (308, "Z " + juce::String (juce::roundToInt (distance * 6.0f / 110.0f) * 10) + " mm", dragAxis == DragAxis::distance);
-    }
-
-    void mouseDown (const juce::MouseEvent& event) override { lastPointer = event.position; }
-
-    void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails& wheel) override
-    {
-        if (wheel.deltaY == 0.0f)
-            return;
-        distance = juce::jlimit (0.0f, 110.0f, distance + wheel.deltaY * 90.0f);
-        applyPosition();
-        repaint();
-    }
-
-    void mouseUp (const juce::MouseEvent&) override
-    {
-        dragAxis = DragAxis::none;
-        repaint();
-    }
-
-    void mouseDrag (const juce::MouseEvent& event) override
-    {
-        const auto delta = event.position - lastPointer;
-        lastPointer = event.position;
-        if (event.mods.isAltDown())
-        {
-            dragAxis = DragAxis::none;
-            yaw = juce::jlimit (-0.95f, 0.95f, yaw + delta.x * 0.012f);
-            pitch = juce::jlimit (-0.65f, 0.65f, pitch + delta.y * 0.012f);
-        }
-        else if (event.mods.isShiftDown())
-        {
-            dragAxis = DragAxis::distance;
-            distance = juce::jlimit (0.0f, 110.0f, distance - delta.y);
-        }
-        else
-        {
-            dragAxis = DragAxis::plane;
-            const auto dx = delta.x / std::cos (yaw);
-            offset += { dx, (delta.y - dx * std::sin (yaw) * std::sin (pitch)) / std::cos (pitch) };
-            const auto radius = offset.getDistanceFromOrigin();
-            if (radius > 69.0f)
-                offset *= 69.0f / radius;
-        }
-        if (! event.mods.isAltDown())
-            applyPosition();
-        repaint();
-    }
-
-private:
-    enum class DragAxis { none, plane, distance };
-    DragAxis dragAxis = DragAxis::none;
-
-    juce::Point<float> project (float x, float y, float z) const
-    {
-        const auto depth = z * std::cos (yaw) - x * std::sin (yaw);
-        return { 224.0f + x * std::cos (yaw) + z * std::sin (yaw),
-                 148.0f + y * std::cos (pitch) - depth * std::sin (pitch) };
-    }
-
-    void applyPosition()
-    {
-        updatePosition (juce::roundToInt (offset.getDistanceFromOrigin() * 8.0f / 69.0f),
-                        juce::roundToInt (distance * 6.0f / 110.0f), micChoice.getSelectedId() - 1);
-    }
-
-    NAMplifiedLookAndFeel micLookAndFeel;
-    juce::ComboBox micChoice;
-    std::function<void (int, int, int)> updatePosition;
-    juce::Point<float> offset, lastPointer;
-    float distance = 38.0f, yaw = 0.45f, pitch = -0.28f;
-};
-
 enum class FileKind { none, nam, impulseResponse, reverbIR };
 
 static juce::String getVisibleStageName (const juce::String& stageName)
@@ -611,7 +449,7 @@ static juce::String getVisibleStageName (const juce::String& stageName)
     if (stageName.startsWith ("NAM Profile "))
         return "AMP " + stageName.fromLastOccurrenceOf (" ", false, false);
     if (stageName.startsWith ("Cab IR "))
-        return "IR " + stageName.fromLastOccurrenceOf (" ", false, false);
+        return "CAB " + stageName.fromLastOccurrenceOf (" ", false, false);
     return stageName;
 }
 
@@ -1979,25 +1817,6 @@ public:
             return;
         }
 
-        if (loadKind == FileKind::impulseResponse)
-        {
-            cabSourceButton = std::make_unique<juce::TextButton> ("Impulse Response");
-            addAndMakeVisible (*cabSourceButton);
-            cabSourceButton->onClick = [this]
-            {
-                if (audioProcessor.getVirtualCabPosition (slot).x >= 0)
-                {
-                    audioProcessor.selectFileCab (slot);
-                    setFileNameText (audioProcessor.getImpulseResponseName (slot));
-                    return;
-                }
-                if (audioProcessor.selectVirtualCab (slot, 2, 2, 1))
-                    if (auto* enabled = audioProcessor.parameters.getParameter (enableParameterId))
-                        enabled->setValueNotifyingHost (1.0f);
-                setFileNameText (audioProcessor.getImpulseResponseName (slot));
-            };
-        }
-
         if (! detailControls.empty())
         {
             toneCurveButton = std::make_unique<ToneCurveButton> ("Edit detailed controls");
@@ -2450,34 +2269,16 @@ public:
             if (loadKind != FileKind::nam)
             {
                 auto fileRow = area.removeFromTop (40);
-                constexpr int loadWidth = 44, gap = 10, sourceWidth = 148;
-                if (cabSourceButton != nullptr)
-                {
-                    constexpr int controlsWidth = loadWidth + gap + sourceWidth;
-                    const auto nameWidth = juce::jlimit (0, 420, fileRow.getWidth() - controlsWidth - gap);
+                constexpr int loadWidth = 44, gap = 10;
+                if (loadKind == FileKind::impulseResponse)
                     fileRow = fileRow.withSizeKeepingCentre (
-                        controlsWidth + (nameWidth > 0 ? gap + nameWidth : 0), fileRow.getHeight());
-                }
+                        juce::jmin (fileRow.getWidth(), loadWidth + gap + 420), fileRow.getHeight());
                 loadButton.setBounds (fileRow.removeFromLeft (loadWidth));
                 fileRow.removeFromLeft (gap);
-                if (cabSourceButton != nullptr)
-                {
-                    cabSourceButton->setBounds (fileRow.removeFromLeft (sourceWidth).reduced (0, 3));
-                    fileRow.removeFromLeft (gap);
-                }
                 const auto nameWidth = juce::jmin (620, fileRow.getWidth());
                 fileName.setBounds (fileRow.removeFromLeft (nameWidth));
                 area.removeFromTop (3);
             }
-        }
-
-        if (virtualCabPreview != nullptr)
-        {
-            auto scene = area.removeFromLeft (juce::jmin (470, area.getWidth() / 2)).reduced (6);
-            scene.removeFromTop (juce::jmin (20, scene.getHeight() / 12));
-            const auto scale = juce::jmax (0.01f, juce::jmin (scene.getWidth() / 460.0f, scene.getHeight() / 300.0f));
-            virtualCabPreview->setTransform (juce::AffineTransform::scale (scale)
-                .translated (static_cast<float> (scene.getX()), static_cast<float> (scene.getY())));
         }
 
         if (graphicEq != nullptr)
@@ -3031,34 +2832,6 @@ private:
     void setFileNameText (const juce::String& fullText,
                           juce::NotificationType notification = juce::dontSendNotification)
     {
-        if (loadKind == FileKind::impulseResponse)
-        {
-            heading.setText ("CAB " + juce::String (slot + 1), juce::dontSendNotification);
-            const auto position = audioProcessor.getVirtualCabPosition (slot);
-            const auto virtualCabActive = position.x >= 0;
-            const auto virtualCabAvailable = audioProcessor.hasVirtualCab();
-            cabSourceButton->setButtonText (virtualCabActive ? "Virtual Cab" : "Impulse Response");
-            cabSourceButton->setColour (juce::TextButton::buttonColourId,
-                                        juce::Colour (virtualCabActive ? 0xff245348 : 0xff594321));
-            cabSourceButton->setColour (juce::TextButton::textColourOffId,
-                                        virtualCabActive ? knobAccent : juce::Colour (0xffffcf72));
-            cabSourceButton->setTooltip (virtualCabActive ? "Switch to Impulse Response."
-                                        : virtualCabAvailable ? "Switch to Virtual Cab."
-                                                              : "Virtual Cab is unavailable in this build.");
-            cabSourceButton->setEnabled (virtualCabActive || virtualCabAvailable);
-            if (position.x < 0)
-                virtualCabPreview.reset();
-            else if (virtualCabPreview == nullptr)
-            {
-                virtualCabPreview = std::make_unique<VirtualCabPreview> (audioProcessor, position,
-                    [this] (int offset, int distance, int mic)
-                    {
-                        audioProcessor.selectVirtualCab (slot, offset, distance, mic);
-                    });
-                addAndMakeVisible (*virtualCabPreview);
-            }
-            resized();
-        }
         auto displayText = fullText;
         if (displayText.length() > 60)
             displayText = displayText.substring (0, 57) + "...";
@@ -3103,8 +2876,6 @@ private:
     juce::Label advancedHeading;
     CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
     juce::TextButton tone3000Button, moveUpButton, moveDownButton;
-    std::unique_ptr<juce::TextButton> cabSourceButton;
-    std::unique_ptr<VirtualCabPreview> virtualCabPreview;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::DrawableButton> expandButton;
     std::unique_ptr<GraphicEqEditor> graphicEq;
