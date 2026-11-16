@@ -826,7 +826,7 @@ juce::File NAMplifiedAudioProcessor::getUserPresetFile (const juce::String& name
     const auto leaf = sedosa ? name.substring (14) : name;
     if (leaf.containsAnyOf ("/\\"))
         return {};
-    auto safeName = leaf.trim().retainCharacters ("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 _-().");
+    auto safeName = leaf.trim().retainCharacters (presetNameCharacters);
     while (safeName.startsWith (".")) safeName = safeName.substring (1);
     safeName = safeName.trim();
     if (safeName.isEmpty()) return {};
@@ -859,17 +859,16 @@ juce::StringArray NAMplifiedAudioProcessor::getUserPresetNames() const
 
 bool NAMplifiedAudioProcessor::canSavePresetName (const juce::String& name) const
 {
-    const auto leaf = name.startsWith ("Artist/Sedosa/") ? name.substring (14) : name;
-    if (leaf.isEmpty() || leaf.containsAnyOf ("/\\"))
+    if (name.isEmpty() || name != name.trim() || name.startsWithChar ('.')
+        || ! name.containsOnly (presetNameCharacters))
         return false;
 
-    constexpr auto allowed = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    if (leaf.length() <= maxPresetNameLength && leaf.containsOnly (allowed))
+    if (name.length() <= maxPresetNameLength)
         return true;
 
-    // Preserve existing names, including the bundled Sedosa presets with spaces.
+    // Keep existing User presets with longer names editable.
     const auto file = getUserPresetFile (name);
-    return file.existsAsFile() && file.getFileNameWithoutExtension() == leaf;
+    return file.existsAsFile() && file.getFileNameWithoutExtension() == name;
 }
 
 bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
@@ -891,8 +890,7 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     for (int i = presetState.getNumChildren(); --i >= 0;)
         if (presetState.getChild (i).getProperty ("id").toString() == "masterVolume")
             presetState.removeChild (i, nullptr);
-    const auto key = (name.startsWith ("Artist/Sedosa/") ? juce::String ("Artist/Sedosa/") : juce::String())
-        + file.getFileNameWithoutExtension();
+    const auto key = file.getFileNameWithoutExtension();
     presetState.setProperty ("selectedUserPreset", key, nullptr);
     const auto library = getUserPresetLibraryDirectory();
     const auto storePath = [&presetState, &library] (const juce::String& property, int captureSlot)
@@ -1084,7 +1082,7 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name, juce::S
 
 bool NAMplifiedAudioProcessor::deleteUserPreset (const juce::String& name)
 {
-    if (name.containsChar ('/') && ! name.startsWith ("Artist/Sedosa/"))
+    if (name.containsAnyOf ("/\\"))
         return false;
     const auto file = getUserPresetFile (name);
     if (file == juce::File() || ! file.existsAsFile() || ! file.deleteFile())
@@ -1716,7 +1714,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
         if (activeCount > 0)
         {
-            const auto primaryWeight = juce::jlimit (0.0f, 1.0f, get ("ampParallelBlend", 0.5f));
+            const auto weight = 1.0f / static_cast<float> (activeCount);
             const auto crossoverEnabled = activeCount == 2 && enabled ("ampCrossoverOn");
             const auto crossoverFrequency = get ("ampCrossoverFreq", 250.0f);
             for (int channel = 0; channel < numChannels; ++channel)
@@ -1725,11 +1723,6 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             for (int branchIndex = 0; branchIndex < activeCount; ++branchIndex)
             {
                 const auto slot = activeSlots[static_cast<size_t> (branchIndex)];
-                const auto weight = activeCount == 1 ? 1.0f
-                                  : branchIndex == 0 ? primaryWeight
-                                  : (1.0f - primaryWeight) / static_cast<float> (activeCount - 1);
-                if (weight <= 0.0f)
-                    continue;
                 auto& branch = ampWorkBuffers[slot];
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
@@ -1773,7 +1766,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         std::array<int, numIRSlots> activeIRs {};
         int activeIRCount = 0;
         for (int slot = 0; slot < numIRSlots; ++slot)
-            if (irLoaded[slot].load() && enabled (irEnableIds[slot]))
+            if (enabled (irEnableIds[slot]))
                 activeIRs[static_cast<size_t> (activeIRCount++)] = slot;
 
         if (activeIRCount > 0)
@@ -1782,13 +1775,10 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 irInputBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
             buffer.clear();
 
-            const auto cab1Weight = juce::jlimit (0.0f, 1.0f, get ("irParallelBlend", 0.5f));
+            const auto weight = 1.0f / static_cast<float> (activeIRCount);
             for (int index = 0; index < activeIRCount; ++index)
             {
                 const auto slot = activeIRs[static_cast<size_t> (index)];
-                const auto weight = activeIRCount == 1 ? 1.0f : (slot == 0 ? cab1Weight : 1.0f - cab1Weight);
-                if (weight <= 0.0f)
-                    continue;
                 auto& branch = irWorkBuffers[slot];
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, irInputBuffer, channel, 0, numSamples);
@@ -2263,9 +2253,19 @@ juce::String NAMplifiedAudioProcessor::getImpulseResponseName (int slot) const
     return juce::File (irFilePaths[slot]).getFileName();
 }
 
-bool NAMplifiedAudioProcessor::isImpulseResponseActive (int slot) const
+bool NAMplifiedAudioProcessor::isAmpEnabled (int slot) const
 {
-    if (slot < 0 || slot >= numIRSlots || ! irLoaded[slot].load (std::memory_order_relaxed))
+    constexpr const char* ampEnableIds[] { "amp1On", "amp2On" };
+    if (slot < 0 || slot >= numAmpSlots)
+        return false;
+
+    const auto* parameter = parameters.getRawParameterValue (ampEnableIds[slot]);
+    return parameter != nullptr && parameter->load (std::memory_order_relaxed) >= 0.5f;
+}
+
+bool NAMplifiedAudioProcessor::isCabEnabled (int slot) const
+{
+    if (slot < 0 || slot >= numIRSlots)
         return false;
 
     const auto parameterId = "ir" + juce::String (slot + 1) + "On";

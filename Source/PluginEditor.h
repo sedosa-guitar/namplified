@@ -6,6 +6,8 @@
 class ChainControls;
 class PresetBuilderDialog;
 
+juce::FontOptions namplifiedFontOptions (float height, int style = juce::Font::plain);
+
 class NAMplifiedAudioProcessorEditor : public juce::AudioProcessorEditor, private juce::Timer,
                                     private juce::ComboBox::Listener
 {
@@ -20,7 +22,6 @@ public:
 private:
     void refreshUserPresets (const juce::String& selectName = {});
     void updateRoutingDisplay();
-    void updateBlendValue();
     void updateMasterVolumeValueLabel();
     void setEqFullscreen (bool shouldBeFullscreen);
     void showDeletePresetPrompt();
@@ -57,6 +58,8 @@ private:
     juce::Rectangle<int> pitchGroupBounds;
     juce::Slider masterVolumeSlider;
     juce::ComboBox outputModeBox;
+    juce::String standaloneAudioStatus;
+    double lastAudioInputMs = 0.0;
     juce::Label blendLabel;
     juce::Label blendValueLabel;
     juce::Slider blendSlider;
@@ -69,7 +72,6 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampCrossoverAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampCrossoverSliderAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> blendAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment, pitchBlendAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> masterVolumeAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> outputModeAttachment;

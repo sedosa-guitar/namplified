@@ -9,6 +9,9 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #include "PluginProcessor.h"
 
+namespace juce { class FontOptions; }
+juce::FontOptions namplifiedFontOptions (float height, int style);
+
 namespace
 {
 class AudioMidiSettingsWindow final : public juce::DialogWindow
@@ -45,7 +48,7 @@ private:
                         true, holder.processor->producesMidi(), true, false)
         {
             heading.setText ("Audio / MIDI", juce::dontSendNotification);
-            heading.setFont (juce::FontOptions (24.0f, juce::Font::bold));
+            heading.setFont (namplifiedFontOptions (24.0f, juce::Font::bold));
             heading.setColour (juce::Label::textColourId, juce::Colour (0xffeef2f7));
             addAndMakeVisible (heading);
 
@@ -182,14 +185,27 @@ public:
         }
 
         quitPromptOpen = true;
-        auto* alert = new juce::AlertWindow ("Unsaved preset changes",
-                                             "Save your preset changes before quitting?",
+        auto* alert = new juce::AlertWindow ("Save changes?",
+                                             "Save the current sound as a User preset before quitting.",
                                              juce::MessageBoxIconType::NoIcon, mainWindow.get());
         if (auto* editor = processor->getActiveEditor())
             alert->setLookAndFeel (&editor->getLookAndFeel());
-        alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
-        alert->addButton ("Discard", 2);
+
+        const auto panelColour = juce::Colour (0xff272523);
+        const auto darkColour = juce::Colour (0xff191817);
+        const auto textColour = juce::Colour (0xfff4eee5);
+        alert->setColour (juce::AlertWindow::backgroundColourId, panelColour);
+        alert->setColour (juce::AlertWindow::textColourId, textColour);
+        alert->setColour (juce::AlertWindow::outlineColourId, juce::Colour (0xffc1b8ac).withAlpha (0.28f));
+
         alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        alert->addButton ("Discard", 2);
+        alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        alert->getButton ("Cancel")->setColour (juce::TextButton::buttonColourId, darkColour);
+        alert->getButton ("Discard")->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff5b2b31));
+        auto* saveButton = alert->getButton ("Save");
+        saveButton->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff70d9b6));
+        saveButton->setColour (juce::TextButton::textColourOffId, darkColour);
         alert->enterModalState (true, juce::ModalCallbackFunction::create ([this, processor, alert] (int result)
         {
             alert->setLookAndFeel (nullptr);
@@ -241,6 +257,23 @@ private:
         if (auto* processor = dynamic_cast<NAMplifiedAudioProcessor*> (holder->processor.get()))
         {
             auto* holderForCallback = holder.get();
+            processor->setAudioStatusCallback ([holderForCallback]() -> juce::String
+            {
+                using Permissions = juce::RuntimePermissions;
+                if (Permissions::isRequired (Permissions::recordAudio)
+                    && ! Permissions::isGranted (Permissions::recordAudio))
+                    return "Microphone access is off. Allow NAMplified in System Settings.";
+                auto* device = holderForCallback->deviceManager.getCurrentAudioDevice();
+                if (device == nullptr || ! device->isPlaying())
+                    return "Audio device is unavailable.";
+                if (device->getActiveOutputChannels().isZero())
+                    return "No audio output channel selected.";
+                if (device->getActiveInputChannels().isZero())
+                    return "No audio input channel selected.";
+                if (static_cast<bool> (holderForCallback->getMuteInputValue().getValue()))
+                    return "Audio input is muted. Use headphones or an interface before unmuting.";
+                return {};
+            });
             processor->setAudioSettingsCallback ([this, holderForCallback]
             {
                 if (audioSettings == nullptr)

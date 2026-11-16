@@ -96,7 +96,7 @@ static juce::Typeface::Ptr getNAMplifiedTypeface()
     return typeface;
 }
 
-static juce::FontOptions namplifiedFontOptions (float height, int style = juce::Font::plain)
+juce::FontOptions namplifiedFontOptions (float height, int style)
 {
     const auto weight = (style & juce::Font::bold) != 0 ? 650.0f : 450.0f;
     return juce::FontOptions().withTypeface (getNAMplifiedTypeface())
@@ -2374,9 +2374,11 @@ private:
     void showToneArchitectureMenu()
     {
         juce::PopupMenu menu;
+        menu.setLookAndFeel (&lookAndFeel);
         menu.addItem (1, "A1 Model Architecture");
         menu.addItem (2, "A2 Model Architecture");
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tone3000Button),
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&tone3000Button)
+                                                       .withStandardItemHeight (34),
                             [safeThis = juce::Component::SafePointer<StageCard> (this)] (int result)
         {
             if (safeThis != nullptr && (result == 1 || result == 2))
@@ -4888,9 +4890,10 @@ private:
             const auto parallel = setting ("ampRouting") >= 0.5f;
             const auto useSecondSlot = parallel
                 ? setting ("parallelIRMode") < 0.5f && setting ("amp2On") >= 0.5f
-                    && (setting ("amp1On") < 0.5f || setting ("ampParallelBlend") < 0.5f)
+                    && setting ("amp1On") < 0.5f
                 : current[1].existsAsFile()
-                    && (! current[0].existsAsFile() || setting ("irParallelBlend") < 0.5f);
+                    && setting ("ir2On") >= 0.5f
+                    && (! current[0].existsAsFile() || setting ("ir1On") < 0.5f);
             const auto slot = useSecondSlot ? 1u : 0u;
             const auto eligible = [&](const juce::File& file)
             {
@@ -6003,6 +6006,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     blendValueLabel.setJustificationType (juce::Justification::centred);
     addAndMakeVisible (blendValueLabel);
     blendSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    blendSlider.setRange (0.0, 1.0);
     blendSlider.setName ("irParallelBlend");
     blendSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     blendSlider.setColour (juce::Slider::trackColourId, knobAccent);
@@ -6010,7 +6014,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     blendSlider.setColour (juce::Slider::textBoxBackgroundColourId, panel);
     blendSlider.setColour (juce::Slider::textBoxOutlineColourId, panel);
     addAndMakeVisible (blendSlider);
-    blendSlider.onValueChange = [this] { updateBlendValue(); };
+    blendSlider.setInterceptsMouseClicks (false, false);
+    blendSlider.setWantsKeyboardFocus (false);
 
     updateRoutingDisplay();
     addAndMakeVisible (*chainControls);
@@ -6065,12 +6070,12 @@ void NAMplifiedAudioProcessorEditor::resized()
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 1100;
     const auto presetWidth = compactHeader ? 102 : 165;
-    const auto pitchSliderWidth = compactHeader ? 48 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
     const auto masterLabelWidth = compactHeader ? 52 : 60;
     const auto masterValueWidth = compactHeader ? 42 : 48;
-    const auto masterSliderWidth = compactHeader ? 42 : 96;
+    outputModeBox.setBounds (presetArea.removeFromRight (88).reduced (0, 4));
+    presetArea.removeFromRight (8);
     presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 46 : 58));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
@@ -6084,9 +6089,13 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
     resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
-    const auto pitchControlsWidth = pitchLabelWidth + pitchSliderWidth + pitchValueWidth
-                                  + (compactHeader ? 6 : 10);
-    const auto blendSliderWidth = compactHeader ? 44 : 70;
+    const auto pitchLabelsWidth = pitchLabelWidth + pitchValueWidth + (compactHeader ? 6 : 10);
+    const auto masterLabelsWidth = masterLabelWidth + masterValueWidth + (compactHeader ? 11 : 16);
+    const auto sliderSpace = juce::jmax (0, presetArea.getWidth() - pitchLabelsWidth - 92 - masterLabelsWidth);
+    const auto blendSliderWidth = juce::jmin (sliderSpace, juce::jmax (44, sliderSpace / 4));
+    const auto pitchSliderWidth = (sliderSpace - blendSliderWidth) / 2;
+    const auto masterSliderWidth = sliderSpace - pitchSliderWidth - blendSliderWidth;
+    const auto pitchControlsWidth = pitchLabelsWidth + pitchSliderWidth;
     pitchGroupBounds = presetArea.removeFromLeft (pitchControlsWidth + blendSliderWidth + 92).reduced (0, 4);
     auto pitchArea = pitchGroupBounds.expanded (0, 4).reduced (5, 0);
     pitchLabel.setBounds (pitchArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
@@ -6104,8 +6113,6 @@ void NAMplifiedAudioProcessorEditor::resized()
     masterVolumeSlider.setBounds (presetArea.removeFromLeft (masterSliderWidth).reduced (0, 10));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
-    presetArea.removeFromLeft (8);
-    outputModeBox.setBounds (presetArea.removeFromLeft (88).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     parallelRoutingButton.setBounds (controlRow.removeFromRight (44).reduced (0, 2));
@@ -6213,9 +6220,10 @@ void NAMplifiedAudioProcessorEditor::refreshUserPresets (const juce::String& sel
     menu->addSubMenu ("Artist", artists);
     const auto index = presetMenuKeys.indexOf (previousName);
     presetBox.setSelectedId (index + 1, juce::dontSendNotification);
+    presetBox.setTooltip (index >= 0 ? previousName.fromLastOccurrenceOf ("/", false, false) : juce::String());
     previousPresetButton.setEnabled (adjacentPresetId (-1) != 0);
     nextPresetButton.setEnabled (adjacentPresetId (1) != 0);
-    deletePresetButton.setEnabled (index >= 0 && (! previousName.containsChar ('/') || previousName.startsWith ("Artist/Sedosa/")));
+    deletePresetButton.setEnabled (index >= 0 && ! previousName.containsChar ('/'));
 }
 
 int NAMplifiedAudioProcessorEditor::adjacentPresetId (int direction) const
@@ -6244,6 +6252,19 @@ juce::String NAMplifiedAudioProcessorEditor::selectedPresetName() const
 void NAMplifiedAudioProcessorEditor::timerCallback()
 {
     updateMasterVolumeValueLabel();
+    if (audioProcessor.hasAudioSettingsCallback())
+    {
+        const auto now = juce::Time::getMillisecondCounterHiRes();
+        if (lastAudioInputMs == 0.0 || audioProcessor.getInputPeak() > 0.0001f)
+            lastAudioInputMs = now;
+        auto status = audioProcessor.getAudioStatus();
+        if (status.isEmpty() && now - lastAudioInputMs > 2500.0)
+            status = "No input signal. Check the interface and selected channel.";
+        if (status.isEmpty() && audioProcessor.getInputPeak() > 0.001f
+            && audioProcessor.getOutputPeak() < 0.0001f)
+            status = "Input detected, but no output signal. Check the signal chain and Master.";
+        standaloneAudioStatus = status;
+    }
     if (midiLearnArmed && audioProcessor.hasMidiLearnTarget())
     {
         midiTargetArmed = true;
@@ -6263,10 +6284,10 @@ void NAMplifiedAudioProcessorEditor::timerCallback()
     const auto* irModeParameter = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto parallel = routingParameter != nullptr && routingParameter->load() >= 0.5f;
     const auto sharedIR = irModeParameter != nullptr && irModeParameter->load() >= 0.5f;
-    const auto ir1Active = audioProcessor.isImpulseResponseActive (0);
-    const auto ir2Active = audioProcessor.isImpulseResponseActive (1);
+    const auto firstEnabled = parallel ? audioProcessor.isAmpEnabled (0) : audioProcessor.isCabEnabled (0);
+    const auto secondEnabled = parallel ? audioProcessor.isAmpEnabled (1) : audioProcessor.isCabEnabled (1);
     const auto blendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
-                                 | (ir1Active ? 4 : 0) | (ir2Active ? 8 : 0);
+                                 | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
     if (blendDisplayState != lastBlendDisplayState)
         updateRoutingDisplay();
 
@@ -6332,27 +6353,16 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
     const auto* irMode = audioProcessor.parameters.getRawParameterValue ("parallelIRMode");
     const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
-    const auto ir1Active = audioProcessor.isImpulseResponseActive (0);
-    const auto ir2Active = audioProcessor.isImpulseResponseActive (1);
+    const auto firstEnabled = parallel ? audioProcessor.isAmpEnabled (0) : audioProcessor.isCabEnabled (0);
+    const auto secondEnabled = parallel ? audioProcessor.isAmpEnabled (1) : audioProcessor.isCabEnabled (1);
     lastBlendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
-                          | (ir1Active ? 4 : 0) | (ir2Active ? 8 : 0);
-    blendAttachment.reset();
-    const auto onlyOneCabIsActive = ! parallel && (ir1Active != ir2Active);
-    if (onlyOneCabIsActive)
-    {
-        // Keep the saved two-cab blend intact. With one usable IR, show its
-        // effective 100% position and disable a control that cannot blend.
-        blendSlider.setValue (ir1Active ? 1.0 : 0.0, juce::dontSendNotification);
-        blendSlider.setEnabled (false);
-    }
-    else
-    {
-        const auto blendParameterId = parallel ? juce::String ("ampParallelBlend") : juce::String ("irParallelBlend");
-        blendSlider.setName (blendParameterId);
-        blendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
-            audioProcessor.parameters, blendParameterId, blendSlider);
-        blendSlider.setEnabled (true);
-    }
+                          | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
+    blendSlider.setValue (firstEnabled == secondEnabled ? 0.5 : firstEnabled ? 1.0 : 0.0,
+                          juce::dontSendNotification);
+    const auto firstShare = firstEnabled ? (secondEnabled ? 50 : 100) : 0;
+    const auto secondShare = secondEnabled ? (firstEnabled ? 50 : 100) : 0;
+    blendValueLabel.setText (juce::String (firstShare) + "/" + juce::String (secondShare),
+                             juce::dontSendNotification);
     seriesRoutingButton.setToggleState (! parallel, juce::dontSendNotification);
     parallelRoutingButton.setToggleState (parallel, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
@@ -6363,51 +6373,58 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
                                     juce::dontSendNotification);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
-        ? "Amp 1 to IR 1 and Amp 2 to IR 2. This controls the Amp 1 share; disabling either amp sends 100% through the other path."
-        : onlyOneCabIsActive
-            ? (ir1Active ? "IR 1 is the only active cabinet and receives 100% of the signal. Enable IR 2 to blend both cabinets."
-                         : "IR 2 is the only active cabinet and receives 100% of the signal. Enable IR 1 to blend both cabinets.")
-            : "Centre is 0 (equal blend); negative favours CAB 2, positive favours CAB 1. If one cab is disabled, the other is 100%.");
+        ? "Two active amps split the signal 50/50. One active amp receives 100%."
+        : "Two active cabinets split the signal 50/50. One active cabinet receives 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
-    updateBlendValue();
     resized();
-}
-
-void NAMplifiedAudioProcessorEditor::updateBlendValue()
-{
-    const auto* parameter = audioProcessor.parameters.getRawParameterValue ("ampRouting");
-    const auto parallel = parameter != nullptr && juce::roundToInt (parameter->load()) == 1;
-    const auto value = blendSlider.getValue();
-    if (parallel)
-    {
-        const auto nam1 = juce::jlimit (0, 100, juce::roundToInt (value * 100.0));
-        blendValueLabel.setText (juce::String (nam1) + "/" + juce::String (100 - nam1),
-                                 juce::dontSendNotification);
-        return;
-    }
-
-    const auto cab1 = juce::jlimit (0, 100, juce::roundToInt (value * 100.0));
-    const auto offset = juce::roundToInt ((value - 0.5) * 200.0);
-    const auto offsetText = offset > 0 ? "+" + juce::String (offset) : juce::String (offset);
-    blendValueLabel.setText (offsetText + " · " + juce::String (cab1) + "/" + juce::String (100 - cab1),
-                             juce::dontSendNotification);
 }
 
 void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()> onSaved)
 {
-    const auto nameRule = "New names use 1–" + juce::String (NAMplifiedAudioProcessor::maxPresetNameLength)
-        + " letters (A–Z) or digits (0–9).";
-    auto* alert = new juce::AlertWindow ("Save preset", nameRule,
+    const auto maxLength = NAMplifiedAudioProcessor::maxPresetNameLength;
+    const auto nameRule = "Use up to " + juce::String (maxLength)
+        + " characters: A-Z, 0-9, spaces, and _ - + ( ) ."
+          "\nStart without a dot and keep spaces inside the name.";
+    auto* alert = new juce::AlertWindow ("Save preset to User", nameRule,
                                          juce::MessageBoxIconType::NoIcon, this);
     alert->setLookAndFeel (editorLookAndFeel.get());
+    alert->setColour (juce::AlertWindow::backgroundColourId, panel);
+    alert->setColour (juce::AlertWindow::textColourId, text);
+    alert->setColour (juce::AlertWindow::outlineColourId, secondaryText.withAlpha (0.28f));
     const auto currentKey = selectedPresetName();
-    const auto currentName = currentKey.fromLastOccurrenceOf ("/", false, false);
-    alert->addTextEditor ("presetName", currentName.isNotEmpty() ? currentName : "MyPreset", "Preset name:");
-    alert->addComboBox ("presetDestination", { "User", "Artist / Sedosa" }, "Save to:");
-    alert->getComboBoxComponent ("presetDestination")->setSelectedId (
-        currentKey.startsWith ("Artist/Sedosa/") ? 2 : 1, juce::dontSendNotification);
-    alert->addButton ("Save", 1);
-    alert->addButton ("Cancel", 0);
+    auto suggestedName = currentKey.fromLastOccurrenceOf ("/", false, false);
+    if (currentKey.containsChar ('/'))
+    {
+        suggestedName = suggestedName.retainCharacters (NAMplifiedAudioProcessor::presetNameCharacters)
+                                     .substring (0, maxLength).trim();
+        if (! audioProcessor.canSavePresetName (suggestedName))
+            suggestedName = "MyPreset";
+
+        const auto existingNames = audioProcessor.getUserPresetNames();
+        const auto baseName = suggestedName;
+        for (int copyNumber = 2; existingNames.contains (suggestedName, true); ++copyNumber)
+        {
+            const juce::String suffix (copyNumber);
+            suggestedName = baseName.substring (0, maxLength - suffix.length()) + suffix;
+        }
+    }
+    alert->addTextEditor ("presetName", suggestedName.isNotEmpty() ? suggestedName : "MyPreset", "Preset name:");
+    if (auto* field = alert->getTextEditor ("presetName"))
+    {
+        field->setFont (namplifiedFontOptions (16.0f));
+        field->applyFontToAllText (namplifiedFontOptions (16.0f));
+        field->setColour (juce::TextEditor::backgroundColourId, background);
+        field->setColour (juce::TextEditor::textColourId, text);
+        field->setColour (juce::TextEditor::outlineColourId, secondaryText.withAlpha (0.32f));
+        field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
+        field->setColour (juce::TextEditor::highlightColourId, knobAccent.withAlpha (0.30f));
+    }
+    alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    alert->getButton ("Cancel")->setColour (juce::TextButton::buttonColourId, background);
+    auto* saveButton = alert->getButton ("Save");
+    saveButton->setColour (juce::TextButton::buttonColourId, knobAccent);
+    saveButton->setColour (juce::TextButton::textColourOffId, background);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
     alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, nameRule, onSaved = std::move (onSaved)] (int result)
     {
@@ -6415,15 +6432,13 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
         if (result != 1 || safeThis == nullptr)
             return;
         const auto name = alert->getTextEditorContents ("presetName");
-        const auto sedosa = alert->getComboBoxComponent ("presetDestination")->getSelectedId() == 2;
-        const auto key = sedosa ? "Artist/Sedosa/" + name : name;
-        if (name.containsAnyOf ("/\\") || ! safeThis->audioProcessor.canSavePresetName (key))
+        if (! safeThis->audioProcessor.canSavePresetName (name))
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
                                                      "Invalid preset name", nameRule);
             return;
         }
-        if (! safeThis->audioProcessor.saveUserPreset (key))
+        if (! safeThis->audioProcessor.saveUserPreset (name))
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                      "Could not save preset",
@@ -6441,7 +6456,7 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
 void NAMplifiedAudioProcessorEditor::showDeletePresetPrompt()
 {
     const auto name = selectedPresetName();
-    if (name.isEmpty() || (name.containsChar ('/') && ! name.startsWith ("Artist/Sedosa/"))) return;
+    if (name.isEmpty() || name.containsChar ('/')) return;
     auto* alert = new juce::AlertWindow ("Delete preset?", "Delete \"" + name + "\" from your presets?",
                                          juce::MessageBoxIconType::NoIcon, this);
     alert->setLookAndFeel (editorLookAndFeel.get());
@@ -6508,7 +6523,11 @@ void NAMplifiedAudioProcessorEditor::showHeaderMenu()
     menu.setLookAndFeel (editorLookAndFeel.get());
     menu.addItem (1, midiLearnArmed ? "Cancel MIDI Learn" : "MIDI Learn");
     if (audioProcessor.hasAudioSettingsCallback())
-        menu.addItem (2, "Audio");
+    {
+        menu.addItem (2, "Audio / MIDI Settings");
+        if (standaloneAudioStatus.isNotEmpty())
+            menu.addItem (4, standaloneAudioStatus, false);
+    }
     menu.addItem (3, "About");
 
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
