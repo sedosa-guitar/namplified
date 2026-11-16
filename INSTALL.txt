@@ -1,0 +1,22 @@
+NAMplified Standalone für macOS
+
+Installation
+
+1. ZIP im Finder entpacken.
+2. NAMplified.app in den Ordner „Programme“ ziehen.
+3. NAMplified per Doppelklick starten.
+
+Wenn macOS den ersten Start blockiert
+
+Diese Testversion ist nicht von Apple notarisiert. Fahre nur fort,
+wenn du das ZIP aus einer vertrauenswürdigen Quelle erhalten hast.
+
+1. Die Meldung schließen.
+2. Systemeinstellungen → Datenschutz & Sicherheit öffnen.
+3. Im Abschnitt „Sicherheit“ bei NAMplified auf „Dennoch öffnen“
+   klicken und die Abfrage bestätigen.
+
+Falls die Schaltfläche fehlt, NAMplified noch einmal starten und
+direkt danach zu „Datenschutz & Sicherheit“ zurückkehren.
+
+Apple-Hilfe: https://support.apple.com/de-de/102445
