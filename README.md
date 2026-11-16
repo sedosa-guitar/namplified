@@ -168,7 +168,7 @@ See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for exact source revisions and
 
 Copyright (C) 2026 Ronny Wels (sedosa).
 
-NAMplified is currently distributed free of charge, without paid features or donation links. This describes the maintainers' distribution; AGPL-3.0-only still permits compliant third-party forks to charge for copies.
+NAMplified is free to download and use, with no paid features. AGPL-3.0-only still permits compliant third-party forks to charge for copies.
 
 When publishing plugin binaries or installers, provide access to the corresponding source code for that exact release and retain the required third-party license notices.
 
