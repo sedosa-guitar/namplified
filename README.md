@@ -142,7 +142,7 @@ Build products are placed under `build`. The CMake project currently generates *
 
 ## Installation
 
-Build from source using the instructions above. Public installers are not available yet.
+Build from source using the instructions above. Public installers are not available yet. For the macOS ZIP, see the [installation guide](docs/INSTALL-macOS.html).
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 

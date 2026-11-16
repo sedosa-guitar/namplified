@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="de">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NAMplified für macOS installieren</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #171816; color: #f4eee5; font: 17px/1.6 system-ui, sans-serif; }
+  main { width: min(100% - 40px, 760px); margin: 52px auto; }
+  h1 { margin: 0; font-size: clamp(32px, 6vw, 52px); line-height: 1.1; }
+  h2 { font-size: 22px; margin: 0 0 8px; }
+  p { margin: 8px 0 16px; }
+  section { padding: 20px 24px; border: 1px solid #41453f; border-radius: 14px; margin: 14px 0; background: #242622; }
+  a, strong { color: #86e4c4; }
+  code { overflow-wrap: anywhere; color: #f4eee5; }
+  ol { padding-left: 24px; margin-bottom: 0; }
+  li + li { margin-top: 5px; }
+  footer { margin-top: 24px; }
+</style>
+<main>
+  <h1>NAMplified installieren</h1>
+  <p><strong>Voraussetzung</strong> · Mac mit Apple Silicon und macOS 14.4 oder neuer.<br>Entpacke das ZIP im Finder. Wähle danach das Format, das du nutzen möchtest.</p>
+
+  <section>
+    <h2>Standalone</h2>
+    <p>Ziehe <strong>NAMplified.app</strong> in <strong>Programme</strong> und öffne die App dort.</p>
+    <p>Wenn macOS den ersten Start blockiert und du der Downloadquelle vertraust:</p>
+    <ol>
+      <li>Schließe die Warnmeldung.</li>
+      <li>Öffne <strong>Systemeinstellungen → Datenschutz &amp; Sicherheit</strong>.</li>
+      <li>Klicke bei NAMplified auf <strong>Dennoch öffnen</strong> und bestätige.</li>
+    </ol>
+    <p>Fehlt die Schaltfläche, starte die App erneut und öffne anschließend direkt die Systemeinstellungen.
+    <a href="https://support.apple.com/de-de/102445">Apple-Hilfe</a></p>
+  </section>
+
+  <section>
+    <h2>VST3 und AU</h2>
+    <p>Beende deine DAW. Öffne im Finder mit <strong>⌘ ⇧ G</strong> den gewünschten Ordner und kopiere das passende Plug-in hinein.</p>
+    <ul>
+      <li><strong>VST3</strong> · <code>NAMplified.vst3</code> nach <code>/Library/Audio/Plug-Ins/VST3</code></li>
+      <li><strong>AU</strong> · <code>NAMplified.component</code> nach <code>/Library/Audio/Plug-Ins/Components</code></li>
+    </ul>
+    <p>Starte die DAW neu und suche nach <strong>NAMplified</strong>. Falls das Plug-in fehlt, starte die Plug-in-Suche in deiner DAW erneut.</p>
+  </section>
+
+  <footer><a href="Begleitdateien/NAMplified-Quellcode.zip">Passender Quellcode</a> · <a href="Begleitdateien/THIRD_PARTY_NOTICES.md">Lizenzhinweise</a></footer>
+</main>
+</html>
