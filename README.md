@@ -63,7 +63,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Post EQ:** nine adjustable bands after the effects section, with an expanded editor view.
 - **Delay:** Digital or Analog character, Mono/Stereo/Ping Pong routing, plus time, feedback, mix, tone, ducking, and wet-path high-pass / low-pass filters. Analog mode uses the 16,384-stage bucket-brigade DSP from ChowMatrix for bandwidth-limited repeats.
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
-- **Chorus:** Uses Airwindows StereoChorus DSP with independently phased stereo modulation. Adjust rate, depth, and mix.
+- **Chorus:** Uses Airwindows TakeCare, a stereo chorus ensemble. Adjust Rate, Depth, and Mix, with Random, Regen, Derez, Buffer, and Output grouped under Advanced.
 - **Pitch:** global pitch shifting before the input signal enters the chain, with a range of −24 to +24 semitones.
 
 ### Preset Builder (Beta, macOS)
@@ -148,7 +148,15 @@ Build from source using the instructions above. Public installers are not availa
 
 ## Third-party software and licenses
 
-Third-party attributions and license information are collected in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md). This includes JUCE 9.0.5 (used under its AGPLv3 option), NeuralAmpModelerCore 0.5.4 (MIT, with Eigen MPL-2.0), `chowdsp_wdf` (BSD 3-Clause), Airwindows Galactic2, kPlate140 and StereoChorus (MIT), Freeverb3 (GPL-2.0-or-later), and bundled fonts (SIL OFL 1.1). The optional Preset Builder downloads the MIT-licensed llama.cpp runtime and a GGUF quantization of the Apache-2.0-licensed Qwen model from their respective publishers. JUCE's upstream SPDX inventory identifies its bundled dependencies; release packages still need a per-build review of notices for the exact modules and formats included.
+Thanks to the developers whose work helps shape NAMplified’s sound.
+
+- [Airwindows](https://github.com/airwindows/airwindows) by Chris Johnson provides **TakeCare** chorus, **kPlate140** plate reverb, and **Galactic2** cloud reverb.
+- [Dragonfly Reverb](https://github.com/michaelwillis/dragonfly-reverb) and Teru Kamogashira’s Freeverb3 provide the room reverb.
+- Jatin Chowdhury’s [ChowMatrix](https://github.com/Chowdhury-DSP/ChowMatrix) and [chowdsp_wdf](https://github.com/Chowdhury-DSP/chowdsp_wdf) underpin the analog delay and boost modelling.
+- Steven Atkinson’s [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) runs the NAM captures. [JUCE](https://github.com/juce-framework/JUCE) provides the app and plug-in framework.
+- [ConeTracer](https://github.com/vessel-dsp/ConeTracer) powers the local Virtual Cab development preview.
+
+See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for exact source revisions and license terms, including the fonts and the optional Preset Builder’s llama.cpp runtime and Qwen model.
 
 **NAMplified's own code is licensed under the GNU Affero General Public License, version 3 only (AGPL-3.0-only).** See [`LICENSE`](LICENSE). Third-party components retain their own licenses and notices listed above and in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md).
 

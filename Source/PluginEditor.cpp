@@ -1699,6 +1699,14 @@ public:
         heading.setFont (namplifiedFontOptions (19.0f, juce::Font::bold));
         heading.setColour (juce::Label::textColourId, text);
         addAndMakeVisible (heading);
+        if (stageName == "Chorus")
+        {
+            advancedHeading.setText ("ADVANCED", juce::dontSendNotification);
+            advancedHeading.setFont (namplifiedFontOptions (12.0f, juce::Font::bold));
+            advancedHeading.setColour (juce::Label::textColourId, knobAccent);
+            addAndMakeVisible (advancedHeading);
+        }
+
 
         if (enableParameterId.isNotEmpty())
         {
@@ -2087,7 +2095,7 @@ public:
         const auto columns = getKnobColumnLimit (selectorCount > 0);
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = usesCompactControls() ? 132 : controlRowPitch;
-        const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
+        const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch + (stageName == "Chorus" ? 22 : 0));
         const auto fileControlsHeight = loadKind == FileKind::nam ? 38
             : (showsFileLoader() ? 46 : 0);
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
@@ -2284,23 +2292,29 @@ public:
         }
         const auto columns = juce::jmin (getKnobColumnLimit (! selectors.empty()),
                                          static_cast<int> (knobs.size()));
-        const auto cellWidth = area.getWidth() / columns;
+        const auto chorusDetails = stageName == "Chorus";
+        const auto advancedHeight = chorusDetails ? 22 : 0;
         const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
         const auto baseRowPitch = usesCompactControls() ? 132 : controlRowPitch;
         const auto knobSize = usesCompactControls() ? 80 : rotarySize;
-        const auto distributedRowPitch = rows > 0
-            ? juce::jmin (240, juce::jmax (baseRowPitch, area.getHeight() / rows))
-            : baseRowPitch;
-        const auto gridHeight = rows * distributedRowPitch;
+        const auto distributedRowPitch = juce::jmin (
+            240, juce::jmax (baseRowPitch, (area.getHeight() - advancedHeight) / rows));
+        const auto gridHeight = rows * distributedRowPitch + advancedHeight;
         const auto gridTop = area.getY() + juce::jmax (0, (area.getHeight() - gridHeight) / 2);
+        if (chorusDetails)
+            advancedHeading.setBounds (area.getX() + 8, gridTop + distributedRowPitch,
+                                       area.getWidth() - 16, advancedHeight);
         for (size_t position = 0; position < knobs.size(); ++position)
         {
             const auto index = static_cast<size_t> (knobs[position]);
-            const auto row = static_cast<int> (position) / columns;
-            const auto column = static_cast<int> (position) % columns;
+            const auto gridPosition = static_cast<int> (position) + (chorusDetails && position >= 3 ? columns - 3 : 0);
+            const auto row = gridPosition / columns;
+            const auto column = gridPosition % columns;
+            const auto rowColumns = chorusDetails && row == 0 ? 3 : columns;
+            const auto cellWidth = area.getWidth() / rowColumns;
             auto cell = juce::Rectangle<int> (area.getX() + column * cellWidth,
-                                               gridTop + row * distributedRowPitch,
-                                               column + 1 == columns ? area.getWidth() - column * cellWidth : cellWidth,
+                                               gridTop + row * distributedRowPitch + (row > 0 ? advancedHeight : 0),
+                                               column + 1 == rowColumns ? area.getWidth() - column * cellWidth : cellWidth,
                                                distributedRowPitch - 6).reduced (8, 3);
             controlLabels[index]->setBounds (cell.removeFromTop (22));
             if (centeredMeterStage)
@@ -2821,6 +2835,7 @@ private:
     bool isFullscreen = false;
     juce::Label heading, fileName, dragHandle;
     StatusLightButton enableButton;
+    juce::Label advancedHeading;
     CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
     juce::TextButton tone3000Button, moveUpButton, moveDownButton;
     std::unique_ptr<juce::TextButton> cabSourceButton;
@@ -3688,7 +3703,10 @@ public:
                    { "roomEarlyMix", "Early / Late Balance", true }, { "roomSpin", "Spin (Hz)" },
                    { "roomWander", "Wander", true }});
         addStage ("Chorus", "chorusOn",
-                  {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true }},
+                  {{ "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true },
+                   { "chorusRandom", "Random", true }, { "chorusRegen", "Regen", true },
+                   { "chorusDerez", "Derez", true }, { "chorusBuffer", "Buffer", true },
+                   { "chorusOutput", "Output", true }},
                   FileKind::none, 0, mover (false, 2));
         addStage ("Post EQ", "postOn", {}, FileKind::none, 0, mover (false, 3));
         addStage ("Output", {}, {{ "outputGain", "Level (dB)" }});
