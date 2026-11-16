@@ -363,10 +363,14 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
 
     addKnob ("inputGain", "Input Gain", -24.0f, 24.0f, 0.0f);
     addKnob ("masterVolume", "Master Volume", -24.0f, 24.0f, 0.0f);
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "outputMode", 1 }, "Output Mode",
+        juce::StringArray { "Stereo", "Mono" }, 0));
     layout.add (std::make_unique<juce::AudioParameterFloat> (
         juce::ParameterID { "pitchSemitones", 1 }, "Pitch",
         juce::NormalisableRange<float> (-24.0f, 24.0f, 1.0f), 0.0f,
         juce::AudioParameterFloatAttributes().withLabel ("st")));
+    addKnob ("pitchBlend", "Pitch Blend", 0.0f, 1.0f, 1.0f);
     addToggle ("gateOn", "Noise Gate", true);
     // The gate threshold is shown and adjusted in whole decibels.
     addKnob ("gateThreshold", "Gate Threshold", -80.0f, -20.0f, -74.0f);
@@ -765,7 +769,7 @@ void NAMplifiedAudioProcessor::resetToDefaults()
     setPreFxOrder ({ 0, 1, 2, 3 });
     setAmpSlotOrder ({ 0, 1 });
     setIRSlotOrder ({ 0, 1 });
-    setPostFxOrder ({ 0, 1, 2, 3 });
+    setPostFxOrder (defaultPostFxOrder);
 }
 
 bool NAMplifiedAudioProcessor::acceptsMidi() const { return JucePlugin_WantsMidiInput != 0; }
@@ -1000,8 +1004,9 @@ bool NAMplifiedAudioProcessor::saveUserPreset (const juce::String& name)
     return true;
 }
 
-bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
+bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name, juce::StringArray& missingAssets)
 {
+    missingAssets.clear();
     const auto file = name.containsChar ('/')
         ? (getUserPresetNames().contains (name)
             ? getUserPresetDirectory().getChildFile (name + ".tlpreset") : juce::File())
@@ -1021,13 +1026,21 @@ bool NAMplifiedAudioProcessor::loadUserPreset (const juce::String& name)
     {
         const auto storedPath = presetState.getProperty (property).toString();
         const auto shared = storedPath.startsWith ("@library/");
-        if (! shared && ! storedPath.startsWith ("@preset-assets/"))
+        if (storedPath.isEmpty())
             continue;
-        const auto assetFile = (shared ? library : assetsFolder).getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false));
+        const auto presetRelative = storedPath.startsWith ("@preset-assets/");
+        const auto assetFile = shared || presetRelative
+            ? (shared ? library : assetsFolder).getChildFile (storedPath.fromFirstOccurrenceOf ("/", false, false))
+            : juce::File (storedPath);
         if (! assetFile.existsAsFile())
-            return false;
+        {
+            missingAssets.addIfNotAlreadyThere (assetFile.getFileName());
+            continue;
+        }
         presetState.setProperty (property, assetFile.getFullPathName(), nullptr);
     }
+    if (! missingAssets.isEmpty())
+        return false;
     presetState.setProperty ("selectedUserPreset", name, nullptr);
     auto resolvedXml = presetState.createXml();
     if (resolvedXml == nullptr)
@@ -1152,6 +1165,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     pitchWritePosition = 0;
     pitchPhase = 0.0f;
     pitchCurrentSemitones = 0.0f;
+    pitchCurrentBlend = parameters.getRawParameterValue ("pitchBlend")->load();
     for (int slot = 0; slot < numAmpSlots; ++slot)
         namModels[slot]->prepare (sampleRate, samplesPerBlock);
     boostNAMModel->prepare (sampleRate, samplesPerBlock);
@@ -1404,6 +1418,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     // shift before the rest of the chain. The 20 ms minimum delay prevents the
     // read heads from catching the write head; all memory is allocated in prepareToPlay.
     const auto pitchTarget = juce::jlimit (-24.0f, 24.0f, get ("pitchSemitones"));
+    const auto pitchBlend = get ("pitchBlend", 1.0f);
     const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
     const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
     const auto pitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
@@ -1415,6 +1430,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     for (int sample = 0; sample < numSamples; ++sample)
     {
+        pitchCurrentBlend += (pitchBlend - pitchCurrentBlend) * pitchSmoothing;
         pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
         for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
             pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
@@ -1448,7 +1464,9 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     return data[static_cast<size_t> (index0)] * (1.0f - fraction)
                          + data[static_cast<size_t> (index1)] * fraction;
                 };
-                buffer.getWritePointer (channel)[sample] = readTap (delayA) * weightA + readTap (delayB) * weightB;
+                auto& sampleValue = buffer.getWritePointer (channel)[sample];
+                const auto shifted = readTap (delayA) * weightA + readTap (delayB) * weightB;
+                sampleValue = std::lerp (sampleValue, shifted, pitchCurrentBlend);
             }
             pitchPhase += phaseIncrement;
             if (pitchPhase >= 1.0f)
@@ -1956,6 +1974,13 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     buffer.applyGain (juce::Decibels::decibelsToGain (get ("masterVolume")));
     auto outputBlock = juce::dsp::AudioBlock<float> (buffer).getSubBlock (0, static_cast<size_t> (numSamples));
     outputSafetyLimiter.process (juce::dsp::ProcessContextReplacing<float> (outputBlock));
+    if (numChannels == 2 && get ("outputMode") >= 0.5f)
+    {
+        auto* left = buffer.getWritePointer (0);
+        auto* right = buffer.getWritePointer (1);
+        for (int sample = 0; sample < numSamples; ++sample)
+            left[sample] = right[sample] = 0.5f * left[sample] + 0.5f * right[sample];
+    }
     float outputBlockPeak = 0.0f;
     for (int channel = 0; channel < numChannels; ++channel)
         outputBlockPeak = juce::jmax (outputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
@@ -2009,6 +2034,16 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         if (! xml->hasTagName (parameters.state.getType()))
             return;
         auto state = juce::ValueTree::fromXml (*xml);
+        for (const auto* id : { "outputMode", "pitchBlend" })
+        {
+            if (state.getChildWithProperty ("id", id).isValid())
+                continue;
+            juce::ValueTree parameterState { "PARAM" };
+            parameterState.setProperty ("id", id, nullptr);
+            const auto* parameter = parameters.getParameter (id);
+            parameterState.setProperty ("value", parameter->convertFrom0to1 (parameter->getDefaultValue()), nullptr);
+            state.appendChild (parameterState, nullptr);
+        }
         parameters.replaceState (state);
         reverbIRLoaded.store (false);
         reverbIRPath.clear();
@@ -2036,14 +2071,14 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         size_t postCount = 0;
         for (int i = 0; i < 5; ++i)
         {
-            const auto stage = static_cast<int> (state.getProperty ("postFxOrder" + juce::String (i), i));
+            const auto stage = static_cast<int> (state.getProperty ("postFxOrder" + juce::String (i), -1));
             if (stage >= 0 && stage < numPostFxStages && ! postSeen[static_cast<size_t> (stage)])
             {
                 postSeen[static_cast<size_t> (stage)] = true;
                 postOrder[postCount++] = stage;
             }
         }
-        for (int stage = 0; stage < numPostFxStages; ++stage)
+        for (const auto stage : defaultPostFxOrder)
             if (! postSeen[static_cast<size_t> (stage)]) postOrder[postCount++] = stage;
         setPostFxOrder (postOrder);
         auto ampOrder = getAmpSlotOrder();

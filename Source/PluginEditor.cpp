@@ -8,16 +8,16 @@
 #include <array>
 #include <cmath>
 
-const auto background = juce::Colour::fromRGB (10, 12, 18);
-const auto panel = juce::Colour::fromRGB (22, 25, 32);
-const auto chainSurface = juce::Colour::fromRGB (15, 18, 24);
-const auto tileSurface = juce::Colour::fromRGB (26, 30, 38);
-const auto detailSurface = juce::Colour::fromRGB (13, 16, 22);
+const auto background = juce::Colour::fromRGB (25, 24, 23);
+const auto panel = juce::Colour::fromRGB (39, 37, 35);
+const auto chainSurface = juce::Colour::fromRGB (28, 27, 26);
+const auto tileSurface = juce::Colour::fromRGB (39, 37, 36);
+const auto detailSurface = juce::Colour::fromRGB (25, 24, 23);
 const auto accent = juce::Colour::fromRGB (238, 119, 57);
 const auto selectionAccent = juce::Colour (0xff5ca9ff);
 const auto knobAccent = juce::Colour (0xff70d9b6);
-const auto text = juce::Colour::fromRGB (235, 236, 239);
-const auto secondaryText = juce::Colour::fromRGB (155, 160, 170);
+const auto text = juce::Colour::fromRGB (244, 238, 229);
+const auto secondaryText = juce::Colour::fromRGB (193, 184, 172);
 
 namespace
 {
@@ -475,7 +475,7 @@ public:
             path.closeSubPath();
             return path.createPathWithRoundedCorners (10.0f);
         };
-        g.setColour (juce::Colour (0xff343b48));
+        g.setColour (juce::Colour (0xff48423a));
         g.fillPath (face (-30));
         g.setColour (tileSurface);
         const auto front = face (0);
@@ -904,7 +904,7 @@ public:
                        r.getRight() - 6.0f, r.getCentreY() - 7.0f);
         g.setColour (accent);
         g.strokePath (curve, juce::PathStrokeType (2.2f));
-        g.setColour (juce::Colour::fromRGB (235, 236, 239));
+        g.setColour (juce::Colour::fromRGB (244, 238, 229));
         g.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
         g.drawText (getButtonText(), getLocalBounds().removeFromBottom (16), juce::Justification::centred);
     }
@@ -976,9 +976,9 @@ public:
     {
         auto bounds = getLocalBounds().toFloat();
         auto graph = bounds.reduced (22.0f, 18.0f);
-        g.setColour (juce::Colour::fromRGB (19, 24, 32));
+        g.setColour (detailSurface);
         g.fillRoundedRectangle (graph, 12.0f);
-        g.setColour (juce::Colour::fromRGB (52, 59, 72));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (graph, 12.0f, 1.0f);
 
         const auto plot = getPlotBounds();
@@ -986,7 +986,7 @@ public:
         for (int db = -12; db <= 12; db += 6)
         {
             const auto y = gainToY (static_cast<float> (db), plot);
-            g.setColour (db == 0 ? juce::Colour::fromRGB (88, 99, 114) : juce::Colour::fromRGB (43, 51, 63));
+            g.setColour (db == 0 ? juce::Colour (0xff766e63) : juce::Colour (0xff48423a));
             g.drawHorizontalLine (juce::roundToInt (y), plot.getX(), plot.getRight());
             g.setColour (secondaryText);
             g.drawText (juce::String (db) + " dB", 4, juce::roundToInt (y - 9.0f), 54, 18,
@@ -996,7 +996,7 @@ public:
         for (const auto frequency : { 100.0f, 1000.0f, 10000.0f })
         {
             const auto x = frequencyToX (frequency, plot);
-            g.setColour (juce::Colour::fromRGB (36, 44, 56));
+            g.setColour (juce::Colour (0xff37332e));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
             g.setColour (secondaryText);
             g.setFont (namplifiedFontOptions (12.0f));
@@ -1013,7 +1013,7 @@ public:
             const auto gain = bandGain (band);
             const juce::Point<float> point (x, gainToY (gain, plot));
             points.push_back (point);
-            g.setColour (juce::Colour::fromRGB (41, 49, 61));
+            g.setColour (juce::Colour (0xff423c35));
             g.drawVerticalLine (juce::roundToInt (x), plot.getY(), plot.getBottom());
             g.setFont (namplifiedFontOptions (12.0f));
             g.setColour (text);
@@ -1056,7 +1056,7 @@ public:
                               || audioProcessor.isParameterModified (frequencyIds[band])
                               || audioProcessor.isParameterModified (qParameterIds[band]);
             const auto pointColour = changed ? accent : juce::Colour (0xff66d6b2);
-            g.setColour (juce::Colour::fromRGB (19, 24, 32));
+            g.setColour (detailSurface);
             g.fillEllipse (point.x - 10.0f, point.y - 10.0f, 20.0f, 20.0f);
             g.setColour (pointColour);
             g.fillEllipse (point.x - 5.5f, point.y - 5.5f, 11.0f, 11.0f);
@@ -1328,7 +1328,7 @@ public:
 
         listBox.setRowHeight (54);
         listBox.setColour (juce::ListBox::backgroundColourId, detailSurface);
-        listBox.setColour (juce::ListBox::outlineColourId, juce::Colour (0xff303845));
+        listBox.setColour (juce::ListBox::outlineColourId, juce::Colour (0xff48423a));
         listBox.setOutlineThickness (1);
         addAndMakeVisible (listBox);
 
@@ -1398,9 +1398,9 @@ private:
         for (int i = 0; i < choices.size(); ++i)
             box.addItem (choices[i], i + 1);
         box.setSelectedId (1, juce::dontSendNotification);
-        box.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff131820));
+        box.setColour (juce::ComboBox::backgroundColourId, juce::Colour (0xff191817));
         box.setColour (juce::ComboBox::textColourId, text);
-        box.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff38424f));
+        box.setColour (juce::ComboBox::outlineColourId, juce::Colour (0xff514a41));
     }
 
     static juce::String findSetting (const juce::String& textToInspect,
@@ -1747,27 +1747,17 @@ public:
 
         if (loadKind == FileKind::impulseResponse)
         {
-            irSourceButton = std::make_unique<juce::TextButton> ("IR");
-            virtualSourceButton = std::make_unique<juce::TextButton> ("Virtual Cab");
-            for (auto* button : { irSourceButton.get(), virtualSourceButton.get() })
+            cabSourceButton = std::make_unique<juce::TextButton> ("Impulse Response");
+            addAndMakeVisible (*cabSourceButton);
+            cabSourceButton->onClick = [this]
             {
-                button->setColour (juce::TextButton::buttonColourId, detailSurface);
-                button->setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff21473f));
-                button->setColour (juce::TextButton::textColourOnId, knobAccent);
-                addAndMakeVisible (*button);
-            }
-            virtualSourceButton->setEnabled (audioProcessor.hasVirtualCab());
-            irSourceButton->onClick = [this]
-            {
-                audioProcessor.selectFileCab (slot);
-                setFileNameText (audioProcessor.getImpulseResponseName (slot));
-            };
-            virtualSourceButton->onClick = [this]
-            {
-                auto point = audioProcessor.getVirtualCabPosition (slot);
-                if (point.x < 0)
-                    point = { 2, 2 };
-                if (audioProcessor.selectVirtualCab (slot, point.x, point.y, point.mic))
+                if (audioProcessor.getVirtualCabPosition (slot).x >= 0)
+                {
+                    audioProcessor.selectFileCab (slot);
+                    setFileNameText (audioProcessor.getImpulseResponseName (slot));
+                    return;
+                }
+                if (audioProcessor.selectVirtualCab (slot, 2, 2, 1))
                     if (auto* enabled = audioProcessor.parameters.getParameter (enableParameterId))
                         enabled->setValueNotifyingHost (1.0f);
                 setFileNameText (audioProcessor.getImpulseResponseName (slot));
@@ -2035,10 +2025,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto card = getLocalBounds().toFloat().reduced (1.0f);
-        g.setGradientFill ({ juce::Colour (0xff202b3b), card.getTopLeft(),
-                             juce::Colour (0xff151d2a), card.getBottomLeft(), false });
+        g.setGradientFill ({ juce::Colour (0xff34312d), card.getTopLeft(),
+                             juce::Colour (0xff282624), card.getBottomLeft(), false });
         g.fillRoundedRectangle (card, 16.0f);
-        g.setColour (juce::Colour (0xff394b60));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (card, 16.0f, 1.25f);
         drawBlockIcon (g, juce::Rectangle<float> (26.0f, 18.0f, 32.0f, 32.0f));
     }
@@ -2094,11 +2084,11 @@ public:
             else
                 ++knobCount;
         }
-        const auto columns = selectorCount > 0 ? 4 : 5;
+        const auto columns = getKnobColumnLimit (selectorCount > 0);
         const auto rows = (knobCount + columns - 1) / columns;
         const auto rowPitch = usesCompactControls() ? 132 : controlRowPitch;
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch);
-        const auto fileControlsHeight = loadKind == FileKind::nam && ! isUsingBuiltInBoost() ? 38
+        const auto fileControlsHeight = loadKind == FileKind::nam ? 38
             : (showsFileLoader() ? 46 : 0);
         return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
     }
@@ -2138,21 +2128,8 @@ public:
             dragHandle.setBounds (header.removeFromLeft (24).withHeight (32));
             header.removeFromLeft (8);
         }
-        if (sourceIndex >= 0)
-        {
-            heading.setBounds (header.withTrimmedLeft (38).withWidth (96));
-            controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
-                header.withTrimmedLeft (142).withWidth (142).withHeight (30).withY (header.getY() + 3));
-        }
-        else
-            heading.setBounds (header.withTrimmedLeft (38));
+        heading.setBounds (header.withTrimmedLeft (38));
 
-        // NAM capture controls belong to NAM profile blocks as well as the NAM
-        // source of the Boost block. They must not depend on a Source selector:
-        // NAM profile blocks deliberately have no source selector.
-        if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
-        {
-        }
         if (hasEnableControl)
             enableButton.setBounds (right.removeFromLeft (36).withSizeKeepingCentre (24, 24));
         if (hasMoveControls)
@@ -2166,29 +2143,42 @@ public:
         if (expandButton != nullptr)
             expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
 
-        if (loadKind == FileKind::nam && ! isUsingBuiltInBoost())
+        if (loadKind == FileKind::nam)
         {
+            const auto builtInBoost = isUsingBuiltInBoost();
             fileName.setBounds ({});
             auto actionRow = area.removeFromTop (38);
             constexpr int loadWidth = 44, browserWidth = 44, navWidth = 38, toneWidth = 210;
             constexpr int gap = 10;
-            constexpr int actionWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
-            const auto nameWidth = juce::jmax (0, juce::jmin (420, actionRow.getWidth() - actionWidth - 16));
+            constexpr int sourceWidth = 148;
+            constexpr int captureWidth = loadWidth + browserWidth + navWidth * 2 + toneWidth + gap * 3 + 4;
+            const auto actionWidth = builtInBoost ? sourceWidth
+                : captureWidth + (sourceIndex >= 0 ? sourceWidth + gap : 0);
+            const auto nameWidth = builtInBoost ? 0 : juce::jlimit (0, 420, actionRow.getWidth() - actionWidth - 16);
             const auto combinedWidth = actionWidth + (nameWidth > 0 ? 16 + nameWidth : 0);
             auto actions = actionRow.withSizeKeepingCentre (combinedWidth, actionRow.getHeight());
-            loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            libraryButton.setBounds (actions.removeFromLeft (browserWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
-            actions.removeFromLeft (4);
-            nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
-            actions.removeFromLeft (gap);
-            tone3000Button.setBounds (actions.removeFromLeft (toneWidth).reduced (0, 2));
-            if (nameWidth > 0)
+            if (sourceIndex >= 0)
             {
-                actions.removeFromLeft (16);
-                fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
+                controlWidgets[static_cast<size_t> (sourceIndex)]->setBounds (
+                    actions.removeFromLeft (sourceWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+            }
+            if (! builtInBoost)
+            {
+                loadButton.setBounds (actions.removeFromLeft (loadWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                libraryButton.setBounds (actions.removeFromLeft (browserWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                previousCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+                actions.removeFromLeft (4);
+                nextCaptureButton.setBounds (actions.removeFromLeft (navWidth).reduced (0, 2));
+                actions.removeFromLeft (gap);
+                tone3000Button.setBounds (actions.removeFromLeft (toneWidth).reduced (0, 2));
+                if (nameWidth > 0)
+                {
+                    actions.removeFromLeft (16);
+                    fileName.setBounds (actions.removeFromLeft (nameWidth).reduced (0, 2));
+                }
             }
             fileName.setJustificationType (juce::Justification::centredLeft);
         }
@@ -2198,14 +2188,20 @@ public:
             if (loadKind != FileKind::nam)
             {
                 auto fileRow = area.removeFromTop (40);
-                loadButton.setBounds (fileRow.removeFromLeft (44));
-                fileRow.removeFromLeft (10);
-                if (irSourceButton != nullptr)
+                constexpr int loadWidth = 44, gap = 10, sourceWidth = 148;
+                if (cabSourceButton != nullptr)
                 {
-                    irSourceButton->setBounds (fileRow.removeFromLeft (48).reduced (0, 3));
-                    fileRow.removeFromLeft (4);
-                    virtualSourceButton->setBounds (fileRow.removeFromLeft (116).reduced (0, 3));
-                    fileRow.removeFromLeft (10);
+                    constexpr int controlsWidth = loadWidth + gap + sourceWidth;
+                    const auto nameWidth = juce::jlimit (0, 420, fileRow.getWidth() - controlsWidth - gap);
+                    fileRow = fileRow.withSizeKeepingCentre (
+                        controlsWidth + (nameWidth > 0 ? gap + nameWidth : 0), fileRow.getHeight());
+                }
+                loadButton.setBounds (fileRow.removeFromLeft (loadWidth));
+                fileRow.removeFromLeft (gap);
+                if (cabSourceButton != nullptr)
+                {
+                    cabSourceButton->setBounds (fileRow.removeFromLeft (sourceWidth).reduced (0, 3));
+                    fileRow.removeFromLeft (gap);
                 }
                 const auto nameWidth = juce::jmin (620, fileRow.getWidth());
                 fileName.setBounds (fileRow.removeFromLeft (nameWidth));
@@ -2286,9 +2282,8 @@ public:
                 return;
             }
         }
-        const auto isNamCapture = stageName.startsWith ("NAM Profile");
-        const auto columns = isNamCapture ? juce::jmin (3, static_cast<int> (knobs.size()))
-                                         : juce::jmin (selectors.empty() ? 5 : 4, static_cast<int> (knobs.size()));
+        const auto columns = juce::jmin (getKnobColumnLimit (! selectors.empty()),
+                                         static_cast<int> (knobs.size()));
         const auto cellWidth = area.getWidth() / columns;
         const auto rows = (static_cast<int> (knobs.size()) + columns - 1) / columns;
         const auto baseRowPitch = usesCompactControls() ? 132 : controlRowPitch;
@@ -2607,9 +2602,9 @@ private:
                 {
                     sourceButton->setButtonText (isSim ? "NAM CAPTURE" : "BOOST");
                     sourceButton->setColour (juce::TextButton::buttonColourId,
-                                             isSim ? juce::Colour (0xff21473f) : juce::Colour::fromRGB (40, 45, 54));
+                                             isSim ? juce::Colour (0xff245348) : juce::Colour (0xff594321));
                     sourceButton->setColour (juce::TextButton::textColourOffId,
-                                             isSim ? knobAccent : text);
+                                             isSim ? knobAccent : juce::Colour (0xffffcf72));
                     sourceButton->setTooltip (isSim ? "NAM capture loaded in this boost slot. Click to switch to the built-in boost."
                                                      : "Built-in Clean Boost / 808 Drive. Click to switch to a NAM capture.");
                 }
@@ -2762,8 +2757,17 @@ private:
         {
             heading.setText ("CAB " + juce::String (slot + 1), juce::dontSendNotification);
             const auto position = audioProcessor.getVirtualCabPosition (slot);
-            irSourceButton->setToggleState (position.x < 0, juce::dontSendNotification);
-            virtualSourceButton->setToggleState (position.x >= 0, juce::dontSendNotification);
+            const auto virtualCabActive = position.x >= 0;
+            const auto virtualCabAvailable = audioProcessor.hasVirtualCab();
+            cabSourceButton->setButtonText (virtualCabActive ? "Virtual Cab" : "Impulse Response");
+            cabSourceButton->setColour (juce::TextButton::buttonColourId,
+                                        juce::Colour (virtualCabActive ? 0xff245348 : 0xff594321));
+            cabSourceButton->setColour (juce::TextButton::textColourOffId,
+                                        virtualCabActive ? knobAccent : juce::Colour (0xffffcf72));
+            cabSourceButton->setTooltip (virtualCabActive ? "Switch to Impulse Response."
+                                        : virtualCabAvailable ? "Switch to Virtual Cab."
+                                                              : "Virtual Cab is unavailable in this build.");
+            cabSourceButton->setEnabled (virtualCabActive || virtualCabAvailable);
             if (position.x < 0)
                 virtualCabPreview.reset();
             else if (virtualCabPreview == nullptr)
@@ -2805,6 +2809,13 @@ private:
     std::function<void (bool)> fullscreenHandler;
     bool usesCompactControls() const { return stageName == "Delay" || stageName == "Reverb"; }
 
+    int getKnobColumnLimit (bool hasSelectors) const
+    {
+        if (stageName == "Delay" || stageName.startsWith ("NAM Profile"))
+            return 3;
+        return hasSelectors ? 4 : 5;
+    }
+
     static constexpr int rotarySize = 102;
     static constexpr int controlRowPitch = 156;
     bool isFullscreen = false;
@@ -2812,7 +2823,7 @@ private:
     StatusLightButton enableButton;
     CaptureActionButton loadButton, libraryButton, previousCaptureButton, nextCaptureButton;
     juce::TextButton tone3000Button, moveUpButton, moveDownButton;
-    std::unique_ptr<juce::TextButton> irSourceButton, virtualSourceButton;
+    std::unique_ptr<juce::TextButton> cabSourceButton;
     std::unique_ptr<VirtualCabPreview> virtualCabPreview;
     std::unique_ptr<ToneCurveButton> toneCurveButton;
     std::unique_ptr<juce::DrawableButton> expandButton;
@@ -2839,7 +2850,7 @@ private:
     juce::String displayedNAMPath;
 };
 
-class StageTile final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
+class StageTile final : public juce::Component, private juce::Timer
 {
 public:
     StageTile (juce::AudioProcessorValueTreeState& state, juce::String name, juce::String enableId,
@@ -2849,8 +2860,6 @@ public:
           selectHandler (std::move (select))
     {
         setName (stageName);
-        if (stageName.startsWith ("NAM Profile"))
-            setTooltip ("Load a NAM capture into this slot. Capture switching uses other files in the same folder.");
         startTimerHz (4);
     }
 
@@ -2925,18 +2934,6 @@ public:
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
             drawModuleIcon (g, iconBounds, getModuleKind());
-        }
-        if (kind == ModuleKind::nam)
-        {
-            const auto markerSize = juce::jlimit (15.0f, 19.0f, r.getWidth() * 0.18f);
-            auto marker = juce::Rectangle<float> (markerSize, markerSize)
-                              .withPosition (r.getRight() - markerSize - 8.0f, r.getY() + 8.0f);
-            g.setColour (juce::Colour (0xff12171e).withAlpha (0.96f));
-            g.fillEllipse (marker);
-            g.setColour (juce::Colour (0xff70d9b6));
-            g.drawEllipse (marker, 1.5f);
-            g.setFont (namplifiedFontOptions (markerSize * 0.72f, juce::Font::bold));
-            g.drawText ("?", marker.translated (0.0f, -0.5f), juce::Justification::centred, false);
         }
         g.endTransparencyLayer();
 
@@ -3134,7 +3131,7 @@ private:
                              signet.getY() + signet.getHeight() * 0.73f);
             monogram.lineTo (signet.getX() + signet.getWidth() * 0.73f,
                              signet.getY() + signet.getHeight() * 0.27f);
-            g.setColour (juce::Colour (0xff141920));
+            g.setColour (juce::Colour (0xff201e1c));
             g.strokePath (monogram, juce::PathStrokeType (juce::jmax (2.0f, signet.getWidth() * 0.09f),
                                                            juce::PathStrokeType::curved,
                                                            juce::PathStrokeType::rounded));
@@ -3711,10 +3708,10 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto area = getLocalBounds().toFloat().reduced (1.0f);
-        g.setGradientFill ({ juce::Colour (0xff182638), area.getCentreX(), area.getY(),
+        g.setGradientFill ({ juce::Colour (0xff282e2b), area.getCentreX(), area.getY(),
                              chainSurface, area.getRight(), area.getBottom(), true });
         g.fillRoundedRectangle (area, 18.0f);
-        g.setColour (juce::Colour (0xff2c3c50));
+        g.setColour (juce::Colour (0xff48423a));
         g.drawRoundedRectangle (area, 18.0f, 1.25f);
         const auto now = juce::Time::getMillisecondCounterHiRes();
         drawLevelMeter (g, 25.0f, audioProcessor.getInputPeak(), "INPUT", now < inputClipUntilMs);
@@ -4018,9 +4015,9 @@ public:
     {
         g.fillAll (juce::Colours::black.withAlpha (0.64f));
         const auto frame = panel().toFloat();
-        g.setColour (juce::Colour (0xff141922));
+        g.setColour (juce::Colour (0xff242220));
         g.fillRoundedRectangle (frame, 16.0f);
-        g.setColour (juce::Colour (0xff384553));
+        g.setColour (juce::Colour (0xff514a41));
         g.drawRoundedRectangle (frame.reduced (0.5f), 16.0f, 1.0f);
         g.drawHorizontalLine (panel().getY() + 87, frame.getX() + 24.0f, frame.getRight() - 24.0f);
     }
@@ -4147,7 +4144,7 @@ public:
         {
             field->setFont (namplifiedFontOptions (16.0f));
             field->setIndents (12, 8);
-            field->setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff10151c));
+            field->setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff191817));
             field->setColour (juce::TextEditor::outlineColourId, juce::Colour (0xff435061));
             field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
             addAndMakeVisible (*field);
@@ -4602,7 +4599,7 @@ private:
         {
             auto* parameter = dynamic_cast<juce::RangedAudioParameter*> (raw);
             if (parameter == nullptr || parameter->paramID == "compBright"
-                || parameter->paramID == "masterVolume")
+                || parameter->paramID == "masterVolume" || parameter->paramID == "outputMode")
                 continue;
 
             const auto& range = parameter->getNormalisableRange();
@@ -4641,7 +4638,8 @@ private:
             for (const auto& property : object->getProperties())
             {
                 const auto id = property.name.toString();
-                if (id == "compBright" || id == "masterVolume" || id == "ir1On" || id == "ir2On" || isBuilderGain (id)
+                if (id == "compBright" || id == "masterVolume" || id == "outputMode"
+                    || id == "ir1On" || id == "ir2On" || isBuilderGain (id)
                     || id == "boostOn" || id == "boostSource" || id == "boostGain" || id == "boost808Level"
                     || id == "boostNAMIn" || id == "boostNAMOut")
                     continue;
@@ -5699,6 +5697,29 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         pitchValueLabel.setText (prefix + juce::String (semitones) + " ST", juce::dontSendNotification);
     };
     pitchSlider.onValueChange = updatePitchValue;
+    pitchBlendLabel.setText ("BLEND", juce::dontSendNotification);
+    pitchBlendLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
+    pitchBlendLabel.setColour (juce::Label::textColourId, secondaryText);
+    addAndMakeVisible (pitchBlendLabel);
+    pitchBlendSlider.setName ("pitchBlend");
+    pitchBlendSlider.setTitle ("Pitch Blend");
+    pitchBlendSlider.setSliderStyle (juce::Slider::LinearHorizontal);
+    pitchBlendSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    pitchBlendSlider.setColour (juce::Slider::trackColourId, knobAccent);
+    pitchBlendSlider.setTooltip ("Blend the original guitar signal with the pitch-shifted signal.");
+    addAndMakeVisible (pitchBlendSlider);
+    pitchBlendAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
+        audioProcessor.parameters, "pitchBlend", pitchBlendSlider);
+    pitchBlendValueLabel.setFont (namplifiedFontOptions (11.0f, juce::Font::bold));
+    pitchBlendValueLabel.setColour (juce::Label::textColourId, text);
+    pitchBlendValueLabel.setJustificationType (juce::Justification::centred);
+    addAndMakeVisible (pitchBlendValueLabel);
+    pitchBlendSlider.onValueChange = [this]
+    {
+        pitchBlendValueLabel.setText (juce::String (juce::roundToInt (pitchBlendSlider.getValue() * 100.0))
+                                         + "%", juce::dontSendNotification);
+    };
+    pitchBlendSlider.onValueChange();
     updatePitchValue();
     masterVolumeLabel.setText ("MASTER", juce::dontSendNotification);
     masterVolumeLabel.setFont (namplifiedFontOptions (12.0f, juce::Font::bold));
@@ -5722,6 +5743,14 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (masterVolumeSlider);
     masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "masterVolume", masterVolumeSlider);
+    outputModeBox.addItem ("Stereo", 1);
+    outputModeBox.addItem ("Mono", 2);
+    outputModeBox.setName ("outputMode");
+    outputModeBox.setTitle ("Output mode");
+    outputModeBox.setTooltip ("Mono averages the left and right signals and sends the result to both outputs.");
+    addAndMakeVisible (outputModeBox);
+    outputModeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        audioProcessor.parameters, "outputMode", outputModeBox);
     masterVolumeSlider.onValueChange = [this]
     {
         auto& settings = namplifiedSettings();
@@ -5825,7 +5854,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetBox.onChange = [this]
     {
         const auto name = selectedPresetName();
-        if (name.isNotEmpty() && audioProcessor.loadUserPreset (name))
+        juce::StringArray missingAssets;
+        if (name.isNotEmpty() && audioProcessor.loadUserPreset (name, missingAssets))
         {
             audioProcessor.setSelectedUserPresetName (name);
             audioProcessor.capturePresetSnapshot();
@@ -5834,7 +5864,15 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
             updateRoutingDisplay();
         }
         else
+        {
             refreshUserPresets (audioProcessor.getSelectedUserPresetName());
+            if (! missingAssets.isEmpty())
+                juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
+                    "Missing preset files",
+                    "Could not load “" + name.fromLastOccurrenceOf ("/", false, false)
+                        + "”. Restore the missing NAM or IR files and select the preset again.\n\n"
+                        + missingAssets.joinIntoString ("\n"), "OK", this);
+        }
     };
     savePresetButton.onClick = [this] { showSavePresetPrompt(); };
     deletePresetButton.onClick = [this] { showDeletePresetPrompt(); };
@@ -5972,11 +6010,16 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setGradientFill ({ juce::Colour (0xff162338), bounds.getTopLeft(),
+    g.setGradientFill ({ juce::Colour (0xff2b3531), bounds.getTopLeft(),
                          background, bounds.getBottomRight(), false });
     g.fillRect (bounds);
     g.setColour (juce::Colour (0xff66d6b2));
     g.fillRect (getLocalBounds().removeFromTop (3));
+    if (! eqFullscreen)
+    {
+        g.setColour (juce::Colour (0xff514a41));
+        g.drawRoundedRectangle (pitchGroupBounds.toFloat().reduced (0.5f), 7.0f, 1.0f);
+    }
 }
 
 void NAMplifiedAudioProcessorEditor::resized()
@@ -6002,14 +6045,14 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     auto presetArea = top;
-    const auto compactHeader = presetArea.getWidth() < 980;
-    const auto presetWidth = compactHeader ? 122 : 165;
-    const auto pitchSliderWidth = compactHeader ? 62 : 112;
+    const auto compactHeader = presetArea.getWidth() < 1100;
+    const auto presetWidth = compactHeader ? 102 : 165;
+    const auto pitchSliderWidth = compactHeader ? 48 : 112;
     const auto pitchLabelWidth = compactHeader ? 42 : 46;
     const auto pitchValueWidth = compactHeader ? 42 : 44;
     const auto masterLabelWidth = compactHeader ? 52 : 60;
     const auto masterValueWidth = compactHeader ? 42 : 48;
-    const auto masterSliderWidth = compactHeader ? 54 : 96;
+    const auto masterSliderWidth = compactHeader ? 42 : 96;
     presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 46 : 58));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
@@ -6023,17 +6066,28 @@ void NAMplifiedAudioProcessorEditor::resized()
     presetArea.removeFromLeft (compactHeader ? 4 : 6);
     resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 6 : 10);
-    pitchLabel.setBounds (presetArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    pitchSlider.setBounds (presetArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
-    presetArea.removeFromLeft (compactHeader ? 2 : 4);
-    pitchValueLabel.setBounds (presetArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
+    const auto pitchControlsWidth = pitchLabelWidth + pitchSliderWidth + pitchValueWidth
+                                  + (compactHeader ? 6 : 10);
+    const auto blendSliderWidth = compactHeader ? 44 : 70;
+    pitchGroupBounds = presetArea.removeFromLeft (pitchControlsWidth + blendSliderWidth + 92).reduced (0, 4);
+    auto pitchArea = pitchGroupBounds.expanded (0, 4).reduced (5, 0);
+    pitchLabel.setBounds (pitchArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
+    pitchArea.removeFromLeft (compactHeader ? 4 : 6);
+    pitchSlider.setBounds (pitchArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
+    pitchArea.removeFromLeft (compactHeader ? 2 : 4);
+    pitchValueLabel.setBounds (pitchArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
+    pitchArea.removeFromLeft (5);
+    pitchBlendLabel.setBounds (pitchArea.removeFromLeft (38).reduced (0, 4));
+    pitchBlendSlider.setBounds (pitchArea.removeFromLeft (blendSliderWidth).reduced (0, 10));
+    pitchBlendValueLabel.setBounds (pitchArea.removeFromLeft (39).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 5 : 8);
     masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeSlider.setBounds (presetArea.removeFromLeft (masterSliderWidth).reduced (0, 10));
     presetArea.removeFromLeft (compactHeader ? 3 : 4);
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
+    presetArea.removeFromLeft (8);
+    outputModeBox.setBounds (presetArea.removeFromLeft (88).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
     parallelRoutingButton.setBounds (controlRow.removeFromRight (44).reduced (0, 2));
@@ -6081,9 +6135,13 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     pitchLabel.setVisible (showChrome);
     pitchSlider.setVisible (showChrome);
     pitchValueLabel.setVisible (showChrome);
+    pitchBlendLabel.setVisible (showChrome);
+    pitchBlendSlider.setVisible (showChrome);
+    pitchBlendValueLabel.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
     masterVolumeValueLabel.setVisible (showChrome);
+    outputModeBox.setVisible (showChrome);
     blendLabel.setVisible (showChrome);
     blendValueLabel.setVisible (showChrome);
     blendSlider.setVisible (showChrome);
