@@ -51,13 +51,12 @@ The amp slots can run **in series** or **in parallel**. In series, the output of
 
 Both NAM slots can run in series or parallel without changing the overall routing layout.
 
-### Cabinet IRs and Virtual Cab
+### Cabinet IRs
 
 - Load up to two cabinet impulse responses in WAV, AIFF, FLAC, or OGG format.
 - Blend the two IR paths in parallel; the IRs are summed from their input rather than cascaded one after another.
 - Use **IR Shape EQ** on each cabinet slot for low, mid, and high tone shaping.
 - In Shared IR 1 routing, both amp paths feed the shared first IR.
-- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in local Standalone, AU, and VST3 builds. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
 
 ### Effects and tone shaping
 
@@ -109,11 +108,9 @@ The TONE3000 API terms effective July 7, 2026 allow free-tier integrations for f
 
 See the current screenshots in the [NAMplified Web project](https://github.com/sedosa-guitar/namplified-web).
 
-### Cab sources
+### Cabinet IR controls
 
 **Impulse Response** loads a cabinet impulse response and offers independent low, mid, and high EQ.
-
-**Virtual Cab (development preview)** shows the Oversized 4x12, selectable microphones, and position controls directly in the cab block.
 
 ### Amp and cabinet routing
 
@@ -150,8 +147,6 @@ Build from source using the instructions above. Public installers are not availa
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 
-The local Virtual Cab audition WAVs are excluded by default. To embed your existing generated WAVs in local Standalone, AU, and VST3 builds, put them in the build directory’s `LocalVirtualCab` folder and configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
-
 ## Third-party software and licenses
 
 Thanks to the developers whose work helps shape NAMplified’s sound.
@@ -160,7 +155,6 @@ Thanks to the developers whose work helps shape NAMplified’s sound.
 - [Dragonfly Reverb](https://github.com/michaelwillis/dragonfly-reverb) and Teru Kamogashira’s Freeverb3 provide the room reverb.
 - Jatin Chowdhury’s [ChowMatrix](https://github.com/Chowdhury-DSP/ChowMatrix) and [chowdsp_wdf](https://github.com/Chowdhury-DSP/chowdsp_wdf) underpin the analog delay and boost modelling.
 - Steven Atkinson’s [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpModelerCore) runs the NAM captures. [JUCE](https://github.com/juce-framework/JUCE) provides the app and plug-in framework.
-- [ConeTracer](https://github.com/vessel-dsp/ConeTracer) powers the local Virtual Cab development preview.
 
 See [Third-Party Notices](THIRD_PARTY_NOTICES.md) for exact source revisions and license terms, including the fonts and the optional Preset Builder’s llama.cpp runtime and Qwen model.
 
