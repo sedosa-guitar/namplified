@@ -1,4 +1,7 @@
 #include <FactoryAssets.h>
+#if NAMPLIFIED_HAS_VIRTUAL_CAB
+#include <VirtualCabAssets.h>
+#endif
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <get_dsp.h>
@@ -1281,7 +1284,9 @@ bool NAMplifiedAudioProcessor::isBusesLayoutSupported (const BusesLayout& layout
     if (output != juce::AudioChannelSet::mono() && output != juce::AudioChannelSet::stereo())
         return false;
    #if ! JucePlugin_IsSynth
-    if (output != layouts.getMainInputChannelSet())
+    const auto input = layouts.getMainInputChannelSet();
+    if (output != input && ! (input == juce::AudioChannelSet::mono()
+                              && output == juce::AudioChannelSet::stereo()))
         return false;
    #endif
     return true;
@@ -1456,6 +1461,15 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     const auto inputMeterChannels = juce::jmin (getTotalNumInputChannels(), buffer.getNumChannels());
     for (int channel = 0; channel < inputMeterChannels; ++channel)
         inputBlockPeak = juce::jmax (inputBlockPeak, buffer.getMagnitude (channel, 0, numSamples));
+    if (inputMeterChannels == 1 && numChannels == 2)
+        buffer.copyFrom (1, 0, buffer, 0, 0, numSamples);
+    else if (inputMeterChannels == 2 && numChannels == 2 && centeredInput.load (std::memory_order_relaxed))
+    {
+        auto* left = buffer.getWritePointer (0);
+        auto* right = buffer.getWritePointer (1);
+        for (int sample = 0; sample < numSamples; ++sample)
+            left[sample] = right[sample] = 0.5f * (left[sample] + right[sample]);
+    }
     if (inputBlockPeak >= 1.0f)
         inputClipped.store (true, std::memory_order_relaxed);
     const auto meterFall = std::exp (-static_cast<float> (numSamples) / static_cast<float> (sampleRate * 0.32));
@@ -1818,7 +1832,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 static_cast<double> (get ("delayTime", 360.0f)) * sampleRate / 1000.0));
             const auto feedback = juce::jlimit (0.0f, 0.9f, get ("delayFeedback", 0.32f));
             const auto mix = juce::jlimit (0.0f, 1.0f, get ("delayMix", 0.25f));
-            const auto mode = juce::jlimit (0, 2, juce::roundToInt (get ("delayMode", 1.0f)));
+            const auto pingPong = get ("delayMode", 1.0f) >= 1.5f;
             const auto analog = get ("delayType", 0.0f) >= 0.5f;
             const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
             const auto highPass = get ("delayHighPass", 100.0f);
@@ -1874,16 +1888,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     (detectorDb - duckThreshold) * 0.75f);
                 const auto duckGain = juce::Decibels::decibelsToGain (-duckDb);
 
-                if (mode == 0) // Mono repeats sit in the centre of a stereo output.
-                {
-                    const auto wet = readRepeat (0);
-                    writeRepeat (0, monoInput + wet * feedback);
-                    const auto outputWet = wet * duckGain * mix;
-                    left[i] = dryLeft * (1.0f - mix) + outputWet;
-                    if (numChannels > 1)
-                        right[i] = dryRight * (1.0f - mix) + outputWet;
-                }
-                else if (mode == 2) // Mono input alternates between the left and right delay lines.
+                if (pingPong) // Mono input alternates between the left and right delay lines.
                 {
                     const auto wetLeft = readRepeat (0);
                     const auto wetRight = readRepeat (1);
@@ -2235,16 +2240,13 @@ void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& 
     irLoaded[slot].store (true);
 }
 
-static juce::File virtualCabDirectory()
-{
-    return juce::File::getSpecialLocation (juce::File::currentExecutableFile)
-        .getParentDirectory().getSiblingFile ("Resources").getChildFile ("LocalVirtualCab");
-}
-
 bool NAMplifiedAudioProcessor::hasVirtualCab() const
 {
-    return juce::JUCEApplicationBase::isStandaloneApp()
-        && virtualCabDirectory().getChildFile ("1-0-0.wav").existsAsFile();
+   #if NAMPLIFIED_HAS_VIRTUAL_CAB
+    return true;
+   #else
+    return false;
+   #endif
 }
 
 NAMplifiedAudioProcessor::CabPosition NAMplifiedAudioProcessor::getVirtualCabPosition (int slot) const
@@ -2254,20 +2256,35 @@ NAMplifiedAudioProcessor::CabPosition NAMplifiedAudioProcessor::getVirtualCabPos
 
 bool NAMplifiedAudioProcessor::selectVirtualCab (int slot, int offset, int distance, int mic)
 {
-    if (! hasVirtualCab())
+   #if NAMPLIFIED_HAS_VIRTUAL_CAB
+    if (! juce::isPositiveAndBelow (slot, numIRSlots))
         return false;
+
     const CabPosition point { juce::jlimit (0, 8, offset), juce::jlimit (0, 6, distance), juce::jlimit (0, 2, mic) };
     if (virtualCabPositions[slot] == point)
         return true;
-    const auto file = virtualCabDirectory().getChildFile (juce::String (point.mic) + "-" + juce::String (point.x) + "-" + juce::String (point.y) + ".wav");
-    if (! file.existsAsFile())
-        return false;
-    irConvolvers[slot].loadImpulseResponse (file, juce::dsp::Convolution::Stereo::no,
-                                            juce::dsp::Convolution::Trim::no, 0,
-                                            juce::dsp::Convolution::Normalise::yes);
-    virtualCabPositions[slot] = point;
-    irLoaded[slot].store (true);
-    return true;
+
+    const auto filename = juce::String (point.mic) + "-" + juce::String (point.x) + "-" + juce::String (point.y) + ".wav";
+    for (int index = 0; index < VirtualCabAssets::namedResourceListSize; ++index)
+    {
+        if (filename != VirtualCabAssets::originalFilenames[index])
+            continue;
+
+        int size = 0;
+        if (const auto* data = VirtualCabAssets::getNamedResource (VirtualCabAssets::namedResourceList[index], size))
+        {
+            irConvolvers[slot].loadImpulseResponse (data, static_cast<size_t> (size), juce::dsp::Convolution::Stereo::no,
+                                                    juce::dsp::Convolution::Trim::no, 0,
+                                                    juce::dsp::Convolution::Normalise::yes);
+            virtualCabPositions[slot] = point;
+            irLoaded[slot].store (true);
+            return true;
+        }
+    }
+   #else
+    juce::ignoreUnused (slot, offset, distance, mic);
+   #endif
+    return false;
 }
 
 void NAMplifiedAudioProcessor::selectFileCab (int slot)

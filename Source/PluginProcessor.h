@@ -123,6 +123,7 @@ public:
 
     bool saveMidiMappings() const;
 
+    void setCenteredInput (bool centered) noexcept { centeredInput.store (centered, std::memory_order_relaxed); }
     void setAudioSettingsCallback (std::function<void()> callback) { audioSettingsCallback = std::move (callback); }
     bool hasAudioSettingsCallback() const noexcept { return static_cast<bool> (audioSettingsCallback); }
     void showAudioSettings() { if (audioSettingsCallback) audioSettingsCallback(); }
@@ -230,6 +231,7 @@ private:
     std::atomic<int> learnedMidiCC { -1 };
 
     std::atomic<int> learnedMidiParameterIndex { -1 };
+    std::atomic<bool> centeredInput { false };
     std::function<void()> audioSettingsCallback;
     std::function<juce::String()> audioStatusCallback;
 

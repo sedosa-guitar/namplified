@@ -58,8 +58,6 @@ private:
     juce::Rectangle<int> pitchGroupBounds;
     juce::Slider masterVolumeSlider;
     juce::ComboBox outputModeBox;
-    juce::String standaloneAudioStatus;
-    double lastAudioInputMs = 0.0;
     juce::Label blendLabel;
     juce::Label blendValueLabel;
     juce::Slider blendSlider;

@@ -2208,8 +2208,27 @@ public:
                 choice->setName (control.id);
                 choice->addItemList (control.choices, 1);
                 addAndMakeVisible (*choice);
-                comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
-                    audioProcessor.parameters, control.id, *choice));
+                if (choice->getName() == "delayMode")
+                {
+                    auto* combo = choice.get();
+                    auto* parameter = audioProcessor.parameters.getParameter (control.id);
+                    // Keep the original parameter values so existing Ping Pong presets still load.
+                    delayModeAttachment = std::make_unique<juce::ParameterAttachment> (
+                        *parameter, [combo] (float value)
+                        {
+                            combo->setSelectedId (value >= 1.5f ? 2 : 1, juce::dontSendNotification);
+                        });
+                    delayModeAttachment->sendInitialUpdate();
+                    combo->onChange = [this, combo]
+                    {
+                        delayModeAttachment->setValueAsCompleteGesture (combo->getSelectedId() == 2 ? 2.0f : 1.0f);
+                    };
+                }
+                else
+                {
+                    comboAttachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+                        audioProcessor.parameters, control.id, *choice));
+                }
                 if (choice->getName() == "boostModel" || choice->getName() == "chorusMode")
                     choice->addListener (this);
                 controlWidgets.push_back (choice.get());
@@ -3100,6 +3119,7 @@ private:
     std::vector<std::unique_ptr<juce::ToggleButton>> toggles;
     std::vector<std::unique_ptr<juce::TextButton>> sourceButtons;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment>> sliderAttachments;
+    std::unique_ptr<juce::ParameterAttachment> delayModeAttachment;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment>> comboAttachments;
     std::vector<std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment>> buttonAttachments;
     std::unique_ptr<juce::FileChooser> fileChooser;
@@ -3967,7 +3987,7 @@ public:
                   {{ "delayTime", "Time (ms)" }, { "delayFeedback", "Feedback", true }, { "delayMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 0),
                   {{ "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
-                   { "delayMode", "Routing", false, juce::StringArray { "Mono", "Stereo", "Ping Pong" } },
+                   { "delayMode", "Repeats", false, juce::StringArray { "Standard", "Ping Pong" } },
                    { "delayTone", "Tone (Hz)" },
                    { "delayHighPass", "High-Pass (Hz)" }, { "delayLowPass", "Low-Pass (Hz)" },
                    { "delayDuck", "Ducking", true }, { "delayDuckThreshold", "Duck Threshold (dB)" },
@@ -6532,19 +6552,6 @@ juce::String NAMplifiedAudioProcessorEditor::selectedPresetName() const
 void NAMplifiedAudioProcessorEditor::timerCallback()
 {
     updateMasterVolumeValueLabel();
-    if (audioProcessor.hasAudioSettingsCallback())
-    {
-        const auto now = juce::Time::getMillisecondCounterHiRes();
-        if (lastAudioInputMs == 0.0 || audioProcessor.getInputPeak() > 0.0001f)
-            lastAudioInputMs = now;
-        auto status = audioProcessor.getAudioStatus();
-        if (status.isEmpty() && now - lastAudioInputMs > 2500.0)
-            status = "No input signal. Check the interface and selected channel.";
-        if (status.isEmpty() && audioProcessor.getInputPeak() > 0.001f
-            && audioProcessor.getOutputPeak() < 0.0001f)
-            status = "Input detected, but no output signal. Check the signal chain and Master.";
-        standaloneAudioStatus = status;
-    }
     if (midiLearnArmed && audioProcessor.hasMidiLearnTarget())
     {
         midiTargetArmed = true;
@@ -6803,11 +6810,7 @@ void NAMplifiedAudioProcessorEditor::showHeaderMenu()
     menu.setLookAndFeel (editorLookAndFeel.get());
     menu.addItem (1, midiLearnArmed ? "Cancel MIDI Learn" : "MIDI Learn");
     if (audioProcessor.hasAudioSettingsCallback())
-    {
         menu.addItem (2, "Audio / MIDI Settings");
-        if (standaloneAudioStatus.isNotEmpty())
-            menu.addItem (4, standaloneAudioStatus, false);
-    }
     menu.addItem (3, "About");
 
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);

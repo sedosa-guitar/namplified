@@ -57,7 +57,7 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - Blend the two IR paths in parallel; the IRs are summed from their input rather than cascaded one after another.
 - Use **IR Shape EQ** on each cabinet slot for low, mid, and high tone shaping.
 - In Shared IR 1 routing, both amp paths feed the shared first IR.
-- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in a local Standalone build. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
+- **Virtual Cab (development preview):** Switch a cab slot from its IR file to Oversized 4x12, select a C414, SM57, or SM7B, and move the microphone to shape the sound. The same low, mid, and high EQ controls apply in both modes. The preview uses IRs generated with [ConeTracer](https://github.com/vessel-dsp/ConeTracer) in local Standalone, AU, and VST3 builds. See the [third-party notices](THIRD_PARTY_NOTICES.md#conetracer-local-virtual-cab-prototype) for licensing and redistribution details.
 
 ### Effects and tone shaping
 
@@ -150,7 +150,7 @@ Build from source using the instructions above. Public installers are not availa
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 
-The local Virtual Cab audition WAVs are excluded by default. To build the local Standalone preview with your existing generated WAVs in the build directory's `LocalVirtualCab` folder, configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
+The local Virtual Cab audition WAVs are excluded by default. To embed your existing generated WAVs in local Standalone, AU, and VST3 builds, put them in the build directory’s `LocalVirtualCab` folder and configure with `-DNAMPLIFIED_LOCAL_VIRTUAL_CAB=ON`.
 
 ## Third-party software and licenses
 
