@@ -1394,12 +1394,16 @@ bool NAMplifiedAudioProcessor::renderAudition (const juce::MemoryBlock& state,
     return true;
 }
 
-void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate)
+void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop)
 {
     const juce::SpinLock::ScopedLockType lock (auditionLock);
+    const auto keepPosition = auditionLoop && loop && auditionRate == sampleRate
+        && auditionAudio.getNumSamples() == audio.getNumSamples();
     auditionAudio = std::move (audio);
     auditionRate = sampleRate;
-    auditionPosition = 0;
+    auditionLoop = loop;
+    if (! keepPosition)
+        auditionPosition = 0;
 }
 
 void NAMplifiedAudioProcessor::stopAudition()
@@ -1461,11 +1465,20 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             && auditionPosition < auditionAudio.getNumSamples())
         {
             buffer.clear();
-            const auto count = juce::jmin (buffer.getNumSamples(), auditionAudio.getNumSamples() - auditionPosition);
-            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
-                buffer.copyFrom (channel, 0, auditionAudio, juce::jmin (channel, 1), auditionPosition, count);
-            auditionPosition += count;
-            outputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, count) : 0.0f);
+            int written = 0;
+            do
+            {
+                const auto count = juce::jmin (buffer.getNumSamples() - written,
+                                               auditionAudio.getNumSamples() - auditionPosition);
+                for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+                    buffer.copyFrom (channel, written, auditionAudio, juce::jmin (channel, 1), auditionPosition, count);
+                auditionPosition += count;
+                written += count;
+                if (auditionLoop && auditionPosition == auditionAudio.getNumSamples())
+                    auditionPosition = 0;
+            }
+            while (auditionLoop && written < buffer.getNumSamples());
+            outputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, written) : 0.0f);
             return;
         }
     }

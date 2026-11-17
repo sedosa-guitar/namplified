@@ -189,7 +189,7 @@ if (NAMPLIFIED_BUILD_TESTS)
     if (APPLE)
         set(test_home "${CMAKE_CURRENT_BINARY_DIR}/test-home")
         file(MAKE_DIRECTORY "${test_home}")
-        foreach(suite preset_names preset_roundtrip routing cab delay chorus pitch)
+        foreach(suite preset_names preset_roundtrip routing cab delay chorus pitch audition_loop)
             add_test(NAME ${suite} COMMAND NAMplifiedTests ${suite} "${test_home}")
             set_tests_properties(${suite} PROPERTIES
                 ENVIRONMENT "CFFIXED_USER_HOME=${test_home}"

@@ -93,7 +93,7 @@ public:
     bool renderAudition (const juce::MemoryBlock& state, const juce::AudioBuffer<float>& input,
                          double sampleRate, juce::AudioBuffer<float>& output,
                          const std::function<bool()>& cancelled);
-    void playAudition (juce::AudioBuffer<float> audio, double sampleRate);
+    void playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop = false);
     void stopAudition();
 
     static constexpr int maxPresetNameLength = 32;
@@ -186,6 +186,7 @@ private:
     juce::AudioBuffer<float> auditionAudio;
     int auditionPosition = 0;
     double auditionRate = 0.0;
+    bool auditionLoop = false;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];

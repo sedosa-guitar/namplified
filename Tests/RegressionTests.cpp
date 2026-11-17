@@ -389,6 +389,34 @@ void chorusTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
+void auditionLoopTests (NAMplifiedAudioProcessor& processor)
+{
+    processor.prepareToPlay (sampleRate, blockSize);
+    juce::AudioBuffer<float> output (2, 4);
+    juce::MidiBuffer midi;
+    const auto play = [&] (float first)
+    {
+        juce::AudioBuffer<float> clip (2, 3);
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 3; ++i)
+                clip.setSample (ch, i, first + static_cast<float> (i) * 0.1f);
+        processor.playAudition (std::move (clip), sampleRate, true);
+        processor.processBlock (output, midi);
+    };
+    play (0.1f);
+    require (near (output.getSample (0, 0), 0.1f, 0.00001)
+             && near (output.getSample (0, 3), 0.1f, 0.00001),
+             "The audition loop should wrap within the audio block");
+    play (0.4f);
+    require (near (output.getSample (0, 0), 0.5f, 0.00001)
+             && near (output.getSample (1, 0), 0.5f, 0.00001),
+             "Switching rigs should keep the current position in the DI");
+    processor.stopAudition();
+    output.clear();
+    processor.processBlock (output, midi);
+    require (output.getMagnitude (0, 4) < 0.00001f, "Stop should remove audition audio");
+}
+
 void pitchTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
@@ -471,6 +499,8 @@ int main (int argc, char** argv)
                 chorusTests (*processor);
             else if (suite == "pitch")
                 pitchTests (*processor);
+            else if (suite == "audition_loop")
+                auditionLoopTests (*processor);
             else
                 require (false, "Unknown test suite");
         }
