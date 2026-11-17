@@ -411,10 +411,28 @@ void auditionLoopTests (NAMplifiedAudioProcessor& processor)
     require (near (output.getSample (0, 0), 0.5f, 0.00001)
              && near (output.getSample (1, 0), 0.5f, 0.00001),
              "Switching rigs should keep the current position in the DI");
+    const auto processLiveInput = [&]
+    {
+        for (int ch = 0; ch < 2; ++ch)
+            for (int i = 0; i < 4; ++i)
+                output.setSample (ch, i, 0.05f);
+        processor.processBlock (output, midi);
+    };
+    const auto measureLiveOutput = [&]
+    {
+        for (int block = 0; block < 256; ++block)
+            processLiveInput();
+        return output.getMagnitude (0, 4);
+    };
+    processor.setCompareVolume (0.0f);
+    const auto liveLevel = measureLiveOutput();
+    require (liveLevel > 0.001f && liveLevel < 0.1f,
+             "Muting the audition should restore live input after the gain ramp");
+
+    processor.setCompareVolume (1.0f);
+    play (0.4f);
     processor.stopAudition();
-    output.clear();
-    processor.processBlock (output, midi);
-    require (output.getMagnitude (0, 4) < 0.00001f, "Stop should remove audition audio");
+    require (near (measureLiveOutput(), liveLevel, 0.00001), "Stop should restore live input");
 }
 
 void pitchTests (NAMplifiedAudioProcessor& processor)

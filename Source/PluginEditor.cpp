@@ -4157,6 +4157,85 @@ private:
     juce::Label brand, heading;
 };
 
+class SavePresetDialog final : public NAMplifiedDialog
+{
+public:
+    SavePresetDialog (juce::Component& parent, const juce::String& suggestedName,
+                      NAMplifiedAudioProcessor& processor)
+        : NAMplifiedDialog (parent, "Save preset to User", 500, 298)
+    {
+        styleLabel (nameLabel, "Preset name", 16.0f, text, true);
+        styleLabel (hint, "Up to " + juce::String (NAMplifiedAudioProcessor::maxPresetNameLength)
+            + " characters. Use letters, digits, spaces or _ - + ( ) .\n"
+              "Keep spaces inside the name and avoid a leading dot.", 14.0f, secondaryText);
+        field.setTitle ("Preset name");
+        field.setFont (namplifiedFontOptions (17.0f));
+        field.setIndents (12, 10);
+        field.setColour (juce::TextEditor::backgroundColourId, background);
+        field.setColour (juce::TextEditor::textColourId, text);
+        field.setColour (juce::TextEditor::outlineColourId, secondaryText.withAlpha (0.32f));
+        field.setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
+        field.setText (suggestedName, false);
+        addAndMakeVisible (field);
+        addAndMakeVisible (cancel);
+        addAndMakeVisible (save);
+        save.setColour (juce::TextButton::buttonColourId, knobAccent);
+        save.setColour (juce::TextButton::textColourOffId, background);
+        cancel.onClick = [this] { dismiss(); };
+        field.onEscapeKey = [this] { dismiss(); };
+        field.onReturnKey = [this] { save.triggerClick(); };
+        save.onClick = [this, &processor]
+        {
+            const auto name = field.getText();
+            if (! processor.canSavePresetName (name))
+            {
+                showError ("Enter a valid preset name.");
+                return;
+            }
+            if (! processor.saveUserPreset (name))
+            {
+                showError ("Could not save preset. Check available storage.");
+                return;
+            }
+            exitModalState (1);
+        };
+        styleLabel (error, {}, 14.0f, juce::Colour (0xffff9d94));
+    }
+
+    void focusName()
+    {
+        field.grabKeyboardFocus();
+        field.selectAll();
+    }
+
+    void resized() override
+    {
+        NAMplifiedDialog::resized();
+        auto area = panel().reduced (24);
+        area.removeFromTop (76);
+        nameLabel.setBounds (area.removeFromTop (23));
+        field.setBounds (area.removeFromTop (42));
+        area.removeFromTop (6);
+        hint.setBounds (area.removeFromTop (38));
+        error.setBounds (area.removeFromTop (22));
+        auto actions = area.removeFromBottom (36);
+        save.setBounds (actions.removeFromRight (100));
+        actions.removeFromRight (8);
+        cancel.setBounds (actions.removeFromRight (100));
+    }
+
+private:
+    void showError (const juce::String& message)
+    {
+        error.setText (message, juce::dontSendNotification);
+        field.grabKeyboardFocus();
+    }
+
+    juce::Label nameLabel, hint, error;
+    juce::TextEditor field;
+    juce::TextButton cancel { "Cancel" }, save { "Save" };
+};
+
 class NAMplifiedAboutDialog final : public NAMplifiedDialog
 {
 public:
@@ -4213,6 +4292,20 @@ public:
         base = juce::ValueTree::fromXml (*xml);
         styleLabel (source, "Load or record a dry guitar take.", 16.0f);
         styleLabel (status, "Pick captures or cabinet IRs, then listen to A or B.", 16.0f, knobAccent);
+        styleLabel (volumeLabel, "Compare volume", 15.0f);
+        volume.setName ("Compare volume");
+        volume.setSliderStyle (juce::Slider::LinearHorizontal);
+        volume.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 28);
+        volume.setRange (0.0, 100.0, 1.0);
+        volume.setTextValueSuffix (" %");
+        volume.setValue (100.0, juce::dontSendNotification);
+        volume.setTooltip ("Playback volume for both rigs. At 0%, live input resumes.");
+        processor.setCompareVolume (1.0f);
+        volume.onValueChange = [this]
+        {
+            processor.setCompareVolume (static_cast<float> (volume.getValue() / 100.0));
+        };
+        addAndMakeVisible (volume);
         addButton (load, [this] { chooseFile (-1, -1); });
         addButton (record, [this] { toggleRecording(); });
         addButton (stop, [this] { pending = heard = -1; processor.stopAudition(); message ("Playback stopped."); });
@@ -4256,9 +4349,9 @@ public:
 
     ~CaptureCompareDialog() override
     {
+        processor.stopAudition();
         signalThreadShouldExit();
         waitForThreadToExit (-1);
-        processor.stopAudition();
         if (recording)
             processor.stopDIRecording (di);
     }
@@ -4281,6 +4374,9 @@ public:
         top.removeFromLeft (8);
         record.setBounds (top.removeFromLeft (116));
         top.removeFromLeft (12);
+        volume.setBounds (top.removeFromRight (165));
+        volumeLabel.setBounds (top.removeFromRight (120));
+        top.removeFromRight (12);
         source.setBounds (top);
         for (int i = 0; i < 2; ++i)
         {
@@ -4315,6 +4411,15 @@ public:
     }
 
 private:
+    void dismiss() override
+    {
+        stopTimer();
+        pending = -1;
+        processor.stopAudition();
+        signalThreadShouldExit();
+        NAMplifiedDialog::dismiss();
+    }
+
     struct Asset
     {
         juce::File file;
@@ -4691,7 +4796,8 @@ private:
     NAMplifiedAudioProcessor& processor;
     juce::ValueTree base;
     std::array<Rig, 2> rigs;
-    juce::Label source, status;
+    juce::Label source, status, volumeLabel;
+    juce::Slider volume;
     juce::TextButton load { "Load DI WAV" }, record { "Record DI" }, stop { "Stop audio" }, close { "Close" };
     std::unique_ptr<juce::FileChooser> chooser;
     juce::AudioBuffer<float> di;
@@ -6279,20 +6385,20 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
     pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -12 to +12 semitones.");
-    addAndMakeVisible (pitchLabel);
+    addChildComponent (pitchLabel);
     pitchSlider.setName ("pitchSemitones");
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
     pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
     pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
-    addAndMakeVisible (pitchSlider);
+    addChildComponent (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "pitchSemitones", pitchSlider);
     pitchValueLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     pitchValueLabel.setColour (juce::Label::textColourId, text);
     pitchValueLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (pitchValueLabel);
+    addChildComponent (pitchValueLabel);
     const auto updatePitchValue = [this]
     {
         const auto semitones = juce::roundToInt (pitchSlider.getValue());
@@ -6594,6 +6700,7 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 {
     captureCompare.reset();
     presetBuilder.reset();
+    savePresetDialog.reset();
     aboutDialog.reset();
     setLookAndFeel (nullptr);
 }
@@ -6614,6 +6721,8 @@ void NAMplifiedAudioProcessorEditor::resized()
         captureCompare->setBounds (getLocalBounds());
     if (presetBuilder != nullptr)
         presetBuilder->setBounds (getLocalBounds());
+    if (savePresetDialog != nullptr)
+        savePresetDialog->setBounds (getLocalBounds());
     if (aboutDialog != nullptr)
         aboutDialog->setBounds (getLocalBounds());
 
@@ -6717,9 +6826,6 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     presetBuilderButton.setVisible (showChrome);
     captureCompareButton.setVisible (showChrome);
     headerMenuButton.setVisible (showChrome);
-    pitchLabel.setVisible (showChrome);
-    pitchSlider.setVisible (showChrome);
-    pitchValueLabel.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
     masterVolumeValueLabel.setVisible (showChrome);
@@ -6925,16 +7031,9 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
 
 void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()> onSaved)
 {
+    if (savePresetDialog != nullptr)
+        return;
     const auto maxLength = NAMplifiedAudioProcessor::maxPresetNameLength;
-    const auto nameRule = "Use up to " + juce::String (maxLength)
-        + " characters: A-Z, 0-9, spaces, and _ - + ( ) ."
-          "\nStart without a dot and keep spaces inside the name.";
-    auto* alert = new juce::AlertWindow ("Save preset to User", nameRule,
-                                         juce::MessageBoxIconType::NoIcon, this);
-    alert->setLookAndFeel (editorLookAndFeel.get());
-    alert->setColour (juce::AlertWindow::backgroundColourId, panel);
-    alert->setColour (juce::AlertWindow::textColourId, text);
-    alert->setColour (juce::AlertWindow::outlineColourId, secondaryText.withAlpha (0.28f));
     const auto currentKey = selectedPresetName();
     auto suggestedName = currentKey.fromLastOccurrenceOf ("/", false, false);
     if (currentKey.containsChar ('/'))
@@ -6952,49 +7051,27 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
             suggestedName = baseName.substring (0, maxLength - suffix.length()) + suffix;
         }
     }
-    alert->addTextEditor ("presetName", suggestedName.isNotEmpty() ? suggestedName : "MyPreset", "Preset name:");
-    if (auto* field = alert->getTextEditor ("presetName"))
-    {
-        field->setFont (namplifiedFontOptions (16.0f));
-        field->applyFontToAllText (namplifiedFontOptions (16.0f));
-        field->setColour (juce::TextEditor::backgroundColourId, background);
-        field->setColour (juce::TextEditor::textColourId, text);
-        field->setColour (juce::TextEditor::outlineColourId, secondaryText.withAlpha (0.32f));
-        field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
-        field->setColour (juce::TextEditor::highlightColourId, knobAccent.withAlpha (0.30f));
-    }
-    alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
-    alert->getButton ("Cancel")->setColour (juce::TextButton::buttonColourId, background);
-    auto* saveButton = alert->getButton ("Save");
-    saveButton->setColour (juce::TextButton::buttonColourId, knobAccent);
-    saveButton->setColour (juce::TextButton::textColourOffId, background);
+    auto dialog = std::make_unique<SavePresetDialog> (*this,
+        suggestedName.isNotEmpty() ? suggestedName : "MyPreset", audioProcessor);
+    auto& view = *dialog;
+    savePresetDialog = std::move (dialog);
+    view.setBounds (getLocalBounds());
+    addAndMakeVisible (view);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
-    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, nameRule, onSaved = std::move (onSaved)] (int result)
+    view.enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, onSaved = std::move (onSaved)] (int result)
     {
-        alert->setLookAndFeel (nullptr);
-        if (result != 1 || safeThis == nullptr)
+        if (safeThis == nullptr)
             return;
-        const auto name = alert->getTextEditorContents ("presetName");
-        if (! safeThis->audioProcessor.canSavePresetName (name))
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
-                                                     "Invalid preset name", nameRule);
+        safeThis->savePresetDialog.reset();
+        if (result != 1)
             return;
-        }
-        if (! safeThis->audioProcessor.saveUserPreset (name))
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                     "Could not save preset",
-                                                     "Check the preset name and available storage space.");
-            return;
-        }
         safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets (safeThis->audioProcessor.getSelectedUserPresetName());
         if (onSaved)
             onSaved();
-    }), true);
+    }), false);
+    view.focusName();
 }
 
 void NAMplifiedAudioProcessorEditor::showDeletePresetPrompt()

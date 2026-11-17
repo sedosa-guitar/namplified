@@ -54,7 +54,7 @@ private:
     juce::DrawableButton presetBuilderButton { "Build preset", juce::DrawableButton::ImageFitted };
     std::unique_ptr<PresetBuilderDialog> presetBuilder;
     std::unique_ptr<CaptureCompareDialog> captureCompare;
-    std::unique_ptr<juce::Component> aboutDialog;
+    std::unique_ptr<juce::Component> savePresetDialog, aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;
     juce::Slider pitchSlider;

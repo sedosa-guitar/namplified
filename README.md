@@ -20,6 +20,7 @@ NAMplified is a free hobby project. If you’d like to help cover development co
 
 - **A complete guitar rig around NAM captures.** See the signal flow from input to output and edit each block in place. Move pre-amp and post-amp effects within their sections.
 - **Dual amps and flexible cabinet routing.** Run two NAM captures in series or blend them in parallel, with an optional frequency split. Pair each amp with its own IR or route the blend through a shared IR. Shape each cabinet independently.
+- **Rig Shootout.** Compare two amp and cabinet setups at matched levels using the same dry guitar loop.
 - **A dedicated NAM pedal slot.** Use a captured pedal before the amps or choose the built-in Clean Boost or 808 Drive.
 - **Local AI Preset Builder with audio A/B.** Describe a sound, then record or import a dry DI to compare the original chain with two generated variants at matched levels. After setup, generation runs on your Mac. If a suitable capture is missing, the builder can suggest a TONE3000 search.
 - **A reusable capture and IR library.** Presets share files, Prev/Next steps through capture families, and the integrated TONE3000 browser loads individual captures you choose.
@@ -68,6 +69,12 @@ Both NAM slots can run in series or parallel without changing the overall routin
 - **Reverb:** Room uses Freeverb3 from Dragonfly Room for early reflections and the reverb tail. Plate uses Airwindows kPlate140, and Cloud uses Airwindows Galactic2. Size/decay, damping, pre-delay, width, wet-path high-pass / low-pass, and mix remain adjustable. Room reverb is enabled by default at a subtle mix. Select **IR** and load a mono or stereo WAV impulse response for convolution reverb. IR mode uses pre-delay, wet filters and mix, and plays dry until an IR is loaded. IRs are limited to the first 10 seconds.
 - **Chorus:** Uses Airwindows TakeCare, a stereo chorus ensemble. Adjust Rate, Depth, and Mix, with Random, Regen, Derez, Buffer, and Output grouped under Advanced.
 - **Pitch:** transpose the guitar before the signal chain by up to one octave down or up (−12 to +12 semitones). When shifting down, the shifter adapts to steady low notes to help retain their fundamental.
+
+### Rig Shootout
+
+Open **Capture Compare** from the two-panel icon next to Preset Builder. Record a dry guitar take or load a DI WAV. Each rig can use up to two NAM captures and two cabinet IRs, with series or parallel routing. Use the arrows to step through captures in the same folder.
+
+Switch between **Listen A** and **Listen B** to hear the same loop at matched levels. **Compare volume** controls playback for both rigs. Choose **Apply A** or **Apply B** to bring that amp and cab setup into the current chain.
 
 ### Preset Builder (Beta, macOS)
 

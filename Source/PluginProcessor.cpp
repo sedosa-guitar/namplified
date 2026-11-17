@@ -1403,7 +1403,10 @@ void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, dou
     auditionRate = sampleRate;
     auditionLoop = loop;
     if (! keepPosition)
+    {
         auditionPosition = 0;
+        currentCompareVolume = compareVolume.load (std::memory_order_relaxed);
+    }
 }
 
 void NAMplifiedAudioProcessor::stopAudition()
@@ -1461,7 +1464,9 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     {
         const juce::SpinLock::ScopedTryLockType lock (auditionLock);
-        if (lock.isLocked() && auditionRate == modelSampleRate.load()
+        const auto compareGain = compareVolume.load (std::memory_order_relaxed);
+        if (lock.isLocked() && (! auditionLoop || compareGain > 0.0f || currentCompareVolume > 0.0f)
+            && auditionRate == modelSampleRate.load()
             && auditionPosition < auditionAudio.getNumSamples())
         {
             buffer.clear();
@@ -1478,6 +1483,11 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                     auditionPosition = 0;
             }
             while (auditionLoop && written < buffer.getNumSamples());
+            if (auditionLoop)
+            {
+                buffer.applyGainRamp (0, written, currentCompareVolume, compareGain);
+                currentCompareVolume = compareGain;
+            }
             outputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, written) : 0.0f);
             return;
         }
