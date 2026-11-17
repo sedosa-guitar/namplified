@@ -4132,6 +4132,8 @@ public:
 protected:
     virtual void dismiss() { exitModalState (0); }
 
+    void setHeadingFont (const juce::FontOptions& font) { heading.setFont (font); }
+
     juce::Rectangle<int> panel() const
     {
         return getLocalBounds().withSizeKeepingCentre (panelWidth, panelHeight);
@@ -4153,6 +4155,85 @@ private:
     int panelWidth, panelHeight;
     juce::ImageComponent icon;
     juce::Label brand, heading;
+};
+
+class SavePresetDialog final : public NAMplifiedDialog
+{
+public:
+    SavePresetDialog (juce::Component& parent, const juce::String& suggestedName,
+                      NAMplifiedAudioProcessor& processor)
+        : NAMplifiedDialog (parent, "Save preset to User", 500, 298)
+    {
+        styleLabel (nameLabel, "Preset name", 16.0f, text, true);
+        styleLabel (hint, "Up to " + juce::String (NAMplifiedAudioProcessor::maxPresetNameLength)
+            + " characters. Use letters, digits, spaces or _ - + ( ) .\n"
+              "Keep spaces inside the name and avoid a leading dot.", 14.0f, secondaryText);
+        field.setTitle ("Preset name");
+        field.setFont (namplifiedFontOptions (17.0f));
+        field.setIndents (12, 10);
+        field.setColour (juce::TextEditor::backgroundColourId, background);
+        field.setColour (juce::TextEditor::textColourId, text);
+        field.setColour (juce::TextEditor::outlineColourId, secondaryText.withAlpha (0.32f));
+        field.setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
+        field.setText (suggestedName, false);
+        addAndMakeVisible (field);
+        addAndMakeVisible (cancel);
+        addAndMakeVisible (save);
+        save.setColour (juce::TextButton::buttonColourId, knobAccent);
+        save.setColour (juce::TextButton::textColourOffId, background);
+        cancel.onClick = [this] { dismiss(); };
+        field.onEscapeKey = [this] { dismiss(); };
+        field.onReturnKey = [this] { save.triggerClick(); };
+        save.onClick = [this, &processor]
+        {
+            const auto name = field.getText();
+            if (! processor.canSavePresetName (name))
+            {
+                showError ("Enter a valid preset name.");
+                return;
+            }
+            if (! processor.saveUserPreset (name))
+            {
+                showError ("Could not save preset. Check available storage.");
+                return;
+            }
+            exitModalState (1);
+        };
+        styleLabel (error, {}, 14.0f, juce::Colour (0xffff9d94));
+    }
+
+    void focusName()
+    {
+        field.grabKeyboardFocus();
+        field.selectAll();
+    }
+
+    void resized() override
+    {
+        NAMplifiedDialog::resized();
+        auto area = panel().reduced (24);
+        area.removeFromTop (76);
+        nameLabel.setBounds (area.removeFromTop (23));
+        field.setBounds (area.removeFromTop (42));
+        area.removeFromTop (6);
+        hint.setBounds (area.removeFromTop (38));
+        error.setBounds (area.removeFromTop (22));
+        auto actions = area.removeFromBottom (36);
+        save.setBounds (actions.removeFromRight (100));
+        actions.removeFromRight (8);
+        cancel.setBounds (actions.removeFromRight (100));
+    }
+
+private:
+    void showError (const juce::String& message)
+    {
+        error.setText (message, juce::dontSendNotification);
+        field.grabKeyboardFocus();
+    }
+
+    juce::Label nameLabel, hint, error;
+    juce::TextEditor field;
+    juce::TextButton cancel { "Cancel" }, save { "Save" };
 };
 
 class NAMplifiedAboutDialog final : public NAMplifiedDialog
@@ -4190,6 +4271,542 @@ private:
     juce::HyperlinkButton projectLink { "View the source code on GitHub",
                                       juce::URL ("https://github.com/sedosa-guitar/namplified") };
     juce::TextButton close { "Close" };
+};
+
+class CaptureCompareDialog final : public NAMplifiedDialog, private juce::Thread, private juce::Timer
+{
+public:
+    CaptureCompareDialog (NAMplifiedAudioProcessor& p, juce::Component& parent)
+        : NAMplifiedDialog (parent, "Capture Compare", 960, 540), juce::Thread ("Capture Compare"), processor (p)
+    {
+        static const auto headingTypeface = juce::Typeface::createSystemTypefaceFor (
+            BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
+        if (headingTypeface != nullptr)
+            setHeadingFont (juce::FontOptions().withTypeface (headingTypeface)
+                .withHeight (29.0f)
+                .withVariableSetting ({ juce::FontFeatureTag ("wght"), 650.0f }));
+
+        juce::MemoryBlock original;
+        processor.getStateInformation (original);
+        auto xml = juce::AudioProcessor::getXmlFromBinary (original.getData(), static_cast<int> (original.getSize()));
+        base = juce::ValueTree::fromXml (*xml);
+        styleLabel (source, "Load or record a dry guitar take.", 16.0f);
+        styleLabel (status, "Pick captures or cabinet IRs, then listen to A or B.", 16.0f, knobAccent);
+        styleLabel (volumeLabel, "Compare volume", 15.0f);
+        volume.setName ("Compare volume");
+        volume.setSliderStyle (juce::Slider::LinearHorizontal);
+        volume.setTextBoxStyle (juce::Slider::TextBoxRight, false, 56, 28);
+        volume.setRange (0.0, 100.0, 1.0);
+        volume.setTextValueSuffix (" %");
+        volume.setValue (100.0, juce::dontSendNotification);
+        volume.setTooltip ("Playback volume for both rigs. At 0%, live input resumes.");
+        processor.setCompareVolume (1.0f);
+        volume.onValueChange = [this]
+        {
+            processor.setCompareVolume (static_cast<float> (volume.getValue() / 100.0));
+        };
+        addAndMakeVisible (volume);
+        addButton (load, [this] { chooseFile (-1, -1); });
+        addButton (record, [this] { toggleRecording(); });
+        addButton (stop, [this] { pending = heard = -1; processor.stopAudition(); message ("Playback stopped."); });
+        addButton (close, [this] { dismiss(); });
+        for (int i = 0; i < 2; ++i)
+        {
+            auto& rig = rigs[i];
+            const auto letter = i == 0 ? "A" : "B";
+            styleLabel (rig.title, "RIG " + juce::String (letter), 16.0f, knobAccent, true);
+            rig.routing.addItemList ({ "Series", "Parallel (Paired IRs)", "Parallel (Shared IR 1)" }, 1);
+            rig.routing.setSelectedId (value ("ampRouting") ? (value ("parallelIRMode") ? 3 : 2) : 1,
+                                       juce::dontSendNotification);
+            rig.routing.onChange = [this, i] { changed (i); };
+            addAndMakeVisible (rig.routing);
+            rig.listen.setButtonText ("Listen " + juce::String (letter));
+            rig.apply.setButtonText ("Apply " + juce::String (letter));
+            addButton (rig.listen, [this, i] { listen (i); });
+            addButton (rig.apply, [this, i] { apply (i); });
+            for (int j = 0; j < 4; ++j)
+            {
+                auto& asset = rig.assets[j];
+                asset.file = juce::File (base.getProperty (pathKey (j)).toString());
+                asset.enabled.setButtonText (j < 2 ? "Amp " + juce::String (j + 1) : "Cab " + juce::String (j - 1));
+                asset.enabled.setToggleState (value (enableKey (j)), juce::dontSendNotification);
+                addButton (asset.enabled, [this, i] { changed (i); });
+                styleLabel (asset.name, {}, 15.0f);
+                addButton (asset.pick, [this, i, j] { chooseFile (i, j); });
+                if (j < 2)
+                {
+                    asset.previous.setTooltip ("Previous capture in this folder");
+                    asset.next.setTooltip ("Next capture in this folder");
+                    addButton (asset.previous, [this, i, j] { step (i, j, -1); });
+                    addButton (asset.next, [this, i, j] { step (i, j, 1); });
+                }
+                updateAsset (asset);
+            }
+        }
+        updateControls();
+        startTimerHz (15);
+    }
+
+    ~CaptureCompareDialog() override
+    {
+        processor.stopAudition();
+        signalThreadShouldExit();
+        waitForThreadToExit (-1);
+        if (recording)
+            processor.stopDIRecording (di);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        NAMplifiedDialog::paint (g);
+        g.setColour (juce::Colour (0xff191817));
+        for (int i = 0; i < 2; ++i)
+            g.fillRoundedRectangle (rigBounds (i).toFloat(), 10.0f);
+    }
+
+    void resized() override
+    {
+        NAMplifiedDialog::resized();
+        auto area = panel().reduced (24);
+        area.removeFromTop (76);
+        auto top = area.removeFromTop (36);
+        load.setBounds (top.removeFromLeft (116));
+        top.removeFromLeft (8);
+        record.setBounds (top.removeFromLeft (116));
+        top.removeFromLeft (12);
+        volume.setBounds (top.removeFromRight (165));
+        volumeLabel.setBounds (top.removeFromRight (120));
+        top.removeFromRight (12);
+        source.setBounds (top);
+        for (int i = 0; i < 2; ++i)
+        {
+            auto box = rigBounds (i).reduced (14);
+            auto& rig = rigs[i];
+            auto header = box.removeFromTop (32);
+            rig.routing.setBounds (header.removeFromRight (226));
+            rig.title.setBounds (header);
+            box.removeFromTop (10);
+            for (int j = 0; j < 4; ++j)
+            {
+                auto row = box.removeFromTop (44).reduced (0, 4);
+                auto& asset = rig.assets[j];
+                asset.enabled.setBounds (row.removeFromLeft (80));
+                asset.pick.setBounds (row.removeFromRight (72));
+                if (j < 2)
+                {
+                    asset.next.setBounds (row.removeFromRight (34).reduced (2, 0));
+                    asset.previous.setBounds (row.removeFromRight (34).reduced (2, 0));
+                }
+                asset.name.setBounds (row.reduced (5, 0));
+            }
+            auto actions = box.removeFromBottom (36);
+            rig.apply.setBounds (actions.removeFromRight (100));
+            rig.listen.setBounds (actions.removeFromLeft (100));
+        }
+        auto footer = area.removeFromBottom (36);
+        close.setBounds (footer.removeFromRight (88));
+        footer.removeFromRight (8);
+        stop.setBounds (footer.removeFromRight (104));
+        status.setBounds (footer.reduced (0, 2));
+    }
+
+private:
+    void dismiss() override
+    {
+        stopTimer();
+        pending = -1;
+        processor.stopAudition();
+        signalThreadShouldExit();
+        NAMplifiedDialog::dismiss();
+    }
+
+    struct Asset
+    {
+        juce::File file;
+        juce::Label name;
+        juce::ToggleButton enabled;
+        juce::TextButton pick { "Browse" }, previous { "<" }, next { ">" };
+    };
+
+    struct Rig
+    {
+        std::array<Asset, 4> assets;
+        juce::Label title;
+        juce::ComboBox routing;
+        juce::TextButton listen, apply;
+    };
+
+    juce::Rectangle<int> rigBounds (int index) const
+    {
+        return juce::Rectangle<int> (24 + 464 * index, 152, 448, 308) + panel().getPosition();
+    }
+
+    void addButton (juce::Button& button, std::function<void()> action)
+    {
+        if (auto* textButton = dynamic_cast<juce::TextButton*> (&button))
+            textButton->getProperties().set ("namButtonFontHeight", 16.0);
+        addAndMakeVisible (button);
+        button.onClick = std::move (action);
+    }
+
+    static juce::String pathKey (int j) { return j < 2 ? "ampFile" + juce::String (j + 1) : "irFile" + juce::String (j - 1); }
+    static juce::String enableKey (int j) { return j < 2 ? "amp" + juce::String (j + 1) + "On" : "ir" + juce::String (j - 1) + "On"; }
+
+    bool value (const juce::String& id) const
+    {
+        return static_cast<float> (base.getChildWithProperty ("id", id).getProperty ("value", 0.0f)) >= 0.5f;
+    }
+
+    void message (const juce::String& content) { status.setText (content, juce::dontSendNotification); }
+
+    static void updateAsset (Asset& asset)
+    {
+        asset.name.setText (asset.file == juce::File() ? "No file" : asset.file.getFileNameWithoutExtension(),
+                            juce::dontSendNotification);
+        asset.name.setTooltip (asset.file.getFullPathName());
+    }
+
+    void chooseFile (int i, int j)
+    {
+        auto initial = i >= 0 ? rigs[i].assets[j].file.getParentDirectory() : juce::File();
+        if (! initial.isDirectory() && i >= 0 && j < 2)
+            initial = lastNAMDirectory();
+        chooser = std::make_unique<juce::FileChooser> (
+            i < 0 ? "Choose a dry guitar WAV" : j < 2 ? "Choose a NAM capture" : "Choose a cabinet IR",
+            initial, i < 0 ? "*.wav" : j < 2 ? "*.nam" : "*.wav;*.aif;*.aiff;*.flac;*.ogg");
+        chooseActive = true;
+        updateControls();
+        juce::Component::SafePointer<CaptureCompareDialog> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe, i, j] (const juce::FileChooser& dialog)
+            {
+                if (safe == nullptr)
+                    return;
+                safe->chooseActive = false;
+                const auto file = dialog.getResult();
+                if (file.existsAsFile())
+                {
+                    if (i >= 0 && j >= 2)
+                    {
+                        juce::AudioFormatManager formats;
+                        formats.registerBasicFormats();
+                        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+                        if (reader != nullptr && reader->lengthInSamples > 0)
+                            safe->select (i, j, file);
+                        else
+                            safe->message ("Choose a readable cabinet IR.");
+                    }
+                    else if (i >= 0)
+                        safe->select (i, j, file);
+                    else
+                        safe->loadDI (file);
+                }
+                safe->updateControls();
+            });
+    }
+
+    void select (int i, int j, const juce::File& file)
+    {
+        auto& asset = rigs[i].assets[j];
+        asset.file = file;
+        asset.enabled.setToggleState (true, juce::dontSendNotification);
+        updateAsset (asset);
+        changed (i);
+    }
+
+    void step (int i, int j, int direction)
+    {
+        const auto file = rigs[i].assets[j].file;
+        auto files = file.getParentDirectory().findChildFiles (juce::File::findFiles, false, "*.nam");
+        files.sort();
+        const auto index = files.indexOf (file);
+        if (index >= 0 && files.size() > 1)
+            select (i, j, files[(index + direction + files.size()) % files.size()]);
+        else
+            message ("Choose a capture from a folder with more than one NAM file.");
+    }
+
+    void loadDI (const juce::File& file)
+    {
+        juce::AudioFormatManager formats;
+        formats.registerBasicFormats();
+        std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+        if (reader == nullptr || ! std::isfinite (reader->sampleRate)
+            || reader->sampleRate < 8000.0 || reader->sampleRate > 384000.0 || reader->lengthInSamples <= 0)
+        {
+            message ("Choose a readable guitar WAV.");
+            return;
+        }
+        const auto samples = static_cast<int> (juce::jmin (reader->lengthInSamples,
+            static_cast<juce::int64> (12 * reader->sampleRate)));
+        juce::AudioBuffer<float> input (1, samples);
+        if (! reader->read (&input, 0, samples, 0, true, false))
+        {
+            message ("Could not read the guitar WAV.");
+            return;
+        }
+        di = std::move (input);
+        diRate = reader->sampleRate;
+        source.setText (file.getFileName() + " (" + juce::String (samples / diRate, 1) + " s)",
+                        juce::dontSendNotification);
+        invalidateDI();
+    }
+
+    void toggleRecording()
+    {
+        if (recording)
+        {
+            finishRecording();
+            return;
+        }
+        processor.stopAudition();
+        const auto rate = processor.getAuditionSampleRate();
+        if (! processor.startDIRecording (rate))
+        {
+            message ("Enable an audio input before recording.");
+            return;
+        }
+        recordingRate = rate;
+        recording = true;
+        record.setButtonText ("Finish DI");
+        message ("Recording dry input. Play your riff, then select Finish DI.");
+        updateControls();
+    }
+
+    void finishRecording()
+    {
+        juce::AudioBuffer<float> captured;
+        const auto samples = processor.stopDIRecording (captured);
+        recording = false;
+        record.setButtonText ("Record DI");
+        if (samples > 0)
+        {
+            diRate = recordingRate;
+            di = std::move (captured);
+            di.setSize (1, juce::jmin (samples, static_cast<int> (12 * diRate)), true, false, true);
+            source.setText ("Recorded DI (" + juce::String (di.getNumSamples() / diRate, 1) + " s)",
+                            juce::dontSendNotification);
+            invalidateDI();
+        }
+        else
+            message ("No DI was recorded. Check the input.");
+        updateControls();
+    }
+
+    void invalidateDI()
+    {
+        processor.stopAudition();
+        heard = -1;
+        dirty.fill (true);
+        message ("DI ready. Select Listen A or Listen B.");
+    }
+
+    void changed (int i)
+    {
+        dirty[i] = true;
+        if (di.getNumSamples() > 0 && ! recording && heard >= 0)
+            listen (i);
+    }
+
+    void updateControls()
+    {
+        const auto editing = ! busy && ! recording && ! chooseActive;
+        load.setEnabled (editing);
+        record.setEnabled (! busy && ! chooseActive);
+        for (auto& rig : rigs)
+        {
+            rig.routing.setEnabled (editing);
+            rig.apply.setEnabled (editing);
+            rig.listen.setEnabled (editing && di.getNumSamples() > 0);
+            for (auto& asset : rig.assets)
+            {
+                asset.enabled.setEnabled (editing);
+                asset.pick.setEnabled (editing);
+                asset.previous.setEnabled (editing && asset.file.existsAsFile());
+                asset.next.setEnabled (editing && asset.file.existsAsFile());
+            }
+        }
+    }
+
+    juce::MemoryBlock makeState (int i) const
+    {
+        auto state = base.createCopy();
+        const auto set = [&state] (const juce::String& id, bool enabled)
+        {
+            state.getChildWithProperty ("id", id).setProperty ("value", enabled ? 1.0f : 0.0f, nullptr);
+        };
+        const auto& rig = rigs[i];
+        set ("ampRouting", rig.routing.getSelectedId() > 1);
+        if (rig.routing.getSelectedId() > 1)
+            set ("parallelIRMode", rig.routing.getSelectedId() == 3);
+        set ("looperOn", false);
+        for (int j = 0; j < 4; ++j)
+        {
+            const auto& asset = rig.assets[j];
+            state.setProperty (pathKey (j), asset.file.getFullPathName(), nullptr);
+            if (j < 2 && asset.file.getFullPathName() != base.getProperty (pathKey (j)).toString())
+                state.removeProperty ("ampDisplayName" + juce::String (j + 1), nullptr);
+            set (enableKey (j), asset.enabled.getToggleState());
+        }
+        juce::MemoryBlock binary;
+        juce::AudioProcessor::copyXmlToBinary (*state.createXml(), binary);
+        return binary;
+    }
+
+    void listen (int i)
+    {
+        const auto rate = processor.getAuditionSampleRate();
+        if (! std::isfinite (rate) || rate < 8000.0 || rate > 384000.0)
+        {
+            message ("Start the audio engine to listen.");
+            return;
+        }
+        if (! juce::approximatelyEqual (rate, renderRate))
+            dirty.fill (true);
+        pending = i;
+        if (! dirty[0] && ! dirty[1])
+        {
+            playPending();
+            return;
+        }
+        renderRate = rate;
+        for (int n = 0; n < 2; ++n)
+            if (dirty[n])
+                states[n] = makeState (n);
+        busy = true;
+        message ("Preparing level-matched audio...");
+        updateControls();
+        if (! startThread())
+        {
+            busy = false;
+            pending = -1;
+            message ("Could not start the comparison.");
+            updateControls();
+        }
+    }
+
+    void run() override
+    {
+        failed = false;
+        const auto inputSize = juce::roundToInt (di.getNumSamples() * renderRate / diRate);
+        if (inputSize <= 0)
+        {
+            failed = true;
+            return;
+        }
+        juce::AudioBuffer<float> input (1, inputSize);
+        juce::LagrangeInterpolator interpolator;
+        interpolator.process (diRate / renderRate, di.getReadPointer (0), input.getWritePointer (0),
+                              inputSize, di.getNumSamples(), 0);
+        for (int i = 0; i < 2; ++i)
+        {
+            if (! dirty[i])
+                continue;
+            if (! processor.renderAudition (states[i], input, renderRate, rendered[i],
+                                             [this] { return threadShouldExit(); }))
+            {
+                failed = true;
+                return;
+            }
+            rendered[i].setSize (2, inputSize, true, false, true);
+            dirty[i] = false;
+        }
+    }
+
+    void playPending()
+    {
+        const auto i = std::exchange (pending, -1);
+        if (i < 0)
+            return;
+        std::array<float, 2> rms {}, peak {};
+        for (int n = 0; n < 2; ++n)
+        {
+            const auto& audio = rendered[n];
+            for (int ch = 0; ch < 2; ++ch)
+            {
+                const auto level = audio.getRMSLevel (ch, 0, audio.getNumSamples());
+                rms[n] += level * level * 0.5f;
+                peak[n] = juce::jmax (peak[n], audio.getMagnitude (ch, 0, audio.getNumSamples()));
+            }
+            rms[n] = std::sqrt (rms[n]);
+        }
+        if (! std::isfinite (rms[i]) || rms[i] < 1.0e-6f)
+        {
+            processor.stopAudition();
+            message ("This rig is silent. Check the DI and enabled blocks.");
+            return;
+        }
+        auto target = rms[i];
+        for (int n = 0; n < 2; ++n)
+            if (std::isfinite (rms[n]) && rms[n] >= 1.0e-6f)
+                target = juce::jmin (target, rms[n], 0.95f * rms[n] / peak[n]);
+        juce::AudioBuffer<float> audio;
+        audio.makeCopyOf (rendered[i]);
+        audio.applyGain (target / rms[i]);
+        processor.playAudition (std::move (audio), renderRate, true);
+        heard = i;
+        message (i == 0 ? "Listening to Rig A" : "Listening to Rig B");
+    }
+
+    void timerCallback() override
+    {
+        if (recording && ! processor.isDIRecording())
+            finishRecording();
+        if (! busy || isThreadRunning())
+            return;
+        busy = false;
+        updateControls();
+        if (failed)
+        {
+            pending = -1;
+            message ("Could not render the comparison. Check the capture files.");
+            return;
+        }
+        playPending();
+    }
+
+    void apply (int i)
+    {
+        const auto& rig = rigs[i];
+        const auto set = [this] (const juce::String& id, bool enabled)
+        {
+            auto* parameter = processor.parameters.getParameter (id);
+            parameter->beginChangeGesture();
+            parameter->setValueNotifyingHost (enabled ? 1.0f : 0.0f);
+            parameter->endChangeGesture();
+        };
+        set ("ampRouting", rig.routing.getSelectedId() > 1);
+        if (rig.routing.getSelectedId() > 1)
+            set ("parallelIRMode", rig.routing.getSelectedId() == 3);
+        for (int j = 0; j < 4; ++j)
+        {
+            const auto& asset = rig.assets[j];
+            if (asset.file.existsAsFile() && asset.file.getFullPathName() != base.getProperty (pathKey (j)).toString())
+            {
+                if (j < 2)
+                    processor.loadNAMCapture (j, asset.file);
+                else
+                    processor.loadImpulseResponse (j - 2, asset.file);
+            }
+            set (enableKey (j), asset.enabled.getToggleState());
+        }
+        dismiss();
+    }
+
+    NAMplifiedAudioProcessor& processor;
+    juce::ValueTree base;
+    std::array<Rig, 2> rigs;
+    juce::Label source, status, volumeLabel;
+    juce::Slider volume;
+    juce::TextButton load { "Load DI WAV" }, record { "Record DI" }, stop { "Stop audio" }, close { "Close" };
+    std::unique_ptr<juce::FileChooser> chooser;
+    juce::AudioBuffer<float> di;
+    std::array<juce::AudioBuffer<float>, 2> rendered;
+    std::array<juce::MemoryBlock, 2> states;
+    std::array<bool, 2> dirty { true, true };
+    double diRate = 0.0, recordingRate = 0.0, renderRate = 0.0;
+    int pending = -1, heard = -1;
+    bool recording = false, busy = false, failed = false, chooseActive = false;
 };
 
 class PresetBuilderDialog final : public NAMplifiedDialog, private juce::Thread, private juce::Timer
@@ -5768,20 +6385,20 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
     pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -12 to +12 semitones.");
-    addAndMakeVisible (pitchLabel);
+    addChildComponent (pitchLabel);
     pitchSlider.setName ("pitchSemitones");
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
     pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
     pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
-    addAndMakeVisible (pitchSlider);
+    addChildComponent (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "pitchSemitones", pitchSlider);
     pitchValueLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     pitchValueLabel.setColour (juce::Label::textColourId, text);
     pitchValueLabel.setJustificationType (juce::Justification::centred);
-    addAndMakeVisible (pitchValueLabel);
+    addChildComponent (pitchValueLabel);
     const auto updatePitchValue = [this]
     {
         const auto semitones = juce::roundToInt (pitchSlider.getValue());
@@ -5866,7 +6483,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         };
         addAndMakeVisible (*button);
     }
-    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon;
+    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon, compareIcon;
     saveIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 2.0f);
     saveIcon.addRectangle (6.0f, 2.0f, 8.0f, 5.0f);
     saveIcon.addRoundedRectangle (6.0f, 11.0f, 8.0f, 7.0f, 1.0f);
@@ -5892,6 +6509,14 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     builderIcon.closeSubPath();
     line (builderIcon, 16.0f, 15.0f, 20.0f, 15.0f);
     line (builderIcon, 18.0f, 13.0f, 18.0f, 17.0f);
+    compareIcon.addRoundedRectangle (1.0f, 3.0f, 7.0f, 14.0f, 1.5f);
+    compareIcon.addRoundedRectangle (12.0f, 3.0f, 7.0f, 14.0f, 1.5f);
+    line (compareIcon, 4.5f, 7.0f, 4.5f, 13.0f);
+    line (compareIcon, 15.5f, 7.0f, 15.5f, 13.0f);
+    setHeaderIcon (captureCompareButton, compareIcon);
+    captureCompareButton.setTooltip ("Capture Compare: audition two amp and cab rigs");
+    captureCompareButton.onClick = [this] { showCaptureCompare(); };
+    addAndMakeVisible (captureCompareButton);
     setHeaderIcon (savePresetButton, saveIcon);
     setHeaderIcon (deletePresetButton, deleteIcon);
     setHeaderIcon (resetChainButton, newChainIcon);
@@ -6073,7 +6698,9 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
 
 NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 {
+    captureCompare.reset();
     presetBuilder.reset();
+    savePresetDialog.reset();
     aboutDialog.reset();
     setLookAndFeel (nullptr);
 }
@@ -6090,8 +6717,12 @@ void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 
 void NAMplifiedAudioProcessorEditor::resized()
 {
+    if (captureCompare != nullptr)
+        captureCompare->setBounds (getLocalBounds());
     if (presetBuilder != nullptr)
         presetBuilder->setBounds (getLocalBounds());
+    if (savePresetDialog != nullptr)
+        savePresetDialog->setBounds (getLocalBounds());
     if (aboutDialog != nullptr)
         aboutDialog->setBounds (getLocalBounds());
 
@@ -6109,6 +6740,7 @@ void NAMplifiedAudioProcessorEditor::resized()
     subtitle.setBounds (titleArea);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
+    captureCompareButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     auto presetArea = top;
     const auto compactHeader = presetArea.getWidth() < 1100;
@@ -6192,10 +6824,8 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     deletePresetButton.setVisible (showChrome);
     resetChainButton.setVisible (showChrome);
     presetBuilderButton.setVisible (showChrome);
+    captureCompareButton.setVisible (showChrome);
     headerMenuButton.setVisible (showChrome);
-    pitchLabel.setVisible (showChrome);
-    pitchSlider.setVisible (showChrome);
-    pitchValueLabel.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
     masterVolumeValueLabel.setVisible (showChrome);
@@ -6401,16 +7031,9 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
 
 void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()> onSaved)
 {
+    if (savePresetDialog != nullptr)
+        return;
     const auto maxLength = NAMplifiedAudioProcessor::maxPresetNameLength;
-    const auto nameRule = "Use up to " + juce::String (maxLength)
-        + " characters: A-Z, 0-9, spaces, and _ - + ( ) ."
-          "\nStart without a dot and keep spaces inside the name.";
-    auto* alert = new juce::AlertWindow ("Save preset to User", nameRule,
-                                         juce::MessageBoxIconType::NoIcon, this);
-    alert->setLookAndFeel (editorLookAndFeel.get());
-    alert->setColour (juce::AlertWindow::backgroundColourId, panel);
-    alert->setColour (juce::AlertWindow::textColourId, text);
-    alert->setColour (juce::AlertWindow::outlineColourId, secondaryText.withAlpha (0.28f));
     const auto currentKey = selectedPresetName();
     auto suggestedName = currentKey.fromLastOccurrenceOf ("/", false, false);
     if (currentKey.containsChar ('/'))
@@ -6428,49 +7051,27 @@ void NAMplifiedAudioProcessorEditor::showSavePresetPrompt (std::function<void()>
             suggestedName = baseName.substring (0, maxLength - suffix.length()) + suffix;
         }
     }
-    alert->addTextEditor ("presetName", suggestedName.isNotEmpty() ? suggestedName : "MyPreset", "Preset name:");
-    if (auto* field = alert->getTextEditor ("presetName"))
-    {
-        field->setFont (namplifiedFontOptions (16.0f));
-        field->applyFontToAllText (namplifiedFontOptions (16.0f));
-        field->setColour (juce::TextEditor::backgroundColourId, background);
-        field->setColour (juce::TextEditor::textColourId, text);
-        field->setColour (juce::TextEditor::outlineColourId, secondaryText.withAlpha (0.32f));
-        field->setColour (juce::TextEditor::focusedOutlineColourId, knobAccent);
-        field->setColour (juce::TextEditor::highlightColourId, knobAccent.withAlpha (0.30f));
-    }
-    alert->addButton ("Cancel", 0, juce::KeyPress (juce::KeyPress::escapeKey));
-    alert->addButton ("Save", 1, juce::KeyPress (juce::KeyPress::returnKey));
-    alert->getButton ("Cancel")->setColour (juce::TextButton::buttonColourId, background);
-    auto* saveButton = alert->getButton ("Save");
-    saveButton->setColour (juce::TextButton::buttonColourId, knobAccent);
-    saveButton->setColour (juce::TextButton::textColourOffId, background);
+    auto dialog = std::make_unique<SavePresetDialog> (*this,
+        suggestedName.isNotEmpty() ? suggestedName : "MyPreset", audioProcessor);
+    auto& view = *dialog;
+    savePresetDialog = std::move (dialog);
+    view.setBounds (getLocalBounds());
+    addAndMakeVisible (view);
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
-    alert->enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, alert, nameRule, onSaved = std::move (onSaved)] (int result)
+    view.enterModalState (true, juce::ModalCallbackFunction::create ([safeThis, onSaved = std::move (onSaved)] (int result)
     {
-        alert->setLookAndFeel (nullptr);
-        if (result != 1 || safeThis == nullptr)
+        if (safeThis == nullptr)
             return;
-        const auto name = alert->getTextEditorContents ("presetName");
-        if (! safeThis->audioProcessor.canSavePresetName (name))
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
-                                                     "Invalid preset name", nameRule);
+        safeThis->savePresetDialog.reset();
+        if (result != 1)
             return;
-        }
-        if (! safeThis->audioProcessor.saveUserPreset (name))
-        {
-            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                     "Could not save preset",
-                                                     "Check the preset name and available storage space.");
-            return;
-        }
         safeThis->audioProcessor.capturePresetSnapshot();
         safeThis->presetDirty = false;
         safeThis->refreshUserPresets (safeThis->audioProcessor.getSelectedUserPresetName());
         if (onSaved)
             onSaved();
-    }), true);
+    }), false);
+    view.focusName();
 }
 
 void NAMplifiedAudioProcessorEditor::showDeletePresetPrompt()
@@ -6517,6 +7118,23 @@ void NAMplifiedAudioProcessorEditor::showAboutDialog()
     {
         if (safeThis != nullptr)
             safeThis->aboutDialog.reset();
+    }), false);
+}
+
+void NAMplifiedAudioProcessorEditor::showCaptureCompare()
+{
+    if (captureCompare != nullptr || presetBuilder != nullptr)
+        return;
+    captureCompare = std::make_unique<CaptureCompareDialog> (audioProcessor, *this);
+    captureCompare->setBounds (getLocalBounds());
+    addAndMakeVisible (*captureCompare);
+    captureCompare->setWantsKeyboardFocus (true);
+    captureCompare->grabKeyboardFocus();
+    const juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safe (this);
+    captureCompare->enterModalState (true, juce::ModalCallbackFunction::create ([safe] (int)
+    {
+        if (safe != nullptr)
+            safe->captureCompare.reset();
     }), false);
 }
 
