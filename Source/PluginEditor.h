@@ -50,7 +50,7 @@ private:
     juce::DrawableButton savePresetButton { "Save preset", juce::DrawableButton::ImageFitted };
     juce::DrawableButton deletePresetButton { "Delete preset", juce::DrawableButton::ImageFitted };
     juce::DrawableButton resetChainButton { "New chain", juce::DrawableButton::ImageFitted };
-    juce::DrawableButton captureCompareButton { "Capture Compare", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton captureCompareButton { "Amp & IR Comparison", juce::DrawableButton::ImageFitted };
     juce::DrawableButton presetBuilderButton { "Build preset", juce::DrawableButton::ImageFitted };
     std::unique_ptr<PresetBuilderDialog> presetBuilder;
     std::unique_ptr<CaptureCompareDialog> captureCompare;

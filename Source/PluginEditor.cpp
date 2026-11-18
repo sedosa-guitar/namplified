@@ -4277,7 +4277,7 @@ class CaptureCompareDialog final : public NAMplifiedDialog, private juce::Thread
 {
 public:
     CaptureCompareDialog (NAMplifiedAudioProcessor& p, juce::Component& parent)
-        : NAMplifiedDialog (parent, "Capture Compare", 960, 540), juce::Thread ("Capture Compare"), processor (p)
+        : NAMplifiedDialog (parent, "Amp & IR Comparison", 960, 540), juce::Thread ("Amp & IR Comparison"), processor (p)
     {
         static const auto headingTypeface = juce::Typeface::createSystemTypefaceFor (
             BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
@@ -4328,7 +4328,11 @@ public:
             {
                 auto& asset = rig.assets[j];
                 asset.file = juce::File (base.getProperty (pathKey (j)).toString());
-                asset.enabled.setButtonText (j < 2 ? "Amp " + juce::String (j + 1) : "Cab " + juce::String (j - 1));
+                const auto slotName = j < 2 ? "Amp " + juce::String (j + 1) : "Cab " + juce::String (j - 1);
+                asset.enabled.setTitle (slotName);
+                styleLabel (asset.slotLabel, slotName, 15.0f, text, true);
+                asset.slotLabel.setInterceptsMouseClicks (false, false);
+                asset.slotLabel.setAccessible (false);
                 asset.enabled.setToggleState (value (enableKey (j)), juce::dontSendNotification);
                 addButton (asset.enabled, [this, i] { changed (i); });
                 styleLabel (asset.name, {}, 15.0f);
@@ -4390,7 +4394,10 @@ public:
             {
                 auto row = box.removeFromTop (44).reduced (0, 4);
                 auto& asset = rig.assets[j];
-                asset.enabled.setBounds (row.removeFromLeft (80));
+                auto slot = row.removeFromLeft (80);
+                asset.enabled.setBounds (slot);
+                asset.slotLabel.setBounds (slot.withTrimmedLeft (26));
+                asset.slotLabel.toFront (false);
                 asset.pick.setBounds (row.removeFromRight (72));
                 if (j < 2)
                 {
@@ -4423,7 +4430,7 @@ private:
     struct Asset
     {
         juce::File file;
-        juce::Label name;
+        juce::Label name, slotLabel;
         juce::ToggleButton enabled;
         juce::TextButton pick { "Browse" }, previous { "<" }, next { ">" };
     };
@@ -4621,6 +4628,7 @@ private:
             for (auto& asset : rig.assets)
             {
                 asset.enabled.setEnabled (editing);
+                asset.slotLabel.setEnabled (editing);
                 asset.pick.setEnabled (editing);
                 asset.previous.setEnabled (editing && asset.file.existsAsFile());
                 asset.next.setEnabled (editing && asset.file.existsAsFile());
@@ -6514,7 +6522,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     line (compareIcon, 4.5f, 7.0f, 4.5f, 13.0f);
     line (compareIcon, 15.5f, 7.0f, 15.5f, 13.0f);
     setHeaderIcon (captureCompareButton, compareIcon);
-    captureCompareButton.setTooltip ("Capture Compare: audition two amp and cab rigs");
+    captureCompareButton.setTooltip ("Amp & IR Comparison: audition two amp and cab rigs");
     captureCompareButton.onClick = [this] { showCaptureCompare(); };
     addAndMakeVisible (captureCompareButton);
     setHeaderIcon (savePresetButton, saveIcon);
