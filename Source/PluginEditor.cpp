@@ -66,6 +66,22 @@ void rememberNAMDirectory (const juce::File& directory)
     settings.saveIfNeeded();
 }
 
+juce::File lastAssetDirectory (const juce::String& kind)
+{
+    const juce::File directory (namplifiedSettings().getValue ("last" + kind + "Directory"));
+    return directory.isDirectory() ? directory : juce::File();
+}
+
+void rememberAssetDirectory (const juce::String& kind, const juce::File& file)
+{
+    const auto directory = file.getParentDirectory();
+    if (! directory.isDirectory())
+        return;
+    auto& settings = namplifiedSettings();
+    settings.setValue ("last" + kind + "Directory", directory.getFullPathName());
+    settings.saveIfNeeded();
+}
+
 juce::String tone3000AttributionFor (const juce::File& capture)
 {
     if (! capture.existsAsFile())
@@ -486,7 +502,7 @@ public:
           isBoost (title == "Boost Pedal"),
           titleNumber (isIRShapeEq ? title.fromLastOccurrenceOf (" ", false, false) : juce::String())
     {
-        heading.setText ((getVisibleStageName (title) + " · Detailed controls").toUpperCase(), juce::dontSendNotification);
+        heading.setText ((getVisibleStageName (title) + " - Detailed controls").toUpperCase(), juce::dontSendNotification);
         heading.setFont (namplifiedFontOptions (20.0f, juce::Font::bold));
         heading.setColour (juce::Label::textColourId, text);
         addAndMakeVisible (heading);
@@ -1278,7 +1294,7 @@ private:
             if (number.isNotEmpty())
                 found.add (juce::String (parameter.first) + " " + number);
         }
-        return found.joinIntoString ("   ·   ");
+        return found.joinIntoString ("   |   ");
     }
 
     static juce::String readChannelColour (const juce::String& fileName, const juce::String& family)
@@ -1444,7 +1460,7 @@ private:
         if (capture.channelColour.isNotEmpty()) details.add ("CHANNEL " + capture.channelColour);
         if (capture.settings.isNotEmpty()) details.add (capture.settings);
         if (capture.creator.isNotEmpty()) details.add (capture.creator);
-        const auto detailText = details.joinIntoString ("   ·   ");
+        const auto detailText = details.joinIntoString ("   |   ");
         g.drawFittedText (detailText, 18, 28, width - 32, 19, juce::Justification::centredLeft, 1);
     }
 
@@ -1692,7 +1708,7 @@ private:
                                  : state == State::muted ? "Muted" : "Empty", juce::dontSendNotification);
             const auto recorded = state == State::playing || state == State::muted;
             const auto canFinish = settingLength && state == State::recording && ! finishing;
-            row.record.setButtonText (finishing && state == State::recording ? "Finishing…"
+            row.record.setButtonText (finishing && state == State::recording ? "Finishing..."
                                      : canFinish ? "Finish loop"
                                      : state == State::queued ? "Queued" : state == State::recording ? "Recording"
                                      : recorded ? "Recorded" : "Record");
@@ -1919,10 +1935,10 @@ public:
             loadButton.onClick = [this]
             {
                 const auto filter = loadKind == FileKind::nam ? "*.nam" : loadKind == FileKind::reverbIR ? "*.wav" : "*.wav;*.aif;*.aiff;*.flac;*.ogg";
-                auto initialDirectory = loadKind == FileKind::nam
-                    ? audioProcessor.getNAMCaptureFile (slot).getParentDirectory() : juce::File();
-                if (loadKind == FileKind::nam && ! initialDirectory.isDirectory())
-                    initialDirectory = lastNAMDirectory();
+                auto initialDirectory = loadKind == FileKind::nam ? lastNAMDirectory()
+                    : lastAssetDirectory (loadKind == FileKind::reverbIR ? "ReverbIR" : "CabIR");
+                if (! initialDirectory.isDirectory() && loadKind == FileKind::nam)
+                    initialDirectory = audioProcessor.getNAMCaptureFile (slot).getParentDirectory();
                 if (! initialDirectory.isDirectory())
                     initialDirectory = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
                 fileChooser = std::make_unique<juce::FileChooser> (
@@ -1956,6 +1972,8 @@ public:
                         }
                         else
                             safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
+                        if (safeThis->loadKind != FileKind::nam)
+                            rememberAssetDirectory (safeThis->loadKind == FileKind::reverbIR ? "ReverbIR" : "CabIR", file);
                         safeThis->setFileNameText (file.getFileName(), juce::dontSendNotification);
                     });
             };
@@ -4480,9 +4498,10 @@ private:
 
     void chooseFile (int i, int j)
     {
-        auto initial = i >= 0 ? rigs[i].assets[j].file.getParentDirectory() : juce::File();
-        if (! initial.isDirectory() && i >= 0 && j < 2)
-            initial = lastNAMDirectory();
+        auto initial = i < 0 ? lastAssetDirectory ("DI")
+            : j < 2 ? lastNAMDirectory() : lastAssetDirectory ("CabIR");
+        if (! initial.isDirectory() && i >= 0)
+            initial = rigs[i].assets[j].file.getParentDirectory();
         chooser = std::make_unique<juce::FileChooser> (
             i < 0 ? "Choose a dry guitar WAV" : j < 2 ? "Choose a NAM capture" : "Choose a cabinet IR",
             initial, i < 0 ? "*.wav" : j < 2 ? "*.nam" : "*.wav;*.aif;*.aiff;*.flac;*.ogg");
@@ -4521,6 +4540,7 @@ private:
     {
         auto& asset = rigs[i].assets[j];
         asset.file = file;
+        rememberAssetDirectory (j < 2 ? "NAM" : "CabIR", file);
         asset.enabled.setToggleState (true, juce::dontSendNotification);
         updateAsset (asset);
         changed (i);
@@ -4557,6 +4577,7 @@ private:
             message ("Could not read the guitar WAV.");
             return;
         }
+        rememberAssetDirectory ("DI", file);
         di = std::move (input);
         diRate = reader->sampleRate;
         source.setText (file.getFileName() + " (" + juce::String (samples / diRate, 1) + " s)",
@@ -4846,8 +4867,8 @@ public:
         };
         styleLabel (promptLabel, "Describe your guitar sound", 16.0f, juce::Colour (0xffeef2f7), true);
         styleLabel (diLabel, "DI INPUT", 14.0f, knobAccent, true);
-        styleLabel (help, "Record up to 20 seconds or load a dry DI guitar WAV without amp, cab or effects. "
-                          "Open Library to find the Captures and IRs folders.", 16.0f);
+        styleLabel (help, "With a dry DI: compare Original, A and B. Without DI: Build applies one preset.\n"
+                          "Record up to 20 seconds or load a guitar WAV without amp, cab or effects.", 15.0f);
         styleLabel (auditionLabel, "AUDITION", 14.0f, knobAccent, true);
         styleLabel (status, "Build starts a local AI server. Closing this window stops it.", 17.0f, knobAccent, true);
         styleLabel (durationHint, "Building locally can take several minutes.", 15.0f);
@@ -4876,20 +4897,32 @@ public:
         promptEditor.setTextToShowWhenEmpty ("Warm clean tone with a little chorus", juce::Colour (0xff9baabb));
         addAction ("Load DI WAV", { 0, 0, 114, 34 });
         addAction ("Record DI", { 122, 0, 104, 34 });
-        addAction ("Open Library", { 516, 0, 156, 34 });
-        const auto library = audioProcessor.getUserPresetLibraryDirectory();
-        getButton ("Open Library")->setTooltip (library.getFullPathName());
-        getButton ("Open Library")->onClick = [this, library]
+        addAction ("Choose Library", { 516, 0, 156, 34 });
+        libraryFolder = juce::File (namplifiedSettings().getValue ("builderLibraryFolder"));
+        getButton ("Choose Library")->setTooltip (libraryFolder.isDirectory()
+            ? libraryFolder.getFullPathName() : "Choose a folder containing NAM captures and cabinet IRs");
+        getButton ("Choose Library")->onClick = [this]
         {
-            if (library.getChildFile ("Captures").createDirectory().failed()
-                || library.getChildFile ("IRs").createDirectory().failed())
-            {
-                if (! busy)
-                    setMessage ("Could not create the library folders.");
+            if (busy || recording)
                 return;
-            }
-            if (! library.startAsProcess())
-                library.revealToUser();
+            libraryChooser = std::make_unique<juce::FileChooser> (
+                "Choose your NAM and IR library folder", libraryFolder);
+            const juce::Component::SafePointer<PresetBuilderDialog> safe (this);
+            libraryChooser->launchAsync (juce::FileBrowserComponent::openMode
+                | juce::FileBrowserComponent::canSelectDirectories, [safe] (const juce::FileChooser& chooser)
+            {
+                if (safe == nullptr || safe->busy || safe->recording)
+                    return;
+                const auto folder = chooser.getResult();
+                if (! folder.isDirectory())
+                    return;
+                safe->libraryFolder = folder;
+                auto& settings = namplifiedSettings();
+                settings.setValue ("builderLibraryFolder", folder.getFullPathName());
+                settings.saveIfNeeded();
+                safe->getButton ("Choose Library")->setTooltip (folder.getFullPathName());
+                safe->setMessage ("Library selected: " + folder.getFileName() + ". Subfolders are included.");
+            });
         };
         addAction ("Close", { 588, 144, 84, 36 });
         getButton ("Close")->setColour (juce::TextButton::buttonColourId, juce::Colour (0xff59363b));
@@ -5231,7 +5264,7 @@ private:
 
     void chooseDI()
     {
-        diChooser = std::make_unique<juce::FileChooser> ("Choose an unprocessed guitar WAV", juce::File(), "*.wav");
+        diChooser = std::make_unique<juce::FileChooser> ("Choose an unprocessed guitar WAV", lastAssetDirectory ("DI"), "*.wav");
         juce::Component::SafePointer<PresetBuilderDialog> safeThis (this);
         diChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                                [safeThis] (const juce::FileChooser& chooser)
@@ -5242,6 +5275,7 @@ private:
             safeThis->audioProcessor.stopAudition();
             safeThis->recordedSamples = 0;
             safeThis->diFile = chooser.getResult();
+            rememberAssetDirectory ("DI", safeThis->diFile);
             safeThis->originalReady = false;
             safeThis->enableAuditionButtons (false, true);
             safeThis->setMessage ("DI: " + safeThis->diFile.getFileName()
@@ -5711,6 +5745,9 @@ private:
         const auto local = juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("Music/IR");
         for (const auto& file : local.findChildFiles (juce::File::findFiles, true, extensions))
             files.addIfNotAlreadyThere (file);
+        if (libraryFolder.isDirectory())
+            for (const auto& file : libraryFolder.findChildFiles (juce::File::findFiles, true, extensions))
+                files.addIfNotAlreadyThere (file);
         files.sort();
 
         struct Candidate
@@ -5786,6 +5823,9 @@ private:
 
         const auto library = audioProcessor.getUserPresetLibraryDirectory();
         captures = library.getChildFile ("Captures").findChildFiles (juce::File::findFiles, true, "*.nam");
+        if (libraryFolder.isDirectory())
+            for (const auto& file : libraryFolder.findChildFiles (juce::File::findFiles, true, "*.nam"))
+                captures.addIfNotAlreadyThere (file);
         for (const auto& file : library.getSiblingFile ("Factory").getChildFile ("NAM")
                  .findChildFiles (juce::File::findFiles, true, "*.nam"))
             captures.addIfNotAlreadyThere (file);
@@ -5845,6 +5885,20 @@ private:
                 return;
             }
         }
+        const auto captureScore = [&promptWords] (const juce::File& file)
+        {
+            const auto name = (file.getParentDirectory().getFileName() + " "
+                + file.getFileNameWithoutExtension()).toLowerCase();
+            int score = 0;
+            for (const auto& word : promptWords)
+                if (word.length() >= 2 && name.contains (word))
+                    ++score;
+            return score;
+        };
+        std::stable_sort (captures.begin(), captures.end(), [&captureScore] (const auto& first, const auto& second)
+        {
+            return captureScore (first) > captureScore (second);
+        });
         while (captures.size() > 100)
             captures.removeLast();
         searchOnly = captures.isEmpty();
@@ -5883,6 +5937,8 @@ private:
         originalOnly = false;
         originalReady = false;
         comparison = hasDI() && ! searchOnly;
+        if (! hasDI())
+            setMessage ("Building a single preset. Load or record a DI first to compare variants A and B.");
         audioProcessor.getStateInformation (auditionState);
         if (const auto xml = juce::AudioProcessor::getXmlFromBinary (
                 auditionState.getData(), static_cast<int> (auditionState.getSize())))
@@ -6326,7 +6382,8 @@ private:
     double pendingRecordingRate = 0.0;
     juce::uint32 recordingStarted = 0;
     bool recording = false;
-    std::unique_ptr<juce::FileChooser> diChooser;
+    juce::File libraryFolder;
+    std::unique_ptr<juce::FileChooser> libraryChooser, diChooser;
     juce::MemoryBlock auditionState;
     std::array<juce::AudioBuffer<float>, 3> auditionRenders;
     std::array<ParameterChanges, 2> auditionChanges;
@@ -6577,8 +6634,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
             if (! missingAssets.isEmpty())
                 juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::NoIcon,
                     "Missing preset files",
-                    "Could not load “" + name.fromLastOccurrenceOf ("/", false, false)
-                        + "”. Restore the missing NAM or IR files and select the preset again.\n\n"
+                    "Could not load '" + name.fromLastOccurrenceOf ("/", false, false)
+                        + "'. Restore the missing NAM or IR files and select the preset again.\n\n"
                         + missingAssets.joinIntoString ("\n"), "OK", this);
         }
     };
@@ -6701,7 +6758,23 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     blendSlider.setColour (juce::Slider::textBoxBackgroundColourId, panel);
     blendSlider.setColour (juce::Slider::textBoxOutlineColourId, panel);
     addAndMakeVisible (blendSlider);
-    blendSlider.setInterceptsMouseClicks (false, false);
+    blendSlider.onValueChange = [this]
+    {
+        const auto parallel = audioProcessor.parameters.getRawParameterValue ("ampRouting")->load() >= 0.5f;
+        if (! parallel)
+            return;
+        auto* parameter = audioProcessor.parameters.getParameter ("ampParallelBlend");
+        parameter->setValueNotifyingHost (parameter->convertTo0to1 (static_cast<float> (blendSlider.getValue())));
+        updateRoutingDisplay();
+    };
+    blendSlider.onDragStart = [this]
+    {
+        audioProcessor.parameters.getParameter ("ampParallelBlend")->beginChangeGesture();
+    };
+    blendSlider.onDragEnd = [this]
+    {
+        audioProcessor.parameters.getParameter ("ampParallelBlend")->endChangeGesture();
+    };
     blendSlider.setWantsKeyboardFocus (false);
 
     updateRoutingDisplay();
@@ -6952,7 +7025,10 @@ void NAMplifiedAudioProcessorEditor::timerCallback()
     const auto secondEnabled = parallel ? audioProcessor.isAmpEnabled (1) : audioProcessor.isCabEnabled (1);
     const auto blendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
                                  | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
-    if (blendDisplayState != lastBlendDisplayState)
+    if (blendDisplayState != lastBlendDisplayState
+        || (parallel && ! juce::approximatelyEqual (static_cast<float> (blendSlider.getValue()),
+            firstEnabled && secondEnabled ? audioProcessor.parameters.getRawParameterValue ("ampParallelBlend")->load()
+                : firstEnabled ? 1.0f : secondEnabled ? 0.0f : 0.5f)))
         updateRoutingDisplay();
 
     const auto changed = audioProcessor.hasUnsavedParameterChanges();
@@ -7021,10 +7097,16 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     const auto secondEnabled = parallel ? audioProcessor.isAmpEnabled (1) : audioProcessor.isCabEnabled (1);
     lastBlendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
                           | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
-    blendSlider.setValue (firstEnabled == secondEnabled ? 0.5 : firstEnabled ? 1.0 : 0.0,
+    const auto share = parallel && firstEnabled && secondEnabled
+        ? audioProcessor.parameters.getRawParameterValue ("ampParallelBlend")->load()
+        : firstEnabled == secondEnabled ? 0.5f : firstEnabled ? 1.0f : 0.0f;
+    blendSlider.setName (parallel ? "ampParallelBlend" : "irParallelBlend");
+    blendSlider.setInterceptsMouseClicks (parallel && firstEnabled && secondEnabled, false);
+    blendSlider.setWantsKeyboardFocus (parallel && firstEnabled && secondEnabled);
+    blendSlider.setValue (share,
                           juce::dontSendNotification);
-    const auto firstShare = firstEnabled ? (secondEnabled ? 50 : 100) : 0;
-    const auto secondShare = secondEnabled ? (firstEnabled ? 50 : 100) : 0;
+    const auto firstShare = firstEnabled ? (secondEnabled ? juce::roundToInt (share * 100.0f) : 100) : 0;
+    const auto secondShare = secondEnabled ? (firstEnabled ? 100 - firstShare : 100) : 0;
     blendValueLabel.setText (juce::String (firstShare) + "/" + juce::String (secondShare),
                              juce::dontSendNotification);
     seriesRoutingButton.setToggleState (! parallel, juce::dontSendNotification);
@@ -7037,7 +7119,7 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
                                     juce::dontSendNotification);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
-        ? "Two active amps split the signal 50/50. One active amp receives 100%."
+        ? "Blend Amp 1 (right) and Amp 2 (left). One active amp receives 100%."
         : "Two active cabinets split the signal 50/50. One active cabinet receives 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
     resized();

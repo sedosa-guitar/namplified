@@ -503,6 +503,7 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
         addKnob (("amp" + juce::String (slot + 1) + "Out").toRawUTF8(), "Amp Output", -24.0f, 24.0f, 0.0f);
     }
     addKnob ("ampParallelBlend", "Parallel Blend", 0.0f, 1.0f, 0.5f);
+    addKnob ("ampParallelBlend", "Amp Blend", 0.0f, 1.0f, 0.5f);
     addKnob ("irParallelBlend", "Cabinet IR Blend", 0.0f, 1.0f, 0.5f);
 
     for (int slot = 0; slot < numIRSlots; ++slot)
@@ -1869,7 +1870,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
         if (activeCount > 0)
         {
-            const auto weight = 1.0f / static_cast<float> (activeCount);
+            const auto firstAmpShare = get ("ampParallelBlend", 0.5f);
             const auto crossoverEnabled = activeCount == 2 && enabled ("ampCrossoverOn");
             const auto crossoverFrequency = get ("ampCrossoverFreq", 250.0f);
             for (int channel = 0; channel < numChannels; ++channel)
@@ -1878,6 +1879,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
             for (int branchIndex = 0; branchIndex < activeCount; ++branchIndex)
             {
                 const auto slot = activeSlots[static_cast<size_t> (branchIndex)];
+                const auto weight = activeCount == 1 ? 1.0f : slot == 0 ? firstAmpShare : 1.0f - firstAmpShare;
                 auto& branch = ampWorkBuffers[slot];
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, ampInputBuffer, channel, 0, numSamples);
@@ -2340,8 +2342,28 @@ void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& 
 {
     if (slot < 0 || slot >= numIRSlots || ! file.existsAsFile())
         return;
-    irConvolvers[slot].loadImpulseResponse (file, juce::dsp::Convolution::Stereo::yes,
-                                            juce::dsp::Convolution::Trim::yes, 0,
+    juce::AudioFormatManager formats;
+    formats.registerBasicFormats();
+    std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
+    if (reader == nullptr || reader->lengthInSamples <= 0
+        || reader->lengthInSamples > std::numeric_limits<int>::max())
+        return;
+    const auto samples = static_cast<int> (reader->lengthInSamples);
+    const auto channels = static_cast<int> (juce::jmin (reader->numChannels, 2u));
+    if (channels == 0)
+        return;
+    juce::AudioBuffer<float> impulse (channels, samples);
+    if (! reader->read (&impulse, 0, samples, 0, true, true))
+        return;
+    if (channels == 2)
+    {
+        impulse.applyGain (0, 0, samples, 0.5f);
+        impulse.addFrom (0, 0, impulse, 1, 0, samples, 0.5f);
+        impulse.setSize (1, samples, true, false, true);
+    }
+    irConvolvers[slot].loadImpulseResponse (std::move (impulse), reader->sampleRate,
+                                            juce::dsp::Convolution::Stereo::no,
+                                            juce::dsp::Convolution::Trim::yes,
                                             juce::dsp::Convolution::Normalise::yes);
     irFilePaths[slot] = file.getFullPathName();
     irLoaded[slot].store (true);

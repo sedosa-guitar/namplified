@@ -206,6 +206,16 @@ void routingTests (NAMplifiedAudioProcessor& processor)
              "With one amp enabled its full signal should reach the output");
     require (near (blended, (ampOne + ampTwo) * 0.5, 0.0005), "Two active amps should be mixed equally");
 
+    set (processor, "ampParallelBlend", 0.8f);
+    require (near (renderLevel(), ampOne * 0.8f + ampTwo * 0.2f, 0.0005),
+             "Parallel blend should weight the two active amps");
+    set (processor, "ampParallelBlend", 1.0f);
+    require (near (renderLevel(), ampOne, 0.0005), "100/0 should isolate Amp 1");
+    set (processor, "ampParallelBlend", 0.0f);
+    require (near (renderLevel(), ampTwo, 0.0005), "0/100 should isolate Amp 2");
+    set (processor, "amp2On", 0);
+    require (near (renderLevel(), ampOne, 0.0005), "The remaining amp should receive 100% regardless of blend");
+    set (processor, "ampParallelBlend", 0.5f);
     set (processor, "amp1On", 0);
     set (processor, "amp2On", 0);
     set (processor, "delayOn", 1);
@@ -239,7 +249,7 @@ void routingTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
-juce::File makeIR (const juce::File& testHome, const char* filename, float polarity)
+juce::File makeIR (const juce::File& testHome, const char* filename, float polarity, bool stereo = false)
 {
     const auto file = testHome.getChildFile (filename);
     auto stream = std::unique_ptr<juce::OutputStream> (file.createOutputStream());
@@ -247,12 +257,17 @@ juce::File makeIR (const juce::File& testHome, const char* filename, float polar
     stream->setPosition (0);
     juce::WavAudioFormat format;
     auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions {}
-        .withSampleRate (sampleRate).withNumChannels (1).withBitsPerSample (24));
+        .withSampleRate (sampleRate).withNumChannels (stereo ? 2 : 1).withBitsPerSample (24));
     require (writer != nullptr, "Could not create the IR fixture");
-    juce::AudioBuffer<float> ir (1, 32);
+    juce::AudioBuffer<float> ir (stereo ? 2 : 1, 32);
     ir.clear();
     ir.setSample (0, 0, polarity * 0.5f);
     ir.setSample (0, 8, polarity * 0.25f);
+    if (stereo)
+    {
+        ir.setSample (1, 0, polarity);
+        ir.setSample (1, 8, polarity * 0.5f);
+    }
     require (writer->writeFromAudioSampleBuffer (ir, 0, ir.getNumSamples()), "Could not write the IR fixture");
     return file;
 }
@@ -291,6 +306,26 @@ void cabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
     require (std::abs (both) < 0.0005f, "The two opposite-polarity IRs should cancel at 50/50");
     require (near (render (true, false), cabOne, 0.0005) && near (render (false, true), cabTwo, 0.0005),
              "Turning either cab off should restore full level on the remaining branch");
+}
+
+void centeredCabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
+{
+    processor.setCenteredInput (true);
+    processor.loadImpulseResponse (0, makeIR (testHome, "unequal-stereo.wav", 1.0f, true));
+    set (processor, "ir1On", 1);
+    processor.prepareToPlay (sampleRate, blockSize);
+    juce::AudioBuffer<float> buffer (2, blockSize);
+    juce::MidiBuffer midi;
+    for (int block = 0; block < 64; ++block)
+    {
+        buffer.clear();
+        juce::FloatVectorOperations::fill (buffer.getWritePointer (1), 0.05f, blockSize);
+        processor.processBlock (buffer, midi);
+    }
+    require (buffer.getMagnitude (0, blockSize) > 0.001f, "The centered cab must remain audible");
+    for (int i = 0; i < blockSize; ++i)
+        require (near (buffer.getSample (0, i), buffer.getSample (1, i), 0.00001),
+                 "A stereo cabinet IR with unequal channels must keep centered guitar equally loud on both outputs");
 }
 
 void delayTests (NAMplifiedAudioProcessor& processor)
@@ -553,6 +588,8 @@ int main (int argc, char** argv)
                 presetRoundtripTests (processor);
             else if (suite == "routing")
                 routingTests (*processor);
+            else if (suite == "centered_cab")
+                centeredCabTests (*processor, testHome);
             else if (suite == "cab")
                 cabTests (*processor, testHome);
             else if (suite == "delay")
