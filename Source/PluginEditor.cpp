@@ -4246,10 +4246,13 @@ public:
         styleLabel (credit, "Free, open-source amp and effects plugin.\nCreated by sedosa.", 16.0f);
         styleLabel (licenseTitle, "LICENSE", 13.0f, knobAccent, true);
         styleLabel (license, "Project code: AGPL-3.0. Captures, IRs and third-party assets remain under their respective licenses. Retain required attribution.", 15.0f);
-        projectLink.setFont (license.getFont(), false);
-        projectLink.setColour (juce::HyperlinkButton::textColourId, knobAccent);
-        projectLink.setJustificationType (juce::Justification::centredLeft);
-        addAndMakeVisible (projectLink);
+        for (auto* link : { &projectLink, &tipLink })
+        {
+            link->setFont (license.getFont(), false);
+            link->setColour (juce::HyperlinkButton::textColourId, knobAccent);
+            link->setJustificationType (juce::Justification::centredLeft);
+            addAndMakeVisible (*link);
+        }
         addAndMakeVisible (close);
         close.onClick = [this] { exitModalState (0); };
     }
@@ -4262,7 +4265,8 @@ public:
         credit.setBounds (juce::Rectangle<int> (24, 137, 512, 58) + origin);
         licenseTitle.setBounds (juce::Rectangle<int> (24, 210, 512, 19) + origin);
         license.setBounds (juce::Rectangle<int> (24, 232, 512, 50) + origin);
-        projectLink.setBounds (juce::Rectangle<int> (24, 294, 400, 36) + origin);
+        projectLink.setBounds (juce::Rectangle<int> (24, 294, 222, 36) + origin);
+        tipLink.setBounds (juce::Rectangle<int> (256, 294, 170, 36) + origin);
         close.setBounds (juce::Rectangle<int> (442, 294, 94, 36) + origin);
     }
 
@@ -4270,6 +4274,7 @@ private:
     juce::Label description, credit, licenseTitle, license;
     juce::HyperlinkButton projectLink { "View the source code on GitHub",
                                       juce::URL ("https://github.com/sedosa-guitar/namplified") };
+    juce::HyperlinkButton tipLink { "Leave a tip on Ko-fi", juce::URL ("https://ko-fi.com/sedosa") };
     juce::TextButton close { "Close" };
 };
 
