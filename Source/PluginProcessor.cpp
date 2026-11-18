@@ -1414,6 +1414,35 @@ void NAMplifiedAudioProcessor::stopAudition()
     playAudition ({}, 0.0);
 }
 
+void NAMplifiedAudioProcessor::applyComparisonRig (const ComparisonRig& rig)
+{
+    const auto set = [this] (const juce::String& id, bool enabled)
+    {
+        auto* parameter = parameters.getParameter (id);
+        parameter->beginChangeGesture();
+        parameter->setValueNotifyingHost (enabled ? 1.0f : 0.0f);
+        parameter->endChangeGesture();
+    };
+
+    const auto parallel = rig.routing != ComparisonRouting::series;
+    set ("ampRouting", parallel);
+    if (parallel)
+        set ("parallelIRMode", rig.routing == ComparisonRouting::sharedIR);
+
+    for (int slot = 0; slot < numAmpSlots; ++slot)
+    {
+        if (rig.captures[slot].existsAsFile())
+            loadNAMCapture (slot, rig.captures[slot]);
+        set ("amp" + juce::String (slot + 1) + "On", rig.ampsEnabled[slot]);
+    }
+    for (int slot = 0; slot < numIRSlots; ++slot)
+    {
+        if (rig.cabinetIRs[slot].existsAsFile())
+            loadImpulseResponse (slot, rig.cabinetIRs[slot]);
+        set ("ir" + juce::String (slot + 1) + "On", rig.cabsEnabled[slot]);
+    }
+}
+
 bool NAMplifiedAudioProcessor::startDIRecording (double sampleRate)
 {
     if (getTotalNumInputChannels() == 0 || sampleRate < 8000.0 || sampleRate > 384000.0

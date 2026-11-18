@@ -239,27 +239,28 @@ void routingTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
+juce::File makeIR (const juce::File& testHome, const char* filename, float polarity)
+{
+    const auto file = testHome.getChildFile (filename);
+    auto stream = std::unique_ptr<juce::OutputStream> (file.createOutputStream());
+    require (stream != nullptr, "Could not open the temporary IR file");
+    stream->setPosition (0);
+    juce::WavAudioFormat format;
+    auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions {}
+        .withSampleRate (sampleRate).withNumChannels (1).withBitsPerSample (24));
+    require (writer != nullptr, "Could not create the IR fixture");
+    juce::AudioBuffer<float> ir (1, 32);
+    ir.clear();
+    ir.setSample (0, 0, polarity * 0.5f);
+    ir.setSample (0, 8, polarity * 0.25f);
+    require (writer->writeFromAudioSampleBuffer (ir, 0, ir.getNumSamples()), "Could not write the IR fixture");
+    return file;
+}
+
 void cabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
 {
-    const auto makeIR = [&] (const char* filename, float polarity)
-    {
-        const auto file = testHome.getChildFile (filename);
-        auto stream = std::unique_ptr<juce::OutputStream> (file.createOutputStream());
-        require (stream != nullptr, "Could not open the temporary IR file");
-        stream->setPosition (0);
-        juce::WavAudioFormat format;
-        auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions {}
-            .withSampleRate (sampleRate).withNumChannels (1).withBitsPerSample (24));
-        require (writer != nullptr, "Could not create the IR fixture");
-        juce::AudioBuffer<float> ir (1, 32);
-        ir.clear();
-        ir.setSample (0, 0, polarity * 0.5f);
-        ir.setSample (0, 8, polarity * 0.25f);
-        require (writer->writeFromAudioSampleBuffer (ir, 0, ir.getNumSamples()), "Could not write the IR fixture");
-        return file;
-    };
-    processor.loadImpulseResponse (0, makeIR ("cab-positive.wav", 1.0f));
-    processor.loadImpulseResponse (1, makeIR ("cab-negative.wav", -1.0f));
+    processor.loadImpulseResponse (0, makeIR (testHome, "cab-positive.wav", 1.0f));
+    processor.loadImpulseResponse (1, makeIR (testHome, "cab-negative.wav", -1.0f));
     require (processor.getImpulseResponseName (0) == "cab-positive.wav"
              && processor.getImpulseResponseName (1) == "cab-negative.wav", "Both fixtures should load");
 
@@ -435,6 +436,49 @@ void auditionLoopTests (NAMplifiedAudioProcessor& processor)
     require (near (measureLiveOutput(), liveLevel, 0.00001), "Stop should restore live input");
 }
 
+void comparisonApplyTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
+{
+    using Routing = NAMplifiedAudioProcessor::ComparisonRouting;
+    using Rig = NAMplifiedAudioProcessor::ComparisonRig;
+    auto captures = testHome.findChildFiles (juce::File::findFiles, true, "*.nam");
+    captures.sort();
+    require (captures.size() >= 2, "The test home should contain factory captures");
+    const auto cabA = makeIR (testHome, "comparison-a.wav", 1.0f);
+    const auto cabB = makeIR (testHome, "comparison-b.wav", -1.0f);
+    const auto value = [&] (const char* id) { return processor.parameters.getRawParameterValue (id)->load(); };
+
+    Rig a;
+    a.routing = Routing::pairedIRs;
+    a.captures = { captures[0], captures[1] };
+    a.cabinetIRs = { cabA, cabB };
+    a.ampsEnabled = { true, true };
+    a.cabsEnabled = { true, true };
+    set (processor, "parallelIRMode", 1.0f);
+    processor.applyComparisonRig (a);
+    require (value ("ampRouting") == 1.0f && value ("parallelIRMode") == 0.0f,
+             "Applying A should select paired parallel routing");
+    require (processor.getNAMCaptureFile (0) == captures[0] && processor.getNAMCaptureFile (1) == captures[1],
+             "Applying A should load both captures into their slots");
+    require (processor.getImpulseResponseName (0) == cabA.getFileName()
+             && processor.getImpulseResponseName (1) == cabB.getFileName(),
+             "Applying A should load both cabinet IRs into their slots");
+
+    auto b = a;
+    b.routing = Routing::sharedIR;
+    b.captures = { captures[1], juce::File() };
+    b.cabinetIRs = { cabB, juce::File() };
+    b.ampsEnabled = { true, false };
+    b.cabsEnabled = { true, false };
+    processor.applyComparisonRig (b);
+    require (value ("ampRouting") == 1.0f && value ("parallelIRMode") == 1.0f,
+             "Applying B should select shared parallel routing");
+    require (processor.getNAMCaptureFile (0) == captures[1] && processor.getImpulseResponseName (0) == cabB.getFileName(),
+             "Applying B should replace the selected capture and cabinet IR");
+    require (value ("amp1On") == 1.0f && value ("amp2On") == 0.0f
+             && value ("ir1On") == 1.0f && value ("ir2On") == 0.0f,
+             "Applying B should restore the enabled state of each slot");
+}
+
 void pitchTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
@@ -517,6 +561,8 @@ int main (int argc, char** argv)
                 chorusTests (*processor);
             else if (suite == "pitch")
                 pitchTests (*processor);
+            else if (suite == "comparison_apply")
+                comparisonApplyTests (*processor, testHome);
             else if (suite == "audition_loop")
                 auditionLoopTests (*processor);
             else

@@ -95,6 +95,17 @@ public:
                          const std::function<bool()>& cancelled);
     void playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop = false);
     void stopAudition();
+
+    enum class ComparisonRouting { series, pairedIRs, sharedIR };
+    struct ComparisonRig
+    {
+        ComparisonRouting routing = ComparisonRouting::series;
+        std::array<juce::File, numAmpSlots> captures;
+        std::array<juce::File, numIRSlots> cabinetIRs;
+        std::array<bool, numAmpSlots> ampsEnabled {};
+        std::array<bool, numIRSlots> cabsEnabled {};
+    };
+    void applyComparisonRig (const ComparisonRig& rig);
     void setCompareVolume (float gain) noexcept { compareVolume.store (gain, std::memory_order_relaxed); }
 
     static constexpr int maxPresetNameLength = 32;
