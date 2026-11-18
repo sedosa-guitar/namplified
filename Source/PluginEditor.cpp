@@ -4780,29 +4780,30 @@ private:
 
     void apply (int i)
     {
+        using Routing = NAMplifiedAudioProcessor::ComparisonRouting;
         const auto& rig = rigs[i];
-        const auto set = [this] (const juce::String& id, bool enabled)
-        {
-            auto* parameter = processor.parameters.getParameter (id);
-            parameter->beginChangeGesture();
-            parameter->setValueNotifyingHost (enabled ? 1.0f : 0.0f);
-            parameter->endChangeGesture();
-        };
-        set ("ampRouting", rig.routing.getSelectedId() > 1);
-        if (rig.routing.getSelectedId() > 1)
-            set ("parallelIRMode", rig.routing.getSelectedId() == 3);
+        const auto routingId = rig.routing.getSelectedId();
+        NAMplifiedAudioProcessor::ComparisonRig selection;
+        selection.routing = routingId == 3 ? Routing::sharedIR
+                           : routingId == 2 ? Routing::pairedIRs : Routing::series;
+
         for (int j = 0; j < 4; ++j)
         {
             const auto& asset = rig.assets[j];
-            if (asset.file.existsAsFile() && asset.file.getFullPathName() != base.getProperty (pathKey (j)).toString())
+            const auto changedFile = asset.file.getFullPathName() != base.getProperty (pathKey (j)).toString()
+                ? asset.file : juce::File();
+            if (j < 2)
             {
-                if (j < 2)
-                    processor.loadNAMCapture (j, asset.file);
-                else
-                    processor.loadImpulseResponse (j - 2, asset.file);
+                selection.captures[j] = changedFile;
+                selection.ampsEnabled[j] = asset.enabled.getToggleState();
             }
-            set (enableKey (j), asset.enabled.getToggleState());
+            else
+            {
+                selection.cabinetIRs[j - 2] = changedFile;
+                selection.cabsEnabled[j - 2] = asset.enabled.getToggleState();
+            }
         }
+        processor.applyComparisonRig (selection);
         dismiss();
     }
 
