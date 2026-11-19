@@ -8,7 +8,7 @@
 
 NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to output. Build a chain from pedals, NAM captures, cabinet impulse responses, and post-amp effects. The interface keeps the signal path visible while exposing each block's controls when selected.
 
-> **Project status:** In active development. The plugin currently builds macOS Audio Unit, VST3, and standalone targets. Distribution packages and installation instructions are not ready yet.
+> **Available now:** [NAMplified 1.0.0 for macOS](https://github.com/sedosa-guitar/namplified/releases/tag/v1.0.0), including Standalone, Audio Unit and VST3. Requires Apple Silicon and macOS 14.4 or later. Preset Builder is in beta.
 
 See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
@@ -84,7 +84,7 @@ Switch between **Listen A** and **Listen B** to hear the same loop at matched le
 
 Open **Build Preset**, describe the sound, and select **Build**. The first build asks before downloading llama.cpp and the Qwen model (about 2.5 GB). NAMplified verifies each download with SHA-256 and reuses the local files for later builds. **Open Model Folder** reveals them in Finder. **Close** stops the local server.
 
-Use **Open Library** to find the shared `Captures` and `IRs` folders. Saving a NAMplified preset also imports its referenced assets into the library. When the builder suggests a capture to look for, **Search on TONE3000** opens the website with that search term.
+Use **Choose Library** to select a folder containing your NAM captures and IRs. The builder includes its subfolders and remembers your selection. Saving a NAMplified preset also imports its referenced assets into the library. When the builder suggests a capture to look for, **Search on TONE3000** opens the website with that search term.
 
 For audio comparison, load a dry DI WAV (up to 12 seconds are used) or record up to 20 seconds. Use a mono WAV or put the DI in the left channel of a stereo WAV. After building, listen to **Original**, **A** and **B** at matched levels, then choose **Use A** or **Use B**. A build without DI applies the generated chain directly when a usable local capture is available. Use **Save** in the main window to keep the result.
 
@@ -109,11 +109,11 @@ NAMplified uses [NeuralAmpModelerCore](https://github.com/sdatkinson/NeuralAmpMo
 
 NAM blocks include **Browse TONE3000**. The user signs in to their own TONE3000 account in the browser, chooses a NAM tone, then chooses one compatible A1 or A2 capture. NAMplified downloads only that selected `.nam` model into the current computer's application data folder and loads it into the selected NAM slot. The OAuth token is kept in memory for this operation; NAMplified does not upload captures. When a user saves a preset, the preset manager imports referenced NAM captures and IR files into the shared library. A sidecar metadata file and the downloaded filename retain the tone, model, creator, and license details.
 
-This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Before using Browse TONE3000, register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI in the TONE3000 API settings for that key. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
+This integration uses the TONE3000 **publishable key** as its public OAuth client ID. It does not contain a TONE3000 secret key. Developers building with their own OAuth client ID must register `http://127.0.0.1:49157/tone3000/callback` as an allowed redirect URI for that client. The browser flow requires network access and a free TONE3000 account. The integration downloads individual model files; it does not use or recreate TONE3000's partner-only whole-tone ZIP download.
 
 The Browse button uses the official TONE3000 logo asset, kept unmodified in `Assets/Branding/TONE3000Logo.svg`, following TONE3000's [logo usage guidance](https://www.tone3000.com/api). This README links to the [TONE3000 website](https://www.tone3000.com).
 
-The TONE3000 API terms effective July 7, 2026 allow free-tier integrations for free, open, non-commercial products without paid features or upsells. Free-tier integrations do not require prior sign-off. The terms limit free-tier access to the `select_tone` and `load_tone` flows and the documented bounded lists. Catalog content may only be downloaded on an authenticated user's request, and the integration must preserve creator names, metadata, and license information. The terms also require “Powered by TONE3000” branding and adherence to TONE3000's design guidance. NAMplified is an independent project. [TONE3000 API terms](https://www.tone3000.com/api/terms) · [API documentation](https://www.tone3000.com/api)
+TONE3000 Support has confirmed that the integration may retrieve a selected tone's details, list its compatible captures and download the capture chosen by the user. Catalog downloads require the user's authentication and selection. Creator names, metadata and license information must be preserved, and the integration must follow TONE3000's branding and design guidance. NAMplified is an independent project. [TONE3000 API terms](https://www.tone3000.com/api/terms) · [API documentation](https://www.tone3000.com/api)
 
 ## Cabinet sources and routing
 
@@ -170,7 +170,17 @@ direction. The processor tests use a separate home directory inside the build fo
 
 ## Installation
 
-Build from source using the instructions above. Public installers are not available yet. For the macOS ZIP, see the [installation guide](docs/INSTALL-macOS.html).
+Download the [NAMplified 1.0.0 macOS ZIP](https://github.com/sedosa-guitar/namplified/releases/download/v1.0.0/NAMplified-1.0.0-macOS-arm64-f460057.zip) and its [SHA-256 checksum file](https://github.com/sedosa-guitar/namplified/releases/download/v1.0.0/NAMplified-1.0.0-macOS-arm64-f460057.zip.sha256). Requires an Apple Silicon Mac running macOS 14.4 or later.
+
+Extract the ZIP in Finder and follow the included **Installation.html**, or read the [installation guide](docs/INSTALL-macOS.html). The build is ad-hoc signed. macOS may require first-launch approval through **System Settings → Privacy & Security → Open Anyway**.
+
+To verify the download, run this command from the folder containing both files:
+
+```sh
+/usr/bin/shasum -a 256 -c NAMplified-1.0.0-macOS-arm64-f460057.zip.sha256
+```
+
+A matching ZIP reports **OK**. The matching source archive and license notices are included in **Licenses-and-Source** inside the download. The exact build commit is [f460057](https://github.com/sedosa-guitar/namplified/tree/f460057dcf60f8d275071d9b66e50815ea779c42).
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 
