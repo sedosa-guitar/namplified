@@ -56,6 +56,21 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(chowdsp_wdf)
 
+FetchContent_Declare(
+    RubberBand
+    GIT_REPOSITORY https://github.com/breakfastquay/rubberband.git
+    GIT_TAG v4.0.0
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(RubberBand)
+add_library(namplified_rubberband STATIC "${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp")
+set_target_properties(namplified_rubberband PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(namplified_rubberband PUBLIC "${rubberband_SOURCE_DIR}")
+target_compile_features(namplified_rubberband PRIVATE cxx_std_17)
+if (APPLE)
+    target_link_libraries(namplified_rubberband PRIVATE "-framework Accelerate")
+endif()
+
 juce_add_plugin(NAMplified
     COMPANY_NAME "NAMplified"
     BUNDLE_ID "org.sedosa.NAMplified"
@@ -156,6 +171,7 @@ target_link_libraries(NAMplified PRIVATE
     juce::juce_cryptography
     nam_core
     chowdsp_wdf
+    namplified_rubberband
     juce::juce_recommended_config_flags
     juce::juce_recommended_lto_flags
     juce::juce_recommended_warning_flags

@@ -6456,20 +6456,20 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
     pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -12 to +12 semitones.");
-    addChildComponent (pitchLabel);
+    addAndMakeVisible (pitchLabel);
     pitchSlider.setName ("pitchSemitones");
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
     pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
     pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
-    addChildComponent (pitchSlider);
+    addAndMakeVisible (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "pitchSemitones", pitchSlider);
     pitchValueLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     pitchValueLabel.setColour (juce::Label::textColourId, text);
     pitchValueLabel.setJustificationType (juce::Justification::centred);
-    addChildComponent (pitchValueLabel);
+    addAndMakeVisible (pitchValueLabel);
     const auto updatePitchValue = [this]
     {
         const auto semitones = juce::roundToInt (pitchSlider.getValue());

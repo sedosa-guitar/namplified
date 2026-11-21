@@ -517,20 +517,24 @@ void comparisonApplyTests (NAMplifiedAudioProcessor& processor, const juce::File
 void pitchTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
-    juce::AudioBuffer<float> buffer (2, blockSize);
+    constexpr int testBlockSize = 127;
+    juce::AudioBuffer<float> buffer (2, testBlockSize);
     juce::MidiBuffer midi;
     constexpr double lowE = 82.4069;
+    constexpr double highE = 329.6276;
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
-    for (const auto shift : { 0.0f, -12.0f, 12.0f, 0.0f })
+    struct PitchCase { float shift; double frequency; };
+    constexpr PitchCase cases[] { { 0.0f, lowE }, { -12.0f, lowE }, { -2.0f, highE },
+                                  { 12.0f, 220.0 }, { 0.0f, lowE } };
+    for (const auto [shift, frequency] : cases)
     {
         set (processor, "pitchSemitones", shift);
-        const auto frequency = shift > 0.0f ? 220.0 : lowE;
-        const auto ratio = shift > 0.0f ? 2.0 : 0.5;
-        std::complex<double> original {}, octave {};
+        const auto ratio = shift == 0.0f ? 0.5 : std::exp2 (static_cast<double> (shift) / 12.0);
+        std::complex<double> original {}, transposed {};
         int measured = 0;
-        for (int offset = 0; offset < 2 * sampleRate; offset += blockSize)
+        for (int offset = 0; offset < 2 * sampleRate; offset += testBlockSize)
         {
-            for (int i = 0; i < blockSize; ++i)
+            for (int i = 0; i < testBlockSize; ++i)
             {
                 const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<float> (0.1 * std::sin (phase));
@@ -540,19 +544,19 @@ void pitchTests (NAMplifiedAudioProcessor& processor)
             processor.processBlock (buffer, midi);
             if (offset < sampleRate)
                 continue;
-            measured += blockSize;
-            for (int i = 0; i < blockSize; ++i)
+            measured += testBlockSize;
+            for (int i = 0; i < testBlockSize; ++i)
             {
                 const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<double> (buffer.getSample (0, i));
                 original += signal * std::polar (1.0, -phase);
-                octave += signal * std::polar (1.0, -phase * ratio);
+                transposed += signal * std::polar (1.0, -phase * ratio);
             }
         }
         const auto dry = 2.0 * std::abs (original) / measured;
-        const auto shifted = 2.0 * std::abs (octave) / measured;
+        const auto shifted = 2.0 * std::abs (transposed) / measured;
         require (shift == 0 ? dry > 0.08 && shifted < 0.005 : shifted > 0.08 && dry < 0.01,
-                 "Pitch should preserve bypass or produce the requested octave without the original tone");
+                 "Pitch should preserve bypass or produce the requested shift without the original tone");
     }
 }
 }
