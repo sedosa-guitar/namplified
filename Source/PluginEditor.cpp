@@ -4262,13 +4262,13 @@ class NAMplifiedAboutDialog final : public NAMplifiedDialog
 {
 public:
     explicit NAMplifiedAboutDialog (juce::Component& parent)
-        : NAMplifiedDialog (parent, "About NAMplified", 560, 352)
+        : NAMplifiedDialog (parent, "About NAMplified", 560, 386)
     {
         styleLabel (description, "Neural Amp Modeling Workstation", 20.0f, juce::Colour (0xffeef2f7), true);
         styleLabel (credit, "Free, open-source amp and effects plugin.\nCreated by sedosa.", 16.0f);
         styleLabel (licenseTitle, "LICENSE", 13.0f, knobAccent, true);
         styleLabel (license, "Project code: AGPL-3.0. Captures, IRs and third-party assets remain under their respective licenses. Retain required attribution.", 15.0f);
-        for (auto* link : { &projectLink, &tipLink })
+        for (auto* link : { &projectLink, &tipLink, &tone3000Link })
         {
             link->setFont (license.getFont(), false);
             link->setColour (juce::HyperlinkButton::textColourId, knobAccent);
@@ -4289,7 +4289,8 @@ public:
         license.setBounds (juce::Rectangle<int> (24, 232, 512, 50) + origin);
         projectLink.setBounds (juce::Rectangle<int> (24, 294, 222, 36) + origin);
         tipLink.setBounds (juce::Rectangle<int> (256, 294, 170, 36) + origin);
-        close.setBounds (juce::Rectangle<int> (442, 294, 94, 36) + origin);
+        tone3000Link.setBounds (juce::Rectangle<int> (24, 330, 222, 36) + origin);
+        close.setBounds (juce::Rectangle<int> (442, 330, 94, 36) + origin);
     }
 
 private:
@@ -4297,6 +4298,7 @@ private:
     juce::HyperlinkButton projectLink { "View the source code on GitHub",
                                       juce::URL ("https://github.com/sedosa-guitar/namplified") };
     juce::HyperlinkButton tipLink { "Leave a tip on Ko-fi", juce::URL ("https://ko-fi.com/sedosa") };
+    juce::HyperlinkButton tone3000Link { "Powered by TONE3000", juce::URL ("https://www.tone3000.com") };
     juce::TextButton close { "Close" };
 };
 

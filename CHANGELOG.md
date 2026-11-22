@@ -1,8 +1,14 @@
 # Changelog
 
-All notable changes to NAMplified are summarized here. This changelog is reconstructed from the Git commit history; the repository currently has no version tags or published release entries.
+All notable changes to NAMplified are summarized here.
 
-## Unreleased development snapshot
+## 1.1.0
+
+- Replaced the pitch shifter with Rubber Band LiveShifter. Transpose by up to 12 semitones in either direction with adjustable pitch blend and DAW latency reporting.
+- Restored adjustable cabinet IR blending in Series. Double-click the amp or cabinet blend to return two active paths to 50/50.
+- Synchronized cabinet IR updates with audio processing and fixed preset recall so an unreadable IR cannot reuse the previous slot's response.
+
+## 1.0.0 and earlier development
 
 ### 2026-11-14 to 2026-11-16
 

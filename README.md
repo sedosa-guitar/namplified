@@ -8,7 +8,7 @@
 
 NAMplified is a JUCE-based audio effect for shaping a guitar sound from input to output. Build a chain from pedals, NAM captures, cabinet impulse responses, and post-amp effects. The interface keeps the signal path visible while exposing each block's controls when selected.
 
-> **Available now:** [NAMplified 1.0.0 for macOS](https://github.com/sedosa-guitar/namplified/releases/tag/v1.0.0), including Standalone, Audio Unit and VST3. Requires Apple Silicon and macOS 14.4 or later. Preset Builder is in beta.
+> **Available now:** [NAMplified 1.1.0 for macOS](https://github.com/sedosa-guitar/namplified/releases/tag/v1.1.0), including Standalone, Audio Unit and VST3. Requires Apple Silicon and macOS 14.4 or later. Preset Builder is in beta.
 
 See [CHANGELOG.md](CHANGELOG.md) for a summary of the project history.
 
@@ -18,6 +18,7 @@ NAMplified is a free hobby project. If you’d like to help cover development co
 
 ## Key features
 
+- **Pitch transpose.** Shift the guitar by up to 12 semitones in either direction with Rubber Band, then blend the shifted and original signals. Pitch processing adds latency when active.
 - **A complete guitar rig around NAM captures.** See the signal flow from input to output and edit each block in place. Move pre-amp and post-amp effects within their sections.
 - **Dual amps and flexible cabinet routing.** Run two NAM captures in series or blend them in parallel, with an optional frequency split. Pair each amp with its own IR or route the blend through a shared IR. Shape each cabinet independently.
 - **Four-track looper.** Record and layer guitar parts with an optional click and individual track controls.
@@ -31,7 +32,7 @@ NAMplified is a free hobby project. If you’d like to help cover development co
 
 ### Build a signal chain
 
-- **Input section:** input trim.
+- **Input section:** input trim, pitch transpose, and pitch blend.
 - **Pre-amp blocks:** Noise Gate, 1176-style compressor, Boost, and five-band Pre EQ. Reorder these blocks within the section and enable or disable them individually.
 - **Two NAM slots:** load a Neural Amp Modeler (NAM) capture into either slot, adjust its input/output levels, and shape it with a Bass/Mid/Treble EQ placed before or after the capture.
 - **Two cabinet IR slots:** load cabinet impulse responses, shape each IR with its own three-band EQ, and blend the two cabinet paths.
@@ -131,6 +132,8 @@ See the current screenshots in the [NAMplified Web project](https://github.com/s
 
 **Parallel with a shared IR** blends the two amp paths before a single cabinet IR.
 
+With two cabinets active in Series, **CAB 1 / CAB 2** controls their mix. Double-click the cab or amp blend to reset two active paths to 50/50.
+
 ## Build from source (macOS)
 
 ### Requirements
@@ -169,17 +172,17 @@ and pitch shifting at several intervals. The processor tests use a separate home
 
 ## Installation
 
-Download the [NAMplified 1.0.0 macOS ZIP](https://github.com/sedosa-guitar/namplified/releases/download/v1.0.0/NAMplified-1.0.0-macOS-arm64-f460057.zip) and its [SHA-256 checksum file](https://github.com/sedosa-guitar/namplified/releases/download/v1.0.0/NAMplified-1.0.0-macOS-arm64-f460057.zip.sha256). Requires an Apple Silicon Mac running macOS 14.4 or later.
+Download the [NAMplified 1.1.0 macOS ZIP](https://github.com/sedosa-guitar/namplified/releases/download/v1.1.0/NAMplified-1.1.0-macOS-arm64.zip) and its [SHA-256 checksum file](https://github.com/sedosa-guitar/namplified/releases/download/v1.1.0/NAMplified-1.1.0-macOS-arm64.zip.sha256). Requires an Apple Silicon Mac running macOS 14.4 or later.
 
 Extract the ZIP in Finder and follow the included **Installation.html**, or read the [installation guide](docs/INSTALL-macOS.html). The build is ad-hoc signed. macOS may require first-launch approval through **System Settings → Privacy & Security → Open Anyway**.
 
 To verify the download, run this command from the folder containing both files:
 
 ```sh
-/usr/bin/shasum -a 256 -c NAMplified-1.0.0-macOS-arm64-f460057.zip.sha256
+/usr/bin/shasum -a 256 -c NAMplified-1.1.0-macOS-arm64.zip.sha256
 ```
 
-A matching ZIP reports **OK**. The matching source archive and license notices are included in **Licenses-and-Source** inside the download. The exact build commit is [f460057](https://github.com/sedosa-guitar/namplified/tree/f460057dcf60f8d275071d9b66e50815ea779c42).
+A matching ZIP reports **OK**. The matching source archive and license notices are included in **Licenses-and-Source** inside the download. The [v1.1.0 tag](https://github.com/sedosa-guitar/namplified/tree/v1.1.0) points to the exact build source.
 
 Standalone, AU, and VST3 include the Sedosa presets and their factory NAM captures. On startup, NAMplified restores missing factory captures and missing presets under **Artist → Sedosa**, preserving existing files with the same names.
 
