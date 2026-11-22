@@ -304,8 +304,30 @@ void cabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
     require (cabOne > 0.005f && near (cabTwo, -cabOne, 0.0005),
              "Each isolated cab should use its own IR and preserve its polarity");
     require (std::abs (both) < 0.0005f, "The two opposite-polarity IRs should cancel at 50/50");
+    set (processor, "irParallelBlend", 0.8f);
+    require (near (render (true, true), cabOne * 0.8f + cabTwo * 0.2f, 0.0005),
+             "Cabinet blend should weight the two active IRs");
+    set (processor, "irParallelBlend", 1.0f);
+    require (near (render (true, true), cabOne, 0.0005), "100/0 should isolate Cab 1");
+    set (processor, "irParallelBlend", 0.0f);
+    require (near (render (true, true), cabTwo, 0.0005), "0/100 should isolate Cab 2");
     require (near (render (true, false), cabOne, 0.0005) && near (render (false, true), cabTwo, 0.0005),
              "Turning either cab off should restore full level on the remaining branch");
+
+    juce::MemoryBlock validState;
+    processor.getStateInformation (validState);
+    auto invalidState = juce::AudioProcessor::getXmlFromBinary (validState.getData(), static_cast<int> (validState.getSize()));
+    require (invalidState != nullptr, "Cabinet test state should be readable");
+    const auto unreadableIR = testHome.getChildFile ("unreadable.wav");
+    require (unreadableIR.replaceWithText ("Invalid WAV"), "The unreadable IR fixture should be created");
+    invalidState->setAttribute ("irFile2", unreadableIR.getFullPathName());
+    juce::MemoryBlock invalidStateData;
+    juce::AudioProcessor::copyXmlToBinary (*invalidState, invalidStateData);
+    processor.setStateInformation (invalidStateData.getData(), static_cast<int> (invalidStateData.getSize()));
+    require (processor.getImpulseResponseName (1) == "No IR loaded", "An unreadable IR must not be shown as loaded");
+    require (near (render (false, true), dry, 0.0005), "An unreadable IR must not reuse the previous IR");
+    processor.setStateInformation (validState.getData(), static_cast<int> (validState.getSize()));
+    require (near (render (false, true), cabTwo, 0.0005), "A subsequent valid state should restore its IR");
 }
 
 void centeredCabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)

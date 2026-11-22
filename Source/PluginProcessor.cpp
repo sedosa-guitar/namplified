@@ -1310,6 +1310,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         circuit.prepare (sampleRate);
     for (int slot = 0; slot < numIRSlots; ++slot)
     {
+        const juce::SpinLock::ScopedLockType lock (irConvolutionLocks[slot]);
         irConvolvers[slot].prepare (spec);
         irWorkBuffers[slot].setSize (static_cast<int> (channels), samplesPerBlock);
     }
@@ -1802,7 +1803,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
-        if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
+        const juce::SpinLock::ScopedTryLockType lock (irConvolutionLocks[slot]);
+        if (! lock.isLocked() || ! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
             return;
         auto audioBlock = juce::dsp::AudioBlock<float> (branch).getSubBlock (0, static_cast<size_t> (numSamples));
         irConvolvers[slot].process (juce::dsp::ProcessContextReplacing<float> (audioBlock));
@@ -1897,10 +1899,11 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 irInputBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
             buffer.clear();
 
-            const auto weight = 1.0f / static_cast<float> (activeIRCount);
+            const auto firstCabShare = get ("irParallelBlend", 0.5f);
             for (int index = 0; index < activeIRCount; ++index)
             {
                 const auto slot = activeIRs[static_cast<size_t> (index)];
+                const auto weight = activeIRCount == 1 ? 1.0f : slot == 0 ? firstCabShare : 1.0f - firstCabShare;
                 auto& branch = irWorkBuffers[slot];
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, irInputBuffer, channel, 0, numSamples);
@@ -2236,11 +2239,12 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         setIRSlotOrder (irOrder);
         for (int slot = 0; slot < numIRSlots; ++slot)
         {
-            irFilePaths[slot] = state.getProperty ("irFile" + juce::String (slot + 1)).toString();
-            const juce::File file (irFilePaths[slot]);
-            irLoaded[slot].store (file.existsAsFile());
-            if (irLoaded[slot].load())
-                loadImpulseResponse (slot, file);
+            const auto path = state.getProperty ("irFile" + juce::String (slot + 1)).toString();
+            if (path.isEmpty() || ! loadImpulseResponse (slot, juce::File (path)))
+            {
+                irLoaded[slot].store (false);
+                irFilePaths[slot] = path;
+            }
         }
         for (int slot = 0; slot < numAmpSlots; ++slot)
         {
@@ -2303,40 +2307,42 @@ juce::String NAMplifiedAudioProcessor::getReverbIRName() const
                                   : juce::File (reverbIRPath).getFileName();
 }
 
-void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
+bool NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
 {
     if (slot < 0 || slot >= numIRSlots || ! file.existsAsFile())
-        return;
+        return false;
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
     if (reader == nullptr || reader->lengthInSamples <= 0
         || reader->lengthInSamples > std::numeric_limits<int>::max())
-        return;
+        return false;
     const auto samples = static_cast<int> (reader->lengthInSamples);
     const auto channels = static_cast<int> (juce::jmin (reader->numChannels, 2u));
     if (channels == 0)
-        return;
+        return false;
     juce::AudioBuffer<float> impulse (channels, samples);
     if (! reader->read (&impulse, 0, samples, 0, true, true))
-        return;
+        return false;
     if (channels == 2)
     {
         impulse.applyGain (0, 0, samples, 0.5f);
         impulse.addFrom (0, 0, impulse, 1, 0, samples, 0.5f);
         impulse.setSize (1, samples, true, false, true);
     }
+    const juce::SpinLock::ScopedLockType lock (irConvolutionLocks[slot]);
     irConvolvers[slot].loadImpulseResponse (std::move (impulse), reader->sampleRate,
                                             juce::dsp::Convolution::Stereo::no,
                                             juce::dsp::Convolution::Trim::yes,
                                             juce::dsp::Convolution::Normalise::yes);
     irFilePaths[slot] = file.getFullPathName();
     irLoaded[slot].store (true);
+    return true;
 }
 
 juce::String NAMplifiedAudioProcessor::getImpulseResponseName (int slot) const
 {
-    if (slot < 0 || slot >= numIRSlots || irFilePaths[slot].isEmpty())
+    if (slot < 0 || slot >= numIRSlots || ! irLoaded[slot].load())
         return "No IR loaded";
     return juce::File (irFilePaths[slot]).getFileName();
 }

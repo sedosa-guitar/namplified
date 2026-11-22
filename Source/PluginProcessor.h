@@ -60,7 +60,7 @@ public:
     IRParameters parameters;
     bool loadReverbIR (const juce::File& file);
     juce::String getReverbIRName() const;
-    void loadImpulseResponse (int slot, const juce::File& file);
+    bool loadImpulseResponse (int slot, const juce::File& file);
     bool isAmpEnabled (int slot) const;
     bool isCabEnabled (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
@@ -203,6 +203,7 @@ private:
     float currentCompareVolume = 1.0f;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
+    juce::SpinLock irConvolutionLocks[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];
     juce::AudioBuffer<float> irInputBuffer;
     juce::AudioBuffer<float> ampInputBuffer;
