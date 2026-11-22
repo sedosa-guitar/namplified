@@ -304,8 +304,30 @@ void cabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
     require (cabOne > 0.005f && near (cabTwo, -cabOne, 0.0005),
              "Each isolated cab should use its own IR and preserve its polarity");
     require (std::abs (both) < 0.0005f, "The two opposite-polarity IRs should cancel at 50/50");
+    set (processor, "irParallelBlend", 0.8f);
+    require (near (render (true, true), cabOne * 0.8f + cabTwo * 0.2f, 0.0005),
+             "Cabinet blend should weight the two active IRs");
+    set (processor, "irParallelBlend", 1.0f);
+    require (near (render (true, true), cabOne, 0.0005), "100/0 should isolate Cab 1");
+    set (processor, "irParallelBlend", 0.0f);
+    require (near (render (true, true), cabTwo, 0.0005), "0/100 should isolate Cab 2");
     require (near (render (true, false), cabOne, 0.0005) && near (render (false, true), cabTwo, 0.0005),
              "Turning either cab off should restore full level on the remaining branch");
+
+    juce::MemoryBlock validState;
+    processor.getStateInformation (validState);
+    auto invalidState = juce::AudioProcessor::getXmlFromBinary (validState.getData(), static_cast<int> (validState.getSize()));
+    require (invalidState != nullptr, "Cabinet test state should be readable");
+    const auto unreadableIR = testHome.getChildFile ("unreadable.wav");
+    require (unreadableIR.replaceWithText ("Invalid WAV"), "The unreadable IR fixture should be created");
+    invalidState->setAttribute ("irFile2", unreadableIR.getFullPathName());
+    juce::MemoryBlock invalidStateData;
+    juce::AudioProcessor::copyXmlToBinary (*invalidState, invalidStateData);
+    processor.setStateInformation (invalidStateData.getData(), static_cast<int> (invalidStateData.getSize()));
+    require (processor.getImpulseResponseName (1) == "No IR loaded", "An unreadable IR must not be shown as loaded");
+    require (near (render (false, true), dry, 0.0005), "An unreadable IR must not reuse the previous IR");
+    processor.setStateInformation (validState.getData(), static_cast<int> (validState.getSize()));
+    require (near (render (false, true), cabTwo, 0.0005), "A subsequent valid state should restore its IR");
 }
 
 void centeredCabTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
@@ -517,20 +539,24 @@ void comparisonApplyTests (NAMplifiedAudioProcessor& processor, const juce::File
 void pitchTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
-    juce::AudioBuffer<float> buffer (2, blockSize);
+    constexpr int testBlockSize = 127;
+    juce::AudioBuffer<float> buffer (2, testBlockSize);
     juce::MidiBuffer midi;
     constexpr double lowE = 82.4069;
+    constexpr double highE = 329.6276;
     constexpr auto twoPi = juce::MathConstants<double>::twoPi;
-    for (const auto shift : { 0.0f, -12.0f, 12.0f, 0.0f })
+    struct PitchCase { float shift; double frequency; };
+    constexpr PitchCase cases[] { { 0.0f, lowE }, { -12.0f, lowE }, { -2.0f, highE },
+                                  { 12.0f, 220.0 }, { 0.0f, lowE } };
+    for (const auto [shift, frequency] : cases)
     {
         set (processor, "pitchSemitones", shift);
-        const auto frequency = shift > 0.0f ? 220.0 : lowE;
-        const auto ratio = shift > 0.0f ? 2.0 : 0.5;
-        std::complex<double> original {}, octave {};
+        const auto ratio = shift == 0.0f ? 0.5 : std::exp2 (static_cast<double> (shift) / 12.0);
+        std::complex<double> original {}, transposed {};
         int measured = 0;
-        for (int offset = 0; offset < 2 * sampleRate; offset += blockSize)
+        for (int offset = 0; offset < 2 * sampleRate; offset += testBlockSize)
         {
-            for (int i = 0; i < blockSize; ++i)
+            for (int i = 0; i < testBlockSize; ++i)
             {
                 const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<float> (0.1 * std::sin (phase));
@@ -540,19 +566,19 @@ void pitchTests (NAMplifiedAudioProcessor& processor)
             processor.processBlock (buffer, midi);
             if (offset < sampleRate)
                 continue;
-            measured += blockSize;
-            for (int i = 0; i < blockSize; ++i)
+            measured += testBlockSize;
+            for (int i = 0; i < testBlockSize; ++i)
             {
                 const auto phase = twoPi * frequency * (offset + i) / sampleRate;
                 const auto signal = static_cast<double> (buffer.getSample (0, i));
                 original += signal * std::polar (1.0, -phase);
-                octave += signal * std::polar (1.0, -phase * ratio);
+                transposed += signal * std::polar (1.0, -phase * ratio);
             }
         }
         const auto dry = 2.0 * std::abs (original) / measured;
-        const auto shifted = 2.0 * std::abs (octave) / measured;
+        const auto shifted = 2.0 * std::abs (transposed) / measured;
         require (shift == 0 ? dry > 0.08 && shifted < 0.005 : shifted > 0.08 && dry < 0.01,
-                 "Pitch should preserve bypass or produce the requested octave without the original tone");
+                 "Pitch should preserve bypass or produce the requested shift without the original tone");
     }
 }
 }

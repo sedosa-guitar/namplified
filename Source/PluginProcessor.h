@@ -30,7 +30,7 @@
 //==============================================================================
 /**
 */
-class NAMplifiedAudioProcessor  : public juce::AudioProcessor
+class NAMplifiedAudioProcessor  : public juce::AudioProcessor, private juce::Timer
 {
 public:
     using IRParameters = juce::AudioProcessorValueTreeState;
@@ -60,7 +60,7 @@ public:
     IRParameters parameters;
     bool loadReverbIR (const juce::File& file);
     juce::String getReverbIRName() const;
-    void loadImpulseResponse (int slot, const juce::File& file);
+    bool loadImpulseResponse (int slot, const juce::File& file);
     bool isAmpEnabled (int slot) const;
     bool isCabEnabled (int slot) const;
     void loadNAMCapture (int slot, const juce::File& file);
@@ -203,6 +203,7 @@ private:
     float currentCompareVolume = 1.0f;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];
+    juce::SpinLock irConvolutionLocks[numIRSlots];
     juce::AudioBuffer<float> irWorkBuffers[numIRSlots];
     juce::AudioBuffer<float> irInputBuffer;
     juce::AudioBuffer<float> ampInputBuffer;
@@ -250,19 +251,10 @@ private:
     std::array<chowdsp::BBD::BBDDelayLine<16384>, 2> analogDelay;
     std::array<float, 2> analogDelayInput {};
     std::atomic<float> inputPeak { 0.0f }, outputPeak { 0.0f };
-    struct ClassicPitchTracker
-    {
-        float process (float sample, float dcCoefficient, float lowPassCoefficient,
-                       float rangeCoefficient, float defaultRange, float sampleRate) noexcept;
-
-        float dc = 0.0f, low = 0.0f, filtered = 0.0f;
-        float crossingFraction = 0.0f, trackedPeriod = 0.0f, range = 0.0f;
-        int samplesSinceCrossing = 0, stablePeriods = 0;
-    };
-    ClassicPitchTracker classicPitchTracker;
-    std::array<std::vector<float>, 2> pitchBuffers;
-    int pitchBufferSize = 0, pitchWritePosition = 0;
-    float pitchPhase = 0.0f, pitchCurrentSemitones = 0.0f;
+    struct PitchShifter;
+    std::unique_ptr<PitchShifter> pitchShifter;
+    std::atomic<int> pitchLatencySamples { 0 };
+    void timerCallback() override;
     std::atomic<bool> inputClipped { false }, outputClipped { false };
     std::array<std::array<BiquadState, 5>, 2> preEqFilters {};
     std::array<std::array<BiquadState, 9>, 2> postEqFilters {};

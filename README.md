@@ -148,7 +148,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-The first configure fetches JUCE 9.0.5, NeuralAmpModelerCore 0.5.4, and `chowdsp_wdf` 1.0.0. To use an existing JUCE checkout, pass its path with `-DJUCE_SOURCE_DIR=/path/to/JUCE`.
+The first configure fetches JUCE 9.0.5, NeuralAmpModelerCore 0.5.4, `chowdsp_wdf` 1.0.0, and Rubber Band Library 4.0.0. To use an existing JUCE checkout, pass its path with `-DJUCE_SOURCE_DIR=/path/to/JUCE`.
 
 Build products are placed under `build`. The CMake project currently generates **AU**, **VST3**, and **Standalone** macOS targets. The standalone application can be opened from the generated `NAMplified_artefacts` directory; plugin bundles are generated alongside it.
 
@@ -165,8 +165,7 @@ ctest --test-dir build --output-on-failure
 The suites check looper count-in, bar boundaries and multitrack playback,
 preset name validation and save/load, parallel amp and cabinet mixing, Standard
 and Ping Pong delay, both chorus modes, Rig Shootout playback and rig application,
-and pitch shifting one octave in either
-direction. The processor tests use a separate home directory inside the build folder.
+and pitch shifting at several intervals. The processor tests use a separate home directory inside the build folder.
 
 ## Installation
 

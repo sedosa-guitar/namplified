@@ -1970,8 +1970,12 @@ public:
                                 return;
                             }
                         }
-                        else
-                            safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file);
+                        else if (! safeThis->audioProcessor.loadImpulseResponse (safeThis->slot, file))
+                        {
+                            juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
+                                "Could not load cabinet IR", "Choose a readable cabinet impulse response file.");
+                            return;
+                        }
                         if (safeThis->loadKind != FileKind::nam)
                             rememberAssetDirectory (safeThis->loadKind == FileKind::reverbIR ? "ReverbIR" : "CabIR", file);
                         safeThis->setFileNameText (file.getFileName(), juce::dontSendNotification);
@@ -6456,20 +6460,20 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchLabel.setColour (juce::Label::textColourId, secondaryText);
     pitchLabel.setJustificationType (juce::Justification::centredRight);
     pitchLabel.setTooltip ("Global pitch shift before the input signal enters the chain. Range: -12 to +12 semitones.");
-    addChildComponent (pitchLabel);
+    addAndMakeVisible (pitchLabel);
     pitchSlider.setName ("pitchSemitones");
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
     pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
     pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
-    addChildComponent (pitchSlider);
+    addAndMakeVisible (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "pitchSemitones", pitchSlider);
     pitchValueLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     pitchValueLabel.setColour (juce::Label::textColourId, text);
     pitchValueLabel.setJustificationType (juce::Justification::centred);
-    addChildComponent (pitchValueLabel);
+    addAndMakeVisible (pitchValueLabel);
     const auto updatePitchValue = [this]
     {
         const auto semitones = juce::roundToInt (pitchSlider.getValue());
@@ -6761,19 +6765,17 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     blendSlider.onValueChange = [this]
     {
         const auto parallel = audioProcessor.parameters.getRawParameterValue ("ampRouting")->load() >= 0.5f;
-        if (! parallel)
-            return;
-        auto* parameter = audioProcessor.parameters.getParameter ("ampParallelBlend");
+        auto* parameter = audioProcessor.parameters.getParameter (parallel ? "ampParallelBlend" : "irParallelBlend");
         parameter->setValueNotifyingHost (parameter->convertTo0to1 (static_cast<float> (blendSlider.getValue())));
         updateRoutingDisplay();
     };
     blendSlider.onDragStart = [this]
     {
-        audioProcessor.parameters.getParameter ("ampParallelBlend")->beginChangeGesture();
+        audioProcessor.parameters.getParameter (blendSlider.getName())->beginChangeGesture();
     };
     blendSlider.onDragEnd = [this]
     {
-        audioProcessor.parameters.getParameter ("ampParallelBlend")->endChangeGesture();
+        audioProcessor.parameters.getParameter (blendSlider.getName())->endChangeGesture();
     };
     blendSlider.setWantsKeyboardFocus (false);
 
@@ -7026,9 +7028,10 @@ void NAMplifiedAudioProcessorEditor::timerCallback()
     const auto blendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
                                  | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
     if (blendDisplayState != lastBlendDisplayState
-        || (parallel && ! juce::approximatelyEqual (static_cast<float> (blendSlider.getValue()),
-            firstEnabled && secondEnabled ? audioProcessor.parameters.getRawParameterValue ("ampParallelBlend")->load()
-                : firstEnabled ? 1.0f : secondEnabled ? 0.0f : 0.5f)))
+        || ! juce::approximatelyEqual (static_cast<float> (blendSlider.getValue()),
+            firstEnabled && secondEnabled
+                ? audioProcessor.parameters.getRawParameterValue (parallel ? "ampParallelBlend" : "irParallelBlend")->load()
+                : firstEnabled == secondEnabled ? 0.5f : firstEnabled ? 1.0f : 0.0f))
         updateRoutingDisplay();
 
     const auto changed = audioProcessor.hasUnsavedParameterChanges();
@@ -7097,12 +7100,14 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     const auto secondEnabled = parallel ? audioProcessor.isAmpEnabled (1) : audioProcessor.isCabEnabled (1);
     lastBlendDisplayState = (parallel ? 1 : 0) | (sharedIR ? 2 : 0)
                           | (firstEnabled ? 4 : 0) | (secondEnabled ? 8 : 0);
-    const auto share = parallel && firstEnabled && secondEnabled
-        ? audioProcessor.parameters.getRawParameterValue ("ampParallelBlend")->load()
+    const auto blendParameterId = parallel ? "ampParallelBlend" : "irParallelBlend";
+    const auto share = firstEnabled && secondEnabled
+        ? audioProcessor.parameters.getRawParameterValue (blendParameterId)->load()
         : firstEnabled == secondEnabled ? 0.5f : firstEnabled ? 1.0f : 0.0f;
-    blendSlider.setName (parallel ? "ampParallelBlend" : "irParallelBlend");
-    blendSlider.setInterceptsMouseClicks (parallel && firstEnabled && secondEnabled, false);
-    blendSlider.setWantsKeyboardFocus (parallel && firstEnabled && secondEnabled);
+    blendSlider.setName (blendParameterId);
+    blendSlider.setDoubleClickReturnValue (firstEnabled && secondEnabled, 0.5);
+    blendSlider.setInterceptsMouseClicks (firstEnabled && secondEnabled, false);
+    blendSlider.setWantsKeyboardFocus (firstEnabled && secondEnabled);
     blendSlider.setValue (share,
                           juce::dontSendNotification);
     const auto firstShare = firstEnabled ? (secondEnabled ? juce::roundToInt (share * 100.0f) : 100) : 0;

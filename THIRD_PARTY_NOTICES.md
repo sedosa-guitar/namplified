@@ -25,6 +25,13 @@ for this pinned version. Review the licenses of components included by the
 selected JUCE modules when producing a binary; do not assume every package in
 that inventory is linked into every build.
 
+## Rubber Band Library
+
+NAMplified uses Rubber Band Library v4.0.0 by Particular Programs Ltd.
+The library is available under GPL-2.0-or-later. See the pinned upstream
+[`COPYING`](https://github.com/breakfastquay/rubberband/blob/v4.0.0/COPYING)
+for the license text.
+
 ## NeuralAmpModelerCore
 
 NAMplified uses NeuralAmpModelerCore v0.5.4 by Steven Atkinson, including its

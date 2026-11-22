@@ -2,6 +2,7 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include <get_dsp.h>
+#include <rubberband/RubberBandLiveShifter.h>
 
 #include <array>
 #include <cmath>
@@ -72,59 +73,88 @@ juce::String displayNameForNAMFile (const juce::File& file, int slot)
 }
 }
 
-float NAMplifiedAudioProcessor::ClassicPitchTracker::process (
-    float sample, float dcCoefficient, float lowPassCoefficient,
-    float rangeCoefficient, float defaultRange, float sampleRate) noexcept
+struct NAMplifiedAudioProcessor::PitchShifter
 {
-    dc += dcCoefficient * (sample - dc);
-    low += lowPassCoefficient * (sample - dc - low);
-    const auto previous = filtered;
-    filtered += lowPassCoefficient * (low - filtered);
+    using Engine = RubberBand::RubberBandLiveShifter;
 
-    const auto timeout = juce::roundToInt (sampleRate * 0.06f);
-    samplesSinceCrossing = juce::jmin (samplesSinceCrossing + 1, timeout);
-    if (previous <= 0.0f && filtered > 0.0f && filtered - previous > 1.0e-7f)
+    PitchShifter (int sampleRate, int channels, float semitones)
+        : engine (static_cast<size_t> (sampleRate), static_cast<size_t> (channels),
+                  Engine::OptionWindowShort | Engine::OptionChannelsTogether),
+          blockSize (static_cast<int> (engine.getBlockSize())),
+          input (channels, blockSize), output (channels, blockSize)
     {
-        const auto fraction = filtered / (filtered - previous);
-        const auto period = static_cast<float> (samplesSinceCrossing) + crossingFraction - fraction;
-        if (period >= sampleRate / 145.0f && period <= sampleRate / 55.0f
-            && samplesSinceCrossing < timeout)
-        {
-            if (std::abs (period - trackedPeriod) <= trackedPeriod * 0.04f)
-            {
-                stablePeriods = juce::jmin (3, stablePeriods + 1);
-                trackedPeriod += (period - trackedPeriod) * 0.25f;
-            }
-            else
-            {
-                trackedPeriod = period;
-                stablePeriods = 1;
-            }
-        }
-        else
-        {
-            stablePeriods = 0;
-        }
-        samplesSinceCrossing = 0;
-        crossingFraction = fraction;
-    }
-    else if (samplesSinceCrossing == timeout)
-    {
-        stablePeriods = 0;
+        input.clear();
+        output.clear();
+        setPitch (semitones);
+        // The first shift and the initial ratio setup can allocate. Prime off the audio thread.
+        engine.shift (input.getArrayOfReadPointers(), output.getArrayOfWritePointers());
+        output.clear();
     }
 
-    // A whole number of source cycles between the two taps keeps their crossfade coherent.
-    auto targetRange = defaultRange;
-    if (stablePeriods >= 3)
+    void setPitch (float semitones)
     {
-        const auto twoCycles = 2.0f * trackedPeriod;
-        targetRange = static_cast<float> (juce::roundToInt (defaultRange / twoCycles)) * twoCycles;
+        if (semitones != currentSemitones)
+        {
+            currentSemitones = semitones;
+            engine.setPitchScale (std::exp2 (static_cast<double> (semitones) / 12.0));
+        }
     }
-    if (range == 0.0f)
-        range = defaultRange;
-    range += rangeCoefficient * (targetRange - range);
-    return range;
-}
+
+    int latency() const
+    {
+        return static_cast<int> (engine.getStartDelay()) + blockSize;
+    }
+
+    void process (juce::AudioBuffer<float>& buffer, int channels, float semitones)
+    {
+        if (semitones == 0.0f)
+        {
+            active = false;
+            position = 0;
+            return;
+        }
+
+        if (! active)
+        {
+            setPitch (semitones);
+            // Discard queued audio from the previous activation.
+            muteSamples = latency();
+            active = true;
+        }
+
+        int offset = 0;
+        while (offset < buffer.getNumSamples())
+        {
+            const auto count = juce::jmin (blockSize - position, buffer.getNumSamples() - offset);
+            const auto muted = juce::jmin (muteSamples, count);
+            for (int channel = 0; channel < channels; ++channel)
+            {
+                input.copyFrom (channel, position, buffer, channel, offset, count);
+                buffer.copyFrom (channel, offset, output, channel, position, count);
+                buffer.clear (channel, offset, muted);
+            }
+            for (int channel = channels; channel < input.getNumChannels(); ++channel)
+                input.clear (channel, position, count);
+
+            muteSamples -= muted;
+            offset += count;
+            position += count;
+            if (position == blockSize)
+            {
+                setPitch (semitones);
+                engine.shift (input.getArrayOfReadPointers(), output.getArrayOfWritePointers());
+                position = 0;
+            }
+        }
+    }
+
+    Engine engine;
+    const int blockSize;
+    juce::AudioBuffer<float> input, output;
+    int position = 0, muteSamples = 0;
+    float currentSemitones = 0.0f;
+    bool active = false;
+};
 
 struct NAMplifiedAudioProcessor::NAMModel
 {
@@ -595,7 +625,15 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     return layout;
 }
 
-NAMplifiedAudioProcessor::~NAMplifiedAudioProcessor() = default;
+NAMplifiedAudioProcessor::~NAMplifiedAudioProcessor()
+{
+    stopTimer();
+}
+
+void NAMplifiedAudioProcessor::timerCallback()
+{
+    setLatencySamples (pitchLatencySamples.load (std::memory_order_relaxed));
+}
 
 void NAMplifiedAudioProcessor::BiquadState::set (float nb0, float nb1, float nb2,
                                                float na0, float na1, float na2)
@@ -1259,13 +1297,12 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     const juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), channels };
     modelSampleRate.store (sampleRate);
     modelMaxBlockSize.store (samplesPerBlock);
-    pitchBufferSize = juce::jmax (2, juce::roundToInt (sampleRate * 0.16));
-    for (auto& channel : pitchBuffers)
-        channel.assign (static_cast<size_t> (pitchBufferSize), 0.0f);
-    pitchWritePosition = 0;
-    pitchPhase = 0.0f;
-    classicPitchTracker = {};
-    pitchCurrentSemitones = 0.0f;
+    const auto semitones = parameters.getRawParameterValue ("pitchSemitones")->load();
+    pitchShifter = std::make_unique<PitchShifter> (juce::roundToInt (sampleRate), static_cast<int> (channels), semitones);
+    const auto latency = semitones == 0.0f ? 0 : pitchShifter->latency();
+    pitchLatencySamples.store (latency, std::memory_order_relaxed);
+    setLatencySamples (latency);
+    startTimerHz (30);
     for (int slot = 0; slot < numAmpSlots; ++slot)
         namModels[slot]->prepare (sampleRate, samplesPerBlock);
     boostNAMModel->prepare (sampleRate, samplesPerBlock);
@@ -1273,6 +1310,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
         circuit.prepare (sampleRate);
     for (int slot = 0; slot < numIRSlots; ++slot)
     {
+        const juce::SpinLock::ScopedLockType lock (irConvolutionLocks[slot]);
         irConvolvers[slot].prepare (spec);
         irWorkBuffers[slot].setSize (static_cast<int> (channels), samplesPerBlock);
     }
@@ -1579,83 +1617,11 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     inputPeak.store (juce::jmax (inputBlockPeak, inputPeak.load (std::memory_order_relaxed) * meterFall),
                      std::memory_order_relaxed);
 
-    // Two crossfaded delay taps provide a low-latency, monophonic-style pitch
-    // shift before the rest of the chain. The 20 ms minimum delay prevents the
-    // read heads from catching the write head; all memory is allocated in prepareToPlay.
-    const auto pitchTarget = juce::jlimit (-12.0f, 12.0f, get ("pitchSemitones"));
-    const auto pitchSmoothing = 1.0f - std::exp (-1.0f / static_cast<float> (sampleRate * 0.025));
-    const auto pitchMinDelay = static_cast<float> (sampleRate * 0.02);
-    const auto defaultPitchRange = juce::jmax (1.0f, static_cast<float> (sampleRate * 0.10));
-    const auto trackLowNotes = pitchTarget < 0.0f && numChannels > 0;
-    const auto coefficientFor = [sampleRate] (double hz)
+    if (pitchShifter != nullptr && numChannels > 0)
     {
-        return static_cast<float> (1.0 - std::exp (-juce::MathConstants<double>::twoPi * hz / sampleRate));
-    };
-    const auto pitchTrackerDc = trackLowNotes ? coefficientFor (15.0) : 0.0f;
-    const auto pitchTrackerLowPass = trackLowNotes ? coefficientFor (150.0) : 0.0f;
-    const auto pitchTrackerSmoothing = trackLowNotes ? coefficientFor (3.0) : 0.0f;
-    if (! trackLowNotes)
-        classicPitchTracker = {};
-    const auto wrapReadIndex = [this] (float position)
-    {
-        while (position < 0.0f) position += static_cast<float> (pitchBufferSize);
-        while (position >= static_cast<float> (pitchBufferSize)) position -= static_cast<float> (pitchBufferSize);
-        return position;
-    };
-    for (int sample = 0; sample < numSamples; ++sample)
-    {
-        pitchCurrentSemitones += (pitchTarget - pitchCurrentSemitones) * pitchSmoothing;
-        for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
-            pitchBuffers[static_cast<size_t> (channel)][static_cast<size_t> (pitchWritePosition)]
-                = buffer.getReadPointer (channel)[sample];
-
-        if (std::abs (pitchCurrentSemitones) > 0.01f)
-        {
-            auto pitchRange = defaultPitchRange;
-            if (trackLowNotes)
-            {
-                auto analysisInput = buffer.getSample (0, sample);
-                if (numChannels == 2)
-                    analysisInput = 0.5f * (analysisInput + buffer.getSample (1, sample));
-                pitchRange = classicPitchTracker.process (analysisInput, pitchTrackerDc, pitchTrackerLowPass,
-                                                          pitchTrackerSmoothing, defaultPitchRange,
-                                                          static_cast<float> (sampleRate));
-            }
-            const auto ratio = std::exp2 (pitchCurrentSemitones / 12.0f);
-            const auto phaseIncrement = std::abs (1.0f - ratio) / pitchRange;
-            auto phaseA = pitchPhase;
-            auto phaseB = phaseA + 0.5f;
-            if (phaseB >= 1.0f) phaseB -= 1.0f;
-            const auto delayForPhase = [pitchCurrent = pitchCurrentSemitones, pitchMinDelay, pitchRange] (float phase)
-            {
-                return pitchCurrent > 0.0f ? pitchMinDelay + (1.0f - phase) * pitchRange
-                                           : pitchMinDelay + phase * pitchRange;
-            };
-            const auto delayA = delayForPhase (phaseA);
-            const auto delayB = delayForPhase (phaseB);
-            const auto weightA = 0.5f - 0.5f * std::cos (juce::MathConstants<float>::twoPi * phaseA);
-            const auto weightB = 1.0f - weightA;
-            for (int channel = 0; channel < juce::jmin (numChannels, 2); ++channel)
-            {
-                const auto readTap = [this, channel, &wrapReadIndex] (float delay)
-                {
-                    const auto position = wrapReadIndex (static_cast<float> (pitchWritePosition) - delay);
-                    const auto index0 = static_cast<int> (position);
-                    const auto index1 = (index0 + 1) % pitchBufferSize;
-                    const auto fraction = position - static_cast<float> (index0);
-                    const auto& data = pitchBuffers[static_cast<size_t> (channel)];
-                    return data[static_cast<size_t> (index0)] * (1.0f - fraction)
-                         + data[static_cast<size_t> (index1)] * fraction;
-                };
-                auto& sampleValue = buffer.getWritePointer (channel)[sample];
-                const auto shifted = readTap (delayA) * weightA + readTap (delayB) * weightB;
-                sampleValue = shifted;
-            }
-            pitchPhase += phaseIncrement;
-            if (pitchPhase >= 1.0f)
-                pitchPhase -= std::floor (pitchPhase);
-        }
-        pitchWritePosition = (pitchWritePosition + 1) % pitchBufferSize;
+        const auto semitones = juce::jlimit (-12.0f, 12.0f, get ("pitchSemitones"));
+        pitchShifter->process (buffer, numChannels, semitones);
+        pitchLatencySamples.store (semitones == 0.0f ? 0 : pitchShifter->latency(), std::memory_order_relaxed);
     }
 
     const auto inputGain = juce::Decibels::decibelsToGain (get ("inputGain"));
@@ -1837,7 +1803,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     };
     const auto processCabIR = [&] (juce::AudioBuffer<float>& branch, int slot)
     {
-        if (! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
+        const juce::SpinLock::ScopedTryLockType lock (irConvolutionLocks[slot]);
+        if (! lock.isLocked() || ! irLoaded[slot].load() || ! enabled (irEnableIds[slot]))
             return;
         auto audioBlock = juce::dsp::AudioBlock<float> (branch).getSubBlock (0, static_cast<size_t> (numSamples));
         irConvolvers[slot].process (juce::dsp::ProcessContextReplacing<float> (audioBlock));
@@ -1932,10 +1899,11 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 irInputBuffer.copyFrom (channel, 0, buffer, channel, 0, numSamples);
             buffer.clear();
 
-            const auto weight = 1.0f / static_cast<float> (activeIRCount);
+            const auto firstCabShare = get ("irParallelBlend", 0.5f);
             for (int index = 0; index < activeIRCount; ++index)
             {
                 const auto slot = activeIRs[static_cast<size_t> (index)];
+                const auto weight = activeIRCount == 1 ? 1.0f : slot == 0 ? firstCabShare : 1.0f - firstCabShare;
                 auto& branch = irWorkBuffers[slot];
                 for (int channel = 0; channel < numChannels; ++channel)
                     branch.copyFrom (channel, 0, irInputBuffer, channel, 0, numSamples);
@@ -2271,11 +2239,12 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         setIRSlotOrder (irOrder);
         for (int slot = 0; slot < numIRSlots; ++slot)
         {
-            irFilePaths[slot] = state.getProperty ("irFile" + juce::String (slot + 1)).toString();
-            const juce::File file (irFilePaths[slot]);
-            irLoaded[slot].store (file.existsAsFile());
-            if (irLoaded[slot].load())
-                loadImpulseResponse (slot, file);
+            const auto path = state.getProperty ("irFile" + juce::String (slot + 1)).toString();
+            if (path.isEmpty() || ! loadImpulseResponse (slot, juce::File (path)))
+            {
+                irLoaded[slot].store (false);
+                irFilePaths[slot] = path;
+            }
         }
         for (int slot = 0; slot < numAmpSlots; ++slot)
         {
@@ -2338,40 +2307,42 @@ juce::String NAMplifiedAudioProcessor::getReverbIRName() const
                                   : juce::File (reverbIRPath).getFileName();
 }
 
-void NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
+bool NAMplifiedAudioProcessor::loadImpulseResponse (int slot, const juce::File& file)
 {
     if (slot < 0 || slot >= numIRSlots || ! file.existsAsFile())
-        return;
+        return false;
     juce::AudioFormatManager formats;
     formats.registerBasicFormats();
     std::unique_ptr<juce::AudioFormatReader> reader (formats.createReaderFor (file));
     if (reader == nullptr || reader->lengthInSamples <= 0
         || reader->lengthInSamples > std::numeric_limits<int>::max())
-        return;
+        return false;
     const auto samples = static_cast<int> (reader->lengthInSamples);
     const auto channels = static_cast<int> (juce::jmin (reader->numChannels, 2u));
     if (channels == 0)
-        return;
+        return false;
     juce::AudioBuffer<float> impulse (channels, samples);
     if (! reader->read (&impulse, 0, samples, 0, true, true))
-        return;
+        return false;
     if (channels == 2)
     {
         impulse.applyGain (0, 0, samples, 0.5f);
         impulse.addFrom (0, 0, impulse, 1, 0, samples, 0.5f);
         impulse.setSize (1, samples, true, false, true);
     }
+    const juce::SpinLock::ScopedLockType lock (irConvolutionLocks[slot]);
     irConvolvers[slot].loadImpulseResponse (std::move (impulse), reader->sampleRate,
                                             juce::dsp::Convolution::Stereo::no,
                                             juce::dsp::Convolution::Trim::yes,
                                             juce::dsp::Convolution::Normalise::yes);
     irFilePaths[slot] = file.getFullPathName();
     irLoaded[slot].store (true);
+    return true;
 }
 
 juce::String NAMplifiedAudioProcessor::getImpulseResponseName (int slot) const
 {
-    if (slot < 0 || slot >= numIRSlots || irFilePaths[slot].isEmpty())
+    if (slot < 0 || slot >= numIRSlots || ! irLoaded[slot].load())
         return "No IR loaded";
     return juce::File (irFilePaths[slot]).getFileName();
 }
