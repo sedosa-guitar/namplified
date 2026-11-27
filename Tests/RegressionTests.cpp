@@ -392,6 +392,94 @@ void delayTests (NAMplifiedAudioProcessor& processor)
              "Global Mono must fold the Standard delay to both outputs");
 }
 
+void effectRoutingTests (NAMplifiedAudioProcessor& processor)
+{
+    using Position = NAMplifiedAudioProcessor::EffectPosition;
+    set (processor, "ampRouting", 1);
+    set (processor, "amp2On", 1);
+    set (processor, "ampParallelBlend", 0.75f);
+    set (processor, "delayOn", 1);
+    set (processor, "delayTime", 20);
+    set (processor, "delayFeedback", 0);
+    set (processor, "delayMix", 1);
+
+    const auto render = [&] (Position position)
+    {
+        set (processor, "delayPosition", static_cast<float> (position));
+        processor.prepareToPlay (sampleRate, blockSize);
+        juce::AudioBuffer<float> buffer (2, blockSize);
+        juce::MidiBuffer midi;
+        float dry = 0.0f;
+        float echo = 0.0f;
+        for (int block = 0; block < 16; ++block)
+        {
+            buffer.clear();
+            if (block == 0)
+                buffer.setSample (1, 0, 0.08f);
+            processor.processBlock (buffer, midi);
+            require (buffer.getMagnitude (0, 0, blockSize) < 0.0001f,
+                     "Routing a stereo delay must preserve channel isolation");
+            auto& peak = block < 7 ? dry : echo;
+            peak = juce::jmax (peak, buffer.getMagnitude (1, 0, blockSize));
+        }
+        return std::pair { dry, echo };
+    };
+
+    const auto [postDry, postEcho] = render (Position::afterMixer);
+    const auto [preDry, preEcho] = render (Position::beforeAmps);
+    const auto [aDry, aEcho] = render (Position::pathA);
+    const auto [bDry, bEcho] = render (Position::pathB);
+    require (postDry < 0.0001f && postEcho > 0.005f
+             && preDry < 0.0001f && near (preEcho, postEcho, 0.0001),
+             "A fully wet delay before the split or after the mixer must cover both paths");
+    require (aDry > 0.005f && near (bDry, 3.0f * aDry, 0.0001)
+             && near (aEcho, 0.75f * postEcho, 0.0001) && near (bEcho, 0.25f * postEcho, 0.0001),
+             "A branch delay must affect only its own weighted path");
+
+    set (processor, "parallelIRMode", 1);
+    const auto [sharedDry, sharedEcho] = render (Position::pathB);
+    require (near (sharedDry, bDry, 0.0001) && near (sharedEcho, bEcho, 0.0001),
+             "Shared cab routing must keep a path effect ahead of the merge");
+
+    set (processor, "amp1On", 0);
+    const auto [inactiveDry, inactiveEcho] = render (Position::pathA);
+    const auto [singleDry, singleEcho] = render (Position::pathB);
+    require (inactiveDry > 0.005f && inactiveEcho < 0.0001f
+             && singleDry < 0.0001f && near (singleEcho, postEcho, 0.0001),
+             "An inactive branch must not leak and the sole active branch must play at full level");
+
+    set (processor, "amp2On", 0);
+    const auto [noAmpDry, noAmpEcho] = render (Position::pathB);
+    require (near (noAmpDry, inactiveDry, 0.0001) && noAmpEcho < 0.0001f,
+             "With both amps off, a path effect should leave the direct signal untouched");
+    set (processor, "amp2On", 1);
+
+    set (processor, "ampRouting", 0);
+    const auto [seriesDry, seriesEcho] = render (Position::pathB);
+    require (seriesDry < 0.0001f && near (seriesEcho, postEcho, 0.0001),
+             "Series must render a saved branch assignment after the mixer");
+
+    set (processor, "reverbPosition", static_cast<float> (Position::beforeAmps));
+    set (processor, "chorusPosition", static_cast<float> (Position::pathA));
+    juce::MemoryBlock saved;
+    processor.getStateInformation (saved);
+    auto legacy = juce::ValueTree::fromXml (*juce::AudioProcessor::getXmlFromBinary (
+        saved.getData(), static_cast<int> (saved.getSize())));
+    for (const auto* id : { "delayPosition", "reverbPosition", "chorusPosition" })
+        legacy.removeChild (legacy.getChildWithProperty ("id", id), nullptr);
+    juce::MemoryBlock legacyState;
+    juce::AudioProcessor::copyXmlToBinary (*legacy.createXml(), legacyState);
+    processor.setStateInformation (legacyState.getData(), static_cast<int> (legacyState.getSize()));
+    for (const auto* id : { "delayPosition", "reverbPosition", "chorusPosition" })
+        require (processor.parameters.getRawParameterValue (id)->load() == 0.0f,
+                 "Loading an older preset must restore the original post-mixer routing");
+    processor.setStateInformation (saved.getData(), static_cast<int> (saved.getSize()));
+    require (processor.parameters.getRawParameterValue ("delayPosition")->load() == 3.0f
+             && processor.parameters.getRawParameterValue ("reverbPosition")->load() == 1.0f
+             && processor.parameters.getRawParameterValue ("chorusPosition")->load() == 2.0f,
+             "Each effect position must round-trip independently");
+}
+
 void chorusTests (NAMplifiedAudioProcessor& processor)
 {
     juce::AudioBuffer<float> buffer (2, blockSize);
@@ -614,6 +702,8 @@ int main (int argc, char** argv)
                 presetRoundtripTests (processor);
             else if (suite == "routing")
                 routingTests (*processor);
+            else if (suite == "effect_routing")
+                effectRoutingTests (*processor);
             else if (suite == "centered_cab")
                 centeredCabTests (*processor, testHome);
             else if (suite == "cab")

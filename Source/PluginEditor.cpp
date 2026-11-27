@@ -2049,6 +2049,9 @@ public:
                 choice->setName (control.id);
                 choice->addItemList (control.choices, 1);
                 addAndMakeVisible (*choice);
+                if (control.label == juce::StringRef ("Position"))
+                    choice->setTooltip ("Path A and Path B affect only the corresponding enabled amp in Parallel. "
+                                        "In Series, a path assignment plays after the mixer.");
                 if (choice->getName() == "delayMode")
                 {
                     auto* combo = choice.get();
@@ -2662,7 +2665,7 @@ private:
         if (stageName == "Chorus")
         {
             const auto& id = controlIds[index];
-            if (id == "chorusMode" || id == "chorusRate" || id == "chorusDepth" || id == "chorusMix")
+            if (id == "chorusPosition" || id == "chorusMode" || id == "chorusRate" || id == "chorusDepth" || id == "chorusMix")
                 return true;
 
             const auto* mode = audioProcessor.parameters.getRawParameterValue ("chorusMode");
@@ -2934,6 +2937,12 @@ public:
           selectHandler (std::move (select))
     {
         setName (stageName);
+        if (stageName == "Delay" || stageName == "Reverb" || stageName == "Chorus")
+        {
+            effectPosition = state.getRawParameterValue (stageName.toLowerCase() + "Position");
+            firstAmpEnabled = state.getRawParameterValue ("amp1On");
+            secondAmpEnabled = state.getRawParameterValue ("amp2On");
+        }
         startTimerHz (4);
     }
 
@@ -2959,6 +2968,15 @@ public:
         parallelRouting = parallel;
         parallelSharedIR = sharedIR;
         repaint();
+    }
+
+    NAMplifiedAudioProcessor::EffectPosition getEffectPosition() const
+    {
+        using Position = NAMplifiedAudioProcessor::EffectPosition;
+        if (effectPosition == nullptr)
+            return Position::afterMixer;
+        const auto position = static_cast<Position> (juce::roundToInt (effectPosition->load()));
+        return parallelRouting || position == Position::beforeAmps ? position : Position::afterMixer;
     }
 
     void paint (juce::Graphics& g) override
@@ -3009,6 +3027,22 @@ public:
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
             drawModuleIcon (g, iconBounds, getModuleKind());
         }
+        if (effectPosition != nullptr)
+        {
+            using Position = NAMplifiedAudioProcessor::EffectPosition;
+            const auto position = getEffectPosition();
+            const char* route = "AFTER MIX";
+            if (position == Position::beforeAmps)
+                route = "PRE AMP";
+            else if (parallelRouting && position == Position::pathA)
+                route = firstAmpEnabled->load() >= 0.5f ? "PATH A" : "A OFF";
+            else if (parallelRouting && position == Position::pathB)
+                route = secondAmpEnabled->load() >= 0.5f ? "PATH B" : "B OFF";
+            g.setColour (secondaryText);
+            g.setFont (namplifiedFontOptions (10.0f, juce::Font::bold));
+            g.drawText (route, getLocalBounds().withTop (getHeight() - 26).withTrimmedBottom (9),
+                        juce::Justification::centred);
+        }
         g.endTransparencyLayer();
 
         if (isSelected)
@@ -3043,8 +3077,7 @@ public:
             toFront (false);
             repaint();
         }
-        const auto direction = verticalBranch ? 1 : (getY() >= 140 ? -1 : 1);
-        const auto wanted = juce::roundToInt ((drag * direction) / (getWidth() * 0.55f));
+        const auto wanted = juce::roundToInt (drag / (getWidth() * 0.55f));
         while (lastDragStep < wanted) { reorderHandler (1); ++lastDragStep; }
         while (lastDragStep > wanted) { reorderHandler (-1); --lastDragStep; }
     }
@@ -3330,6 +3363,9 @@ private:
 
     static constexpr double iconAnimationDuration = 210.0;
     double iconAnimationStart = 0.0;
+    const std::atomic<float>* effectPosition = nullptr;
+    const std::atomic<float>* firstAmpEnabled = nullptr;
+    const std::atomic<float>* secondAmpEnabled = nullptr;
     juce::AudioProcessorValueTreeState& parameterState;
     juce::String stageName;
     juce::String enableParameterId;
@@ -3386,6 +3422,10 @@ public:
             flowStrength = 0.0f;
             return;
         }
+
+        if (! std::equal (tiles.begin(), tiles.end(), tilePositions.begin(), tilePositions.end(),
+                         [] (const auto* tile, auto position) { return tile->getEffectPosition() == position; }))
+            layoutTiles (false);
 
         const auto signal = juce::jlimit (0.0f, 1.0f,
             (juce::Decibels::gainToDecibels (inputPeak) + 60.0f) / 35.0f);
@@ -3457,32 +3497,63 @@ private:
             }
         };
 
-        int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
+        using Position = NAMplifiedAudioProcessor::EffectPosition;
+        tilePositions.clear();
         for (auto* tile : tiles)
+            tilePositions.push_back (tile->getEffectPosition());
+        const auto count = [this] (Position position)
         {
-            const auto name = tile->getName();
+            return static_cast<int> (std::count (tilePositions.begin(), tilePositions.end(), position));
+        };
+        const auto ampColumn = 5 + count (Position::beforeAmps);
+        const auto longestBranch = juce::jmax (count (Position::pathA), count (Position::pathB));
+        const auto irColumn = ampColumn + (parallelRouting
+            ? 1 + (parallelSharedIR ? longestBranch : 0) : 2);
+        const auto postColumn = ampColumn + (parallelRouting ? 2 + longestBranch : 3);
+
+        int preIndex = 0, namIndex = 0, irIndex = 0, postIndex = 0;
+        int branchIndices[2] {};
+        // The parallel rows can share columns when both contain effects.
+        const auto firstAmp = std::find_if (tiles.begin(), tiles.end(), [] (const auto* tile)
+        {
+            return tile->getName().startsWith ("NAM Profile");
+        });
+        const auto topSlot = firstAmp == tiles.end() ? 1 : getNumberedSlot ((*firstAmp)->getName());
+        const auto branchYFor = [topSlot, branchPitch] (int slot)
+        {
+            return branchY + (slot == topSlot ? 0 : branchPitch);
+        };
+        for (size_t i = 0; i < tiles.size(); ++i)
+        {
+            auto* tile = tiles[i];
+            const auto& name = tile->getName();
+            const auto position = tilePositions[i];
             if (name == "Input")
                 placeTile (tile, columnX (0), branchY);
-            else if (name == "Noise Gate" || name == "1176-Style FET Compressor"
-                     || name == "Boost Pedal" || name == "PreEQ")
+            else if (isPreTile (name) || position == Position::beforeAmps)
                 placeTile (tile, columnX (++preIndex), branchY);
             else if (name.startsWith ("NAM Profile"))
             {
-                placeTile (tile, columnX (parallelRouting ? 5 : 5 + namIndex % 2),
+                placeTile (tile, columnX (parallelRouting ? ampColumn : ampColumn + namIndex),
                            branchY + (parallelRouting ? namIndex : 0) * branchPitch);
                 ++namIndex;
             }
             else if (name.startsWith ("Cab IR"))
             {
-                const auto y = parallelRouting && parallelSharedIR
-                    ? branchY + (branchPitch / 2) : branchY + (irIndex % 2) * branchPitch;
-                placeTile (tile, columnX (parallelRouting ? 6 : 7), y);
+                const auto y = parallelRouting
+                    ? (parallelSharedIR ? branchY + branchPitch / 2 : branchYFor (getNumberedSlot (name)))
+                    : branchY + irIndex * branchPitch;
+                placeTile (tile, columnX (irColumn), y);
                 ++irIndex;
             }
-            else if (name == "Output")
-                placeTile (tile, columnX (parallelRouting ? 12 : 13), postRowY);
+            else if (position == Position::pathA || position == Position::pathB)
+            {
+                const auto slot = position == Position::pathA ? 0 : 1;
+                const auto column = ampColumn + (parallelSharedIR ? 1 : 2) + branchIndices[slot]++;
+                placeTile (tile, columnX (column), branchYFor (slot + 1));
+            }
             else
-                placeTile (tile, columnX ((parallelRouting ? 7 : 8) + postIndex++), postRowY);
+                placeTile (tile, columnX (postColumn + postIndex++), postRowY);
         }
         repaint();
     }
@@ -3499,9 +3570,19 @@ private:
     float flowStrength = 0.0f;
     float flowX = 0.0f;
 
-    static bool isPostEffect (const juce::String& name)
+    static bool isPreTile (const juce::String& name)
     {
-        return name == "Delay" || name == "Reverb" || name == "Chorus" || name == "Post EQ" || name == "Looper";
+        return name == "Noise Gate" || name == "1176-Style FET Compressor" || name == "Boost Pedal" || name == "PreEQ";
+    }
+
+    std::vector<StageTile*> getEffectTiles (NAMplifiedAudioProcessor::EffectPosition position) const
+    {
+        std::vector<StageTile*> found;
+        for (size_t i = 0; i < tilePositions.size(); ++i)
+            if (tilePositions[i] == position && (tiles[i]->getName() == "Delay" || tiles[i]->getName() == "Reverb"
+                || tiles[i]->getName() == "Chorus" || tiles[i]->getName() == "Post EQ" || tiles[i]->getName() == "Looper"))
+                found.push_back (tiles[i]);
+        return found;
     }
 
     static int getNumberedSlot (const juce::String& name)
@@ -3570,13 +3651,14 @@ private:
         auto* output = findTile ("Output");
         const auto nams = namedTiles ("NAM Profile");
         const auto irs = namedTiles ("Cab IR");
-        std::vector<StageTile*> pre, post;
+        using Position = NAMplifiedAudioProcessor::EffectPosition;
+        const auto post = getEffectTiles (Position::afterMixer);
+        std::vector<StageTile*> pre;
         for (auto* tile : tiles)
-        {
-            const auto name = tile->getName();
-            if (name == "Noise Gate" || name == "1176-Style FET Compressor" || name == "Boost Pedal" || name == "PreEQ") pre.push_back (tile);
-            else if (isPostEffect (name)) post.push_back (tile);
-        }
+            if (isPreTile (tile->getName()))
+                pre.push_back (tile);
+        const auto beforeAmps = getEffectTiles (Position::beforeAmps);
+        pre.insert (pre.end(), beforeAmps.begin(), beforeAmps.end());
         if (input == nullptr || output == nullptr || nams.empty() || irs.empty() || post.empty()) return;
 
         std::vector<StageTile*> ampChain { input };
@@ -3619,15 +3701,13 @@ private:
     {
         auto* input = findTile ("Input");
         if (input == nullptr) return;
-        std::vector<StageTile*> pre;
+        using Position = NAMplifiedAudioProcessor::EffectPosition;
+        std::vector<StageTile*> pre { input };
         for (auto* tile : tiles)
-        {
-            if (tile == input || tile->getName() == "Noise Gate" || tile->getName() == "1176-Style FET Compressor"
-                || tile->getName() == "Boost Pedal" || tile->getName() == "PreEQ")
+            if (isPreTile (tile->getName()))
                 pre.push_back (tile);
-            else if (tile->getName().startsWith ("NAM Profile"))
-                break;
-        }
+        const auto beforeAmps = getEffectTiles (Position::beforeAmps);
+        pre.insert (pre.end(), beforeAmps.begin(), beforeAmps.end());
         for (size_t i = 0; i + 1 < pre.size(); ++i)
             drawArrow (g, rightCentre (pre[i]), leftCentre (pre[i + 1]));
 
@@ -3645,64 +3725,59 @@ private:
 
         const auto irs = namedTiles ("Cab IR");
 
-        const auto post = [&]
-        {
-            std::vector<StageTile*> found;
-            for (auto* tile : tiles)
-                if (isPostEffect (tile->getName())) found.push_back (tile);
-            return found;
-        }();
+        const auto post = getEffectTiles (Position::afterMixer);
         auto* output = findTile ("Output");
         if (irs.empty() || post.empty() || output == nullptr) return;
 
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
-        std::vector<float> irCentres;
-        for (auto* ir : irs)
-            irCentres.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
-        const auto irTop = *std::min_element (irCentres.begin(), irCentres.end());
-        const auto irBottom = *std::max_element (irCentres.begin(), irCentres.end());
-        const auto irMid = (irTop + irBottom) * 0.5f;
+        std::array<juce::Point<float>, 2> branchEnds {};
+        float rightmostBranch = 0.0f;
+        for (size_t i = 0; i < nams.size(); ++i)
+        {
+            auto* nam = nams[i];
+            const auto slot = getNumberedSlot (nam->getName());
+            auto from = rightCentre (nam);
+            if (! parallelSharedIR)
+            {
+                if (auto* ir = findTile ("Cab IR " + juce::String (slot)))
+                {
+                    drawArrow (g, from, leftCentre (ir));
+                    from = rightCentre (ir);
+                }
+            }
+            for (auto* effect : getEffectTiles (slot == 1 ? Position::pathA : Position::pathB))
+            {
+                drawArrow (g, from, leftCentre (effect));
+                from = rightCentre (effect);
+            }
+            branchEnds[i] = from;
+            rightmostBranch = juce::jmax (rightmostBranch, from.x);
+        }
+
+        const auto junctionX = rightmostBranch + 10.0f;
+        for (size_t i = 0; i < nams.size(); ++i)
+            drawBus (g, branchEnds[i], { junctionX, branchEnds[i].y });
+        drawBus (g, { junctionX, topY }, { junctionX, bottomY });
+        const auto postInput = leftCentre (post.front());
         if (parallelSharedIR)
         {
-            const auto joinX = static_cast<float> (irs.front()->getX() - 14);
-            const auto joinTop = juce::jmin (irMid, topY, bottomY);
-            const auto joinBottom = juce::jmax (irMid, topY, bottomY);
-            for (auto* nam : nams)
-            {
-                const auto from = rightCentre (nam);
-                drawArrow (g, from, { joinX, from.y });
-            }
-            drawBus (g, { joinX, joinTop }, { joinX, joinBottom });
-            drawArrow (g, { joinX, irMid }, leftCentre (irs.front()));
+            auto* shared = irs.front();
+            const auto irInput = leftCentre (shared);
+            drawArrow (g, { junctionX, irInput.y }, irInput);
+            const auto irOutput = rightCentre (shared);
+            const auto elbowX = irOutput.x + 10.0f;
+            drawBus (g, irOutput, { elbowX, irOutput.y });
+            drawBus (g, { elbowX, irOutput.y }, { elbowX, postInput.y });
+            drawArrow (g, { elbowX, postInput.y }, postInput);
         }
         else
-        {
-            for (auto* nam : nams)
-            {
-                const auto slot = getNumberedSlot (nam->getName());
-                auto* matchingIR = findTile ("Cab IR " + juce::String (slot));
-                if (matchingIR == nullptr) continue;
-                const auto from = rightCentre (nam);
-                const auto to = leftCentre (matchingIR);
-                const auto elbowX = (from.x + to.x) * 0.5f;
-                drawBus (g, from, { elbowX, from.y });
-                drawBus (g, { elbowX, from.y }, { elbowX, to.y });
-                drawArrow (g, { elbowX, to.y }, to);
-            }
-        }
+            drawArrow (g, { junctionX, postInput.y }, postInput);
 
-        drawBus (g, { irOutX, irTop }, { irOutX, irBottom });
-        for (auto* ir : irs)
-            drawArrow (g, rightCentre (ir), { irOutX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
-
-        const auto lowerY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
-        drawBus (g, { irOutX, irMid }, { irOutX, lowerY });
-        drawArrow (g, { irOutX, lowerY }, leftCentre (post.front()));
         for (size_t i = 0; i + 1 < post.size(); ++i)
             drawArrow (g, rightCentre (post[i]), leftCentre (post[i + 1]));
         drawArrow (g, rightCentre (post.back()), leftCentre (output));
     }
 
+    std::vector<NAMplifiedAudioProcessor::EffectPosition> tilePositions;
     juce::ComponentAnimator tileAnimator;
     std::vector<StageTile*> tiles;
     bool parallelRouting = false;
@@ -3776,10 +3851,12 @@ public:
                        { ("ir" + number + "ShapeHighFreq").toRawUTF8(), "High Frequency (Hz)" }});
         }
 
+        const auto effectPositions = NAMplifiedAudioProcessor::effectPositionChoices();
         addStage ("Delay", "delayOn",
                   {{ "delayTime", "Time (ms)" }, { "delayFeedback", "Feedback", true }, { "delayMix", "Mix", true }},
                   FileKind::none, 0, mover (false, 0),
-                  {{ "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
+                  {{ "delayPosition", "Position", false, effectPositions },
+                   { "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
                    { "delayMode", "Repeats", false, juce::StringArray { "Standard", "Ping Pong" } },
                    { "delayTone", "Tone (Hz)" },
                    { "delayHighPass", "High-Pass (Hz)" }, { "delayLowPass", "Low-Pass (Hz)" },
@@ -3787,7 +3864,8 @@ public:
                    { "delayDuckRelease", "Duck Release (ms)" }});
         addStage ("Reverb", "reverbOn", {{ "reverbSize", "Size", true }, { "reverbMix", "Mix", true }},
                   FileKind::reverbIR, 0, mover (false, 1),
-                  {{ "reverbMode", "Mode", false, juce::StringArray { "Room", "Plate", "Cloud", "IR" } },
+                  {{ "reverbPosition", "Position", false, effectPositions },
+                   { "reverbMode", "Mode", false, juce::StringArray { "Room", "Plate", "Cloud", "IR" } },
                    { "reverbSize", "Size / Decay", true }, { "reverbDamping", "Damping", true },
                    { "reverbPreDelay", "Pre-Delay (ms)" }, { "reverbWidth", "Width", true },
                    { "reverbHighPass", "High-Pass (Hz)" }, { "reverbLowPass", "Low-Pass (Hz)" },
@@ -3795,7 +3873,8 @@ public:
                    { "roomEarlyMix", "Early / Late Balance", true }, { "roomSpin", "Spin (Hz)" },
                    { "roomWander", "Wander", true }});
         addStage ("Chorus", "chorusOn",
-                  {{ "chorusMode", "Mode", false, juce::StringArray { "Classic", "Advanced (TakeCare)" } },
+                  {{ "chorusPosition", "Position", false, effectPositions },
+                   { "chorusMode", "Mode", false, juce::StringArray { "Classic", "Advanced (TakeCare)" } },
                    { "chorusRate", "Rate (Hz)" }, { "chorusDepth", "Depth", true }, { "chorusMix", "Mix", true },
                    { "chorusRandom", "Random", true }, { "chorusRegen", "Regen", true },
                    { "chorusDerez", "Derez", true }, { "chorusBuffer", "Buffer", true },
