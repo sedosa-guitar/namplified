@@ -32,6 +32,15 @@ The library is available under GPL-2.0-or-later. See the pinned upstream
 [`COPYING`](https://github.com/breakfastquay/rubberband/blob/v4.0.0/COPYING)
 for the license text.
 
+## Bundled Python runtime
+
+The Apple Silicon standalone includes the unmodified
+[Python Build Standalone 20261110 archive](https://github.com/astral-sh/python-build-standalone/releases/tag/20261110)
+for CPython 3.11.18. The archive retains the CPython license and component
+notices in `python/lib/python3.11/LICENSE.txt` and the included packages'
+metadata. The trainer and its dependencies are installed locally during
+trainer setup.
+
 ## NeuralAmpModelerCore
 
 NAMplified uses NeuralAmpModelerCore v0.5.4 by Steven Atkinson, including its

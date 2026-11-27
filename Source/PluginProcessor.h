@@ -19,6 +19,7 @@
 #include "DragonflyRoom.h"
 #include "TakeCareChorus.h"
 #include "TrackLooper.h"
+#include "NAMCaptureSession.h"
 #include "StereoChorus.h"
 
 #include <complex>
@@ -91,6 +92,7 @@ public:
     bool isParameterModified (const juce::String& parameterId) const;
     juce::StringArray getUserPresetNames() const;
     juce::File getUserPresetLibraryDirectory() const;
+    NAMCaptureSession& getCaptureSession() noexcept { return hardwareCapture; }
     bool startDIRecording (double sampleRate);
     bool isDIRecording() const noexcept { return recordingActive.load(); }
     int stopDIRecording (juce::AudioBuffer<float>& destination);
@@ -197,6 +199,7 @@ private:
     struct NAMModel;
     std::unique_ptr<NAMModel> namModels[numAmpSlots];
     std::unique_ptr<NAMModel> boostNAMModel;
+    NAMCaptureSession hardwareCapture;
     juce::SpinLock recordingLock;
     juce::AudioBuffer<float> recordingAudio;
     std::atomic<bool> recordingActive { false };
