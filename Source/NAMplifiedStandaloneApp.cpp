@@ -9,10 +9,6 @@
 #include <juce_audio_plugin_client/Standalone/juce_StandaloneFilterWindow.h>
 #include "PluginProcessor.h"
 
-#if JUCE_MAC
-void setNAMplifiedDockIcon();
-#endif
-
 namespace juce { class FontOptions; }
 juce::FontOptions namplifiedFontOptions (float height, int style);
 
@@ -182,10 +178,6 @@ public:
 
     void initialise (const juce::String&) override
     {
-       #if JUCE_MAC
-        setNAMplifiedDockIcon();
-       #endif
-
         if (! juce::Desktop::getInstance().getDisplays().displays.isEmpty())
         {
             mainWindow = std::make_unique<NAMplifiedStandaloneWindow> (
