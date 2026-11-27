@@ -2,7 +2,13 @@
 
 void setNAMplifiedDockIcon()
 {
-    NSURL* iconURL = [NSBundle.mainBundle URLForResource:@"NAMplified" withExtension:@"icns"];
+    NSBundle* bundle = NSBundle.mainBundle;
+    NSString* iconFile = [bundle objectForInfoDictionaryKey:@"CFBundleIconFile"];
+    if (![iconFile isKindOfClass:NSString.class] || iconFile.length == 0)
+        return;
+
+    NSURL* iconURL = [bundle URLForResource:iconFile.stringByDeletingPathExtension
+                             withExtension:iconFile.pathExtension];
     if (iconURL != nil)
     {
         NSImage* icon = [[NSImage alloc] initWithContentsOfURL:iconURL];
