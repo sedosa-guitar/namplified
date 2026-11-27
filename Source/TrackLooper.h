@@ -48,6 +48,7 @@ public:
     }
     TrackState getState (int track) const { return states[static_cast<size_t> (track)].load(); }
     bool isPlaying() const { return playing.load(); }
+    bool hasFinishedFixedTake() const { return finishedFixedTake.load(); }
     bool isFirstTakeFixed() const { return fixedFirstTake.load(); }
     bool isWaitingForHost() const { return waitingForHost.load(); }
     bool isSettingLength() const { return settingLength.load(); }
@@ -67,7 +68,10 @@ public:
             reset();
 
         if (toggleRequested.exchange (false) && length > 0)
+        {
+            finishedFixedTake.store (false);
             playing.store (! playing.load());
+        }
 
         for (size_t index = 0; index < tracks.size(); ++index)
         {
@@ -122,6 +126,7 @@ public:
                         samplesUntilRecord = toBoundary + ((missing + length - 1) / length) * length;
                     }
                     armedTrack = static_cast<int> (index);
+                    finishedFixedTake.store (false);
                     track.state = TrackState::queued;
                     playing.store (true);
                 }
@@ -150,6 +155,7 @@ public:
         {
             length = position = 0;
             firstRecording = armedTrack = -1;
+            finishedFixedTake.store (false);
             playing.store (false);
         }
 
@@ -228,7 +234,11 @@ public:
                 if (armedTrack >= 0)
                     --samplesUntilRecord;
                 if ((firstRecording < 0 || armedTrack < 0) && ++position == length)
+                {
                     finishRecording();
+                    if (! playing.load())
+                        break;
+                }
             }
         }
 
@@ -246,6 +256,11 @@ public:
 private:
     void finishRecording()
     {
+        if (firstRecording >= 0 && fixedLength)
+        {
+            playing.store (false);
+            finishedFixedTake.store (true);
+        }
         position = 0;
         firstRecording = -1;
         finishPending = false;
@@ -262,6 +277,7 @@ private:
         countInBeat.store (0);
         settingLength.store (false);
         fixedFirstTake.store (false);
+        finishedFixedTake.store (false);
         waitingForHost.store (false);
         fixedLength = alignFirstTake = false;
         finishPending = false;
@@ -290,6 +306,7 @@ private:
     std::array<std::atomic<TrackState>, trackCount> states {};
     std::atomic<bool> playing { false }, toggleRequested { false }, resetRequested { false };
     double rate = 44100.0;
+    std::atomic<bool> finishedFixedTake { false };
     std::atomic<bool> settingLength { false }, fixedFirstTake { false }, waitingForHost { false };
     std::atomic<bool> finishingAtBarEnd { false };
     bool finishPending = false, fixedLength = false, alignFirstTake = false;

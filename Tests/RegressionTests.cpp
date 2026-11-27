@@ -115,8 +115,16 @@ void looperLengthAndSyncTests()
         advance (bar * bars - 2, bars, false);
         require (looper.getState (0) == State::recording, "A fixed length must ignore the manual finish command");
         advance (1, bars, false);
-        require (looper.getState (0) == State::playing && near (looper.getLengthSeconds(), bars * 2.0, 0.001),
-                 "A fixed take must end exactly at the requested bar");
+        require (looper.getState (0) == State::playing && looper.hasFinishedFixedTake() && ! looper.isPlaying()
+                 && near (looper.getLengthSeconds(), bars * 2.0, 0.001),
+                 "A fixed take must finish and stop exactly at the requested bar");
+        advance (bar * bars + 43, bars, false);
+        require (near (buffer.getSample (0, 10), 0.1f, 0.0001) && looper.getElapsedSeconds() == 0.0f,
+                 "The finished take must not repeat before Play");
+        looper.togglePlayback();
+        advance (75, bars, false);
+        require (looper.isPlaying() && ! looper.hasFinishedFixedTake() && buffer.getSample (0, 10) > 0.15f,
+                 "Play must start the saved fixed take");
     }
 
     looper.prepare (rate);
@@ -139,8 +147,10 @@ void looperLengthAndSyncTests()
     advance (1, 1, false, &host);
     require (looper.getState (0) == State::recording, "Recording must start on the host's downbeat");
     advance (1199, 1, false, &host);
-    require (looper.getState (0) == State::playing && near (looper.getLengthSeconds(), 1.2, 0.001),
-             "Host BPM and denominator must determine the sample length");
+    require (looper.hasFinishedFixedTake() && ! looper.isPlaying()
+             && near (looper.getLengthSeconds(), 1.2, 0.001),
+             "The take must stop after one host bar at the host BPM and denominator");
+    looper.togglePlayback();
     advance (117, 1, false, &host);
     const auto position = looper.getElapsedSeconds();
     host.playing = false;

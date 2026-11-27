@@ -34,6 +34,6 @@ Die Nummern geben die Arbeitsreihenfolge an. Erst kommen Spielgefühl und Rig-Fu
 | Teilweise umgesetzt (Farben, Schriftzug, App-Icon, Blockauswahl und separate A/B-Pegel) | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
 | Umgesetzt und getestet auf `feat/di-export` | 6 | **Rec DI ergänzen** – den trockenen Take aus dem Amp-/Cab-A/B-Vergleich als WAV speichern und bei Bedarf in die DAW importieren | Kern |
 | Offen | 7 | **Aufgenommene DI durchs Rig abspielen** – denselben Take zum Einstellen und Vergleichen verwenden | Empfohlene Ergänzung |
-| Umgesetzt und getestet auf `feat/looper` | 8 | **Looper erweitern** – frei oder 1/2/4 Takte, BPM, DAW-Sync, optionaler Einzähler | Kern |
+| Umgesetzt und getestet auf `feat/looper` | 8 | **Looper erweitern** – frei oder 1/2/4 Takte, BPM, DAW-Sync, optionaler Einzähler. Feste Erstaufnahme endet auf Finished, Wiedergabe per Play | Kern |
 | Offen | 9 | **Creator-Abrechnung festlegen** – Erlösaufteilung, Gebühren, Erstattungen, Nutzungsrechte und Auszahlungsrhythmus vereinbaren | Vor dem ersten Verkauf |
 | Offen | 10 | **YouTube Artist Packs einführen** – vollständiger Import und Export, 19-/29-€-Angebot mit einem Creator testen | Kern für den Verkauf |

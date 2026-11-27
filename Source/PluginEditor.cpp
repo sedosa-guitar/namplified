@@ -1711,8 +1711,9 @@ private:
         const auto finishing = looper.isFinishingAtBarEnd();
         const auto fixedTake = looper.isFirstTakeFixed();
         const auto waitingForHost = looper.isWaitingForHost();
-        const auto elapsed = looper.getElapsedSeconds();
+        const auto finishedTake = looper.hasFinishedFixedTake();
         const auto duration = looper.getLengthSeconds();
+        const auto elapsed = finishedTake ? duration : looper.getElapsedSeconds();
         const auto displayedLength = duration > 0.0f ? duration : static_cast<float> (TrackLooper::maxSeconds);
         progress = juce::jlimit (0.0, 1.0, static_cast<double> (elapsed / displayedLength));
         timeLabel.setText (juce::String (elapsed, 1) + " s / " + juce::String (displayedLength, 1) + " s", juce::dontSendNotification);
@@ -1739,7 +1740,8 @@ private:
             row.status.setText (flashing ? "Beat " + juce::String (countBeat)
                                  : state == State::queued ? "Waiting"
                                  : state == State::recording ? "Recording"
-                                 : state == State::playing ? (looper.isPlaying() && ! waitingForHost ? "Playing" : "Paused")
+                                 : state == State::playing ? (finishedTake ? "Finished"
+                                     : looper.isPlaying() && ! waitingForHost ? "Playing" : "Paused")
                                  : state == State::muted ? "Muted" : "Empty", juce::dontSendNotification);
             const auto recorded = state == State::playing || state == State::muted;
             const auto canFinish = settingLength && ! fixedTake && state == State::recording && ! finishing;
@@ -1763,6 +1765,7 @@ private:
         transport.setEnabled (active && hasTracks && ! settingLength && countTrack < 0);
         transport.setButtonText (looper.isPlaying() ? "Pause" : "Play");
         status.setText (! active ? "Enable the Looper block to record or play."
+                       : finishedTake ? "Recording finished. Press Play to hear the loop."
                        : waitingForHost ? "Start DAW playback to continue."
                        : countBeat > 0 ? "Count-in before recording."
                        : countTrack >= 0 ? "Waiting for the next recording boundary."
