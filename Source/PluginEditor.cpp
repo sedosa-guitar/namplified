@@ -2996,7 +2996,7 @@ public:
         g.beginTransparencyLayer (isBlockEnabled() ? 1.0f : 0.32f);
         const auto r = getLocalBounds().toFloat();
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
-        g.setColour (isSelected ? tileSurface.interpolatedWith (selectionAccent, 0.25f) : tileSurface);
+        g.setColour (isSelected ? tileSurface.interpolatedWith (selectionAccent, 0.42f) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
         const auto kind = getModuleKind();
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
@@ -3059,10 +3059,14 @@ public:
 
         if (isSelected)
         {
+            const auto edge = r.reduced (3.5f);
+            const auto radius = cornerRadius - 3.5f;
+            g.setColour (selectionAccent.withAlpha (0.34f));
+            g.drawRoundedRectangle (edge, radius, 13.0f);
             g.setColour (selectionAccent);
-            g.drawRoundedRectangle (r.reduced (3.0f), cornerRadius - 3.0f, 6.0f);
-            g.setColour (selectionAccent.withAlpha (0.4f));
-            g.drawRoundedRectangle (r.reduced (8.0f), cornerRadius - 8.0f, 1.5f);
+            g.drawRoundedRectangle (edge, radius, 6.0f);
+            g.setColour (selectionAccent.interpolatedWith (juce::Colours::white, 0.66f));
+            g.drawRoundedRectangle (edge, radius, 2.0f);
         }
     }
 
@@ -6834,6 +6838,15 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     parallelIRBox.addListener (this);
     parallelIRBox.setVisible (false);
 
+    parallelOutputBox.addItem ("STEREO BLEND", 1);
+    parallelOutputBox.addItem ("AMP 1 L / AMP 2 R", 2);
+    parallelOutputBox.setName ("parallelOutput");
+    parallelOutputBox.setTooltip ("With two amps active, send Amp 1 left and Amp 2 right at the mixer. "
+                                  "Stereo effects after the mixer can still spread the signal.");
+    addChildComponent (parallelOutputBox);
+    parallelOutputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.parameters, "parallelOutput", parallelOutputBox);
+
     ampCrossoverButton.setTooltip ("Enable a 4th-order crossover in parallel mode: AMP 1 carries lows, AMP 2 carries highs. It is bypassed when only one amp is active.");
     ampCrossoverButton.setClickingTogglesState (true);
     ampCrossoverButton.setColour (juce::TextButton::buttonColourId, panel);
@@ -6999,6 +7012,11 @@ void NAMplifiedAudioProcessorEditor::resized()
         controlRow.removeFromRight (8);
         parallelIRBox.setBounds (controlRow.removeFromRight (190).reduced (0, 2));
     }
+    if (parallelOutputBox.isVisible())
+    {
+        controlRow.removeFromRight (8);
+        parallelOutputBox.setBounds (controlRow.removeFromRight (168).reduced (0, 2));
+    }
     if (ampCrossoverButton.isVisible())
     {
         controlRow.removeFromRight (8);
@@ -7043,6 +7061,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     seriesRoutingButton.setVisible (showChrome);
     parallelRoutingButton.setVisible (showChrome);
     parallelIRBox.setVisible (showChrome && parallelIRBox.getSelectedId() == 2);
+    parallelOutputBox.setVisible (showChrome && parallelIRBox.isVisible());
     if (showChrome)
         updateRoutingDisplay();
     resized();
@@ -7235,6 +7254,7 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     seriesRoutingButton.setToggleState (! parallel, juce::dontSendNotification);
     parallelRoutingButton.setToggleState (parallel, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
+    parallelOutputBox.setVisible (parallel && ! eqFullscreen);
     ampCrossoverButton.setVisible (parallel);
     ampCrossoverSlider.setVisible (parallel);
     ampCrossoverValueLabel.setVisible (parallel);
@@ -7242,7 +7262,7 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
                                     juce::dontSendNotification);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
-        ? "Blend Amp 1 (right) and Amp 2 (left). One active amp receives 100%."
+        ? "Balance Amp 1 and Amp 2. One active amp receives 100%."
         : "Two active cabinets split the signal 50/50. One active cabinet receives 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
     resized();
