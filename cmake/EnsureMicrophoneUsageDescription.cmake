@@ -9,7 +9,10 @@ if (NOT DEFINED RESOURCES_DIR)
 endif()
 
 file(MAKE_DIRECTORY "${RESOURCES_DIR}")
-file(COPY_FILE "${ICON_SOURCE}" "${RESOURCES_DIR}/NAMplified.icns" ONLY_IF_DIFFERENT)
+# Give the V2 artwork its own resource name so macOS can distinguish it from the older icon.
+set(icon_file "NAMplifiedV2Mac.icns")
+file(COPY_FILE "${ICON_SOURCE}" "${RESOURCES_DIR}/${icon_file}" ONLY_IF_DIFFERENT)
+file(REMOVE "${RESOURCES_DIR}/NAMplified.icns" "${RESOURCES_DIR}/NAMplifiedV2.icns")
 # JUCE also bundles its own AppIcon.icns from ICON_BIG. Keep both resources
 # identical so Finder, LaunchServices and the Dock cannot pick different art.
 file(COPY_FILE "${ICON_SOURCE}" "${RESOURCES_DIR}/AppIcon.icns" ONLY_IF_DIFFERENT)
@@ -35,7 +38,7 @@ if (NOT set_result EQUAL 0)
 endif()
 
 execute_process(
-    COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile NAMplified.icns" "${PLIST_PATH}"
+    COMMAND /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile ${icon_file}" "${PLIST_PATH}"
     RESULT_VARIABLE icon_set_result
     OUTPUT_QUIET
     ERROR_QUIET
@@ -43,7 +46,7 @@ execute_process(
 
 if (NOT icon_set_result EQUAL 0)
     execute_process(
-        COMMAND /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string NAMplified.icns" "${PLIST_PATH}"
+        COMMAND /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string ${icon_file}" "${PLIST_PATH}"
         RESULT_VARIABLE icon_add_result
         OUTPUT_QUIET
         ERROR_VARIABLE icon_add_error
