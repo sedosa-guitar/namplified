@@ -29,7 +29,7 @@ Die Nummern geben die Arbeitsreihenfolge an. Erst kommen Spielgefühl und Rig-Fu
 |---|---|---|---|
 | Offen | 1 | **Pitch Shifter überarbeiten** – virtuelles Downtuning, schnelle Riffs und Akkorde als Hörtests | Kern |
 | Offen | 2 | **Effekte verbessern und erweitern** – zuerst Stereo-Chorus, Delay mit Tap-Tempo und Room/Plate-Reverb | Kern |
-| Offen | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer | Empfohlene Ergänzung |
+| Umgesetzt und getestet auf `feat/effect-routing` | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer | Empfohlene Ergänzung |
 | Offen | 4 | **Expression-Pedal und Makros** – MIDI Learn, Min/Max, mehrere Parameter pro Pedal, Zuordnung im Rig speichern | Empfohlene Ergänzung |
 | Offen | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
 | Offen | 6 | **Rec DI ergänzen** – Ordner vorab wählen, trockene WAV parallel zum Spielen aufnehmen, optional Stereo-Rig als zweite WAV | Kern |

@@ -33,6 +33,12 @@
 class NAMplifiedAudioProcessor  : public juce::AudioProcessor, private juce::Timer
 {
 public:
+    enum class EffectPosition { afterMixer, beforeAmps, pathA, pathB };
+    static juce::StringArray effectPositionChoices()
+    {
+        return { "After Mixer", "Before Amps", "Path A (Amp 1)", "Path B (Amp 2)" };
+    }
+
     using IRParameters = juce::AudioProcessorValueTreeState;
     static constexpr int numIRSlots = 2;
     static constexpr int numAmpSlots = 2;
@@ -221,8 +227,10 @@ private:
     std::array<std::atomic<int>, numAmpSlots> ampSlotOrder { 0, 1 };
     std::array<std::atomic<int>, numIRSlots> irSlotOrder { 0, 1 };
     static constexpr std::array<int, numPostFxStages> defaultPostFxOrder { 2, 0, 1, 3 };
-    std::array<std::atomic<int>, numPostFxStages> postFxOrder {
-        defaultPostFxOrder[0], defaultPostFxOrder[1], defaultPostFxOrder[2], defaultPostFxOrder[3]
+    // Two bits per stage, stored together so the audio thread sees a complete permutation.
+    std::atomic<unsigned int> postFxOrder {
+        defaultPostFxOrder[0] | (defaultPostFxOrder[1] << 2)
+        | (defaultPostFxOrder[2] << 4) | (defaultPostFxOrder[3] << 6)
     };
     juce::MemoryBlock presetSnapshotState;
     std::array<int, numPreFxStages> presetPreFxOrder {};

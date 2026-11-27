@@ -589,6 +589,13 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     addKnob ("chorusDerez", "Chorus Derez", 0.0f, 1.0f, 0.5f);
     addKnob ("chorusBuffer", "Chorus Buffer", 0.0f, 1.0f, 0.5f);
     addKnob ("chorusOutput", "Chorus Output", 0.0f, 1.0f, 1.0f);
+    for (const auto* effect : { "Delay", "Reverb", "Chorus" })
+    {
+        const juce::String name (effect);
+        layout.add (std::make_unique<juce::AudioParameterChoice> (
+            juce::ParameterID { name.toLowerCase() + "Position", 1 }, name + " Position",
+            effectPositionChoices(), static_cast<int> (EffectPosition::afterMixer)));
+    }
     addToggle ("postOn", "Post EQ");
     addKnob ("postLow", "Post EQ Low", -12.0f, 12.0f, 0.0f);
     addFrequency ("postLowFreq", "Post EQ Low Frequency", 50.0f, 16000.0f, 50.0f);
@@ -851,23 +858,27 @@ void NAMplifiedAudioProcessor::setIRSlotOrder (const std::array<int, numIRSlots>
 
 std::array<int, NAMplifiedAudioProcessor::numPostFxStages> NAMplifiedAudioProcessor::getPostFxOrder() const
 {
+    static_assert (numPostFxStages == 4);
+    const auto packed = postFxOrder.load (std::memory_order_relaxed);
     std::array<int, numPostFxStages> order {};
     for (size_t i = 0; i < order.size(); ++i)
-        order[i] = postFxOrder[i].load();
+        order[i] = static_cast<int> ((packed >> (2 * i)) & 3u);
     return order;
 }
 
 void NAMplifiedAudioProcessor::setPostFxOrder (const std::array<int, numPostFxStages>& order)
 {
     std::array<bool, numPostFxStages> seen {};
-    for (const auto stage : order)
+    unsigned int packed = 0;
+    for (size_t i = 0; i < order.size(); ++i)
     {
+        const auto stage = order[i];
         if (stage < 0 || stage >= numPostFxStages || seen[static_cast<size_t> (stage)])
             return;
         seen[static_cast<size_t> (stage)] = true;
+        packed |= static_cast<unsigned int> (stage) << (2 * i);
     }
-    for (size_t i = 0; i < order.size(); ++i)
-        postFxOrder[i].store (order[i]);
+    postFxOrder.store (packed, std::memory_order_relaxed);
 }
 
 void NAMplifiedAudioProcessor::resetToDefaults()
@@ -1763,6 +1774,226 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     constexpr const char* irEnableIds[] { "ir1On", "ir2On" };
     const auto parallelNAMs = get ("ampRouting") >= 0.5f;
     const auto sharedParallelIR = get ("parallelIRMode") >= 0.5f;
+    const auto processEffect = [&] (juce::AudioBuffer<float>& target, int stage)
+    {
+        if (stage == 0 && enabled ("delayOn"))
+        {
+            const auto delaySamples = static_cast<float> (juce::jlimit (1.0, sampleRate * 1.2,
+                static_cast<double> (get ("delayTime", 360.0f)) * sampleRate / 1000.0));
+            const auto feedback = juce::jlimit (0.0f, 0.9f, get ("delayFeedback", 0.32f));
+            const auto mix = juce::jlimit (0.0f, 1.0f, get ("delayMix", 0.25f));
+            const auto pingPong = get ("delayMode", 1.0f) >= 1.5f;
+            const auto analog = get ("delayType", 0.0f) >= 0.5f;
+            const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
+            const auto highPass = get ("delayHighPass", 100.0f);
+            const auto lowPass = juce::jmax (get ("delayLowPass", 4300.0f), highPass * 1.1f);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                setCutFilterCoefficients (delayHighPassFilters[static_cast<size_t> (channel)], true,
+                                          highPass, sampleRate);
+                setCutFilterCoefficients (delayLowPassFilters[static_cast<size_t> (channel)], false,
+                                          lowPass, sampleRate);
+            }
+            if (analog)
+            {
+                for (auto& line : analogDelay)
+                {
+                    line.setFilterFreq (tone);
+                    line.setDelayTime (delaySamples / static_cast<float> (sampleRate));
+                }
+            }
+
+            const auto readRepeat = [&] (size_t channel)
+            {
+                const auto sample = analog ? analogDelay[channel].process (analogDelayInput[channel]) * 0.65f
+                                           : delayLines[channel].popSample (0, delaySamples);
+                return delayLowPassFilters[channel].process (delayHighPassFilters[channel].process (sample));
+            };
+            const auto writeRepeat = [&] (size_t channel, float sample)
+            {
+                if (analog)
+                    analogDelayInput[channel] = sample;
+                else
+                    delayLines[channel].pushSample (0, sample);
+            };
+            const auto duckAmount = juce::jlimit (0.0f, 1.0f, get ("delayDuck", 0.0f));
+            const auto duckThreshold = get ("delayDuckThreshold", -30.0f);
+            const auto duckAttackCoefficient = std::exp (-1.0f / static_cast<float> (sampleRate * 0.01));
+            const auto duckReleaseCoefficient = std::exp (-1.0f / static_cast<float> (
+                sampleRate * juce::jmax (0.02f, get ("delayDuckRelease", 250.0f) / 1000.0f)));
+            auto* left = target.getWritePointer (0);
+            auto* right = numChannels > 1 ? target.getWritePointer (1) : left;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto dryLeft = left[i];
+                const auto dryRight = numChannels > 1 ? right[i] : dryLeft;
+                const auto monoInput = numChannels > 1 ? 0.5f * (dryLeft + dryRight) : dryLeft;
+                const auto detector = juce::jmax (std::abs (dryLeft), std::abs (dryRight));
+                const auto detectorCoefficient = detector > delayDuckEnvelope
+                    ? duckAttackCoefficient : duckReleaseCoefficient;
+                delayDuckEnvelope = detectorCoefficient * delayDuckEnvelope
+                                  + (1.0f - detectorCoefficient) * detector;
+                const auto detectorDb = juce::Decibels::gainToDecibels (juce::jmax (delayDuckEnvelope, 1.0e-9f));
+                const auto duckDb = duckAmount * juce::jlimit (0.0f, 18.0f,
+                    (detectorDb - duckThreshold) * 0.75f);
+                const auto duckGain = juce::Decibels::decibelsToGain (-duckDb);
+
+                if (pingPong) // Mono input alternates between the left and right delay lines.
+                {
+                    const auto wetLeft = readRepeat (0);
+                    const auto wetRight = readRepeat (1);
+                    writeRepeat (0, monoInput + wetRight * feedback);
+                    writeRepeat (1, wetLeft * feedback);
+                    if (numChannels > 1)
+                    {
+                        left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
+                        right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
+                    }
+                    else
+                        left[i] = dryLeft * (1.0f - mix) + 0.5f * (wetLeft + wetRight) * duckGain * mix;
+                }
+                else // Stereo keeps independent repeats on each channel.
+                {
+                    const auto wetLeft = readRepeat (0);
+                    writeRepeat (0, dryLeft + wetLeft * feedback);
+                    left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
+                    if (numChannels > 1)
+                    {
+                        const auto wetRight = readRepeat (1);
+                        writeRepeat (1, dryRight + wetRight * feedback);
+                        right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
+                    }
+                }
+            }
+        }
+        else if (stage == 1 && enabled ("reverbOn"))
+        {
+            const auto mode = juce::jlimit (0, 3, juce::roundToInt (get ("reverbMode", 0.0f)));
+            const juce::SpinLock::ScopedTryLockType irLock (reverbConvolutionLock);
+            if (mode == 3 && (! irLock.isLocked() || ! reverbIRLoaded.load()))
+                return;
+            const auto size = juce::jlimit (0.0f, 1.0f, get ("reverbSize", 0.45f));
+            const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
+            const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
+            const auto highPass = get ("reverbHighPass", 120.0f);
+            const auto lowPassSetting = get ("reverbLowPass", 4300.0f);
+            const auto plateDampingCutoff = 20000.0f * std::pow (0.1f, damping);
+            const auto lowPass = juce::jmax (mode == 1 ? juce::jmin (lowPassSetting, plateDampingCutoff) : lowPassSetting,
+                                            highPass * 1.1f);
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                setCutFilterCoefficients (reverbHighPassFilters[static_cast<size_t> (channel)], true,
+                                          highPass, sampleRate);
+                setCutFilterCoefficients (reverbLowPassFilters[static_cast<size_t> (channel)], false,
+                                          lowPass, sampleRate);
+            }
+            const auto userPredelayMs = juce::jlimit (0.0f, 100.0f, get ("reverbPreDelay", 0.0f));
+            float modePredelayMs = userPredelayMs;
+            if (mode == 1)
+                modePredelayMs += 12.0f;
+            else if (mode == 2)
+                modePredelayMs += 35.0f;
+            const auto predelaySamples = static_cast<float> (juce::jlimit (1.0, sampleRate * 0.15,
+                static_cast<double> (modePredelayMs) * sampleRate / 1000.0));
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                const auto* dry = target.getReadPointer (channel);
+                auto* wet = reverbWorkBuffer.getWritePointer (channel);
+                auto& line = reverbPreDelayLines[static_cast<size_t> (channel)];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto delayedInput = line.popSample (0, predelaySamples);
+                    line.pushSample (0, dry[i]);
+                    wet[i] = delayedInput;
+                }
+            }
+            if (mode == 3)
+            {
+                auto wet = juce::dsp::AudioBlock<float> (reverbWorkBuffer)
+                    .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
+                    .getSubBlock (0, static_cast<size_t> (numSamples));
+                reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
+            }
+            else
+            {
+                if (numChannels == 1)
+                    reverbWorkBuffer.copyFrom (1, 0, reverbWorkBuffer, 0, 0, numSamples);
+                auto* left = reverbWorkBuffer.getWritePointer (0);
+                auto* right = reverbWorkBuffer.getWritePointer (1);
+                if (mode == 0)
+                    roomReverb.process (left, right, numSamples, size, damping, width,
+                                        get ("roomSize", 1.0f), get ("roomEarlyMix", 0.35f),
+                                        get ("roomSpin", 0.5f), get ("roomWander", 0.5f));
+                else if (mode == 1)
+                    plateReverb.process (left, right, numSamples, size);
+                else
+                    cloudReverb.process (left, right, numSamples, size, damping);
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto mid = (left[i] + right[i]) * 0.5f;
+                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * (mode == 0 ? 1.0f : width)) : 0.0f;
+                    left[i] = mid + side;
+                    right[i] = mid - side;
+                }
+            }
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                auto* wet = reverbWorkBuffer.getWritePointer (channel);
+                auto& highPassFilter = reverbHighPassFilters[static_cast<size_t> (channel)];
+                auto& lowPassFilter = reverbLowPassFilters[static_cast<size_t> (channel)];
+                for (int sample = 0; sample < numSamples; ++sample)
+                    wet[sample] = lowPassFilter.process (highPassFilter.process (wet[sample]));
+            }
+            const auto mix = juce::jlimit (0.0f, 1.0f, get ("reverbMix", 0.2f));
+            for (int channel = 0; channel < numChannels; ++channel)
+            {
+                auto* dry = target.getWritePointer (channel);
+                const auto* wet = reverbWorkBuffer.getReadPointer (channel);
+                for (int i = 0; i < numSamples; ++i)
+                    dry[i] = dry[i] * (1.0f - mix) + wet[i] * mix;
+            }
+        }
+        else if (stage == 2 && enabled ("chorusOn"))
+        {
+            const auto rate = get ("chorusRate", 0.8f);
+            const auto depth = get ("chorusDepth", 0.35f);
+            const auto mix = get ("chorusMix", 0.25f);
+            if (enabled ("chorusMode"))
+            {
+                chorus.process (target, numChannels, numSamples, rate, depth, mix,
+                                { get ("chorusRandom", 0.5f), get ("chorusRegen", 0.5f),
+                                  get ("chorusDerez", 0.5f), get ("chorusBuffer", 0.5f),
+                                  get ("chorusOutput", 1.0f) });
+            }
+            else
+            {
+                classicChorus.process (target, numChannels, numSamples, rate, depth, mix);
+            }
+        }
+        else if (stage == 3 && enabled ("postOn"))
+            processEqualizer (target, numChannels, numSamples, "post", false);
+    };
+    const auto effectOrder = getPostFxOrder();
+    constexpr const char* positionIds[] { "delayPosition", "reverbPosition", "chorusPosition" };
+    std::array<EffectPosition, numPostFxStages> positions {};
+    positions.fill (EffectPosition::afterMixer); // Post EQ stays on the combined output.
+    for (size_t stage = 0; stage < std::size (positionIds); ++stage)
+    {
+        const auto position = static_cast<EffectPosition> (
+            juce::jlimit (0, static_cast<int> (EffectPosition::pathB), juce::roundToInt (get (positionIds[stage]))));
+        // Keep the selected path in the preset when switching back to series.
+        if (parallelNAMs || position == EffectPosition::beforeAmps)
+            positions[stage] = position;
+    }
+    const auto processEffectsAt = [&] (juce::AudioBuffer<float>& target, EffectPosition position)
+    {
+        for (const auto stage : effectOrder)
+            if (positions[static_cast<size_t> (stage)] == position)
+                processEffect (target, stage);
+    };
+    if (numChannels > 0)
+        processEffectsAt (buffer, EffectPosition::beforeAmps);
+
     const auto processAmpSlot = [&] (juce::AudioBuffer<float>& target, int slot)
     {
         const auto number = juce::String (slot + 1);
@@ -1872,6 +2103,7 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 branch.applyGain (juce::Decibels::decibelsToGain (get (ampOutputIds[slot])));
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);
+                processEffectsAt (branch, slot == 0 ? EffectPosition::pathA : EffectPosition::pathB);
                 for (int channel = 0; channel < numChannels; ++channel)
                     ampMixBuffer.addFrom (channel, 0, branch, channel, 0, numSamples, weight);
             }
@@ -1914,207 +2146,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
-    const auto processPostFx = [&] (int stage)
-    {
-        if (stage == 0 && enabled ("delayOn"))
-        {
-            const auto delaySamples = static_cast<float> (juce::jlimit (1.0, sampleRate * 1.2,
-                static_cast<double> (get ("delayTime", 360.0f)) * sampleRate / 1000.0));
-            const auto feedback = juce::jlimit (0.0f, 0.9f, get ("delayFeedback", 0.32f));
-            const auto mix = juce::jlimit (0.0f, 1.0f, get ("delayMix", 0.25f));
-            const auto pingPong = get ("delayMode", 1.0f) >= 1.5f;
-            const auto analog = get ("delayType", 0.0f) >= 0.5f;
-            const auto tone = juce::jlimit (500.0f, 12000.0f, get ("delayTone", 4500.0f));
-            const auto highPass = get ("delayHighPass", 100.0f);
-            const auto lowPass = juce::jmax (get ("delayLowPass", 4300.0f), highPass * 1.1f);
-            for (int channel = 0; channel < 2; ++channel)
-            {
-                setCutFilterCoefficients (delayHighPassFilters[static_cast<size_t> (channel)], true,
-                                          highPass, sampleRate);
-                setCutFilterCoefficients (delayLowPassFilters[static_cast<size_t> (channel)], false,
-                                          lowPass, sampleRate);
-            }
-            if (analog)
-            {
-                for (auto& line : analogDelay)
-                {
-                    line.setFilterFreq (tone);
-                    line.setDelayTime (delaySamples / static_cast<float> (sampleRate));
-                }
-            }
-
-            const auto readRepeat = [&] (size_t channel)
-            {
-                const auto sample = analog ? analogDelay[channel].process (analogDelayInput[channel]) * 0.65f
-                                           : delayLines[channel].popSample (0, delaySamples);
-                return delayLowPassFilters[channel].process (delayHighPassFilters[channel].process (sample));
-            };
-            const auto writeRepeat = [&] (size_t channel, float sample)
-            {
-                if (analog)
-                    analogDelayInput[channel] = sample;
-                else
-                    delayLines[channel].pushSample (0, sample);
-            };
-            const auto duckAmount = juce::jlimit (0.0f, 1.0f, get ("delayDuck", 0.0f));
-            const auto duckThreshold = get ("delayDuckThreshold", -30.0f);
-            const auto duckAttackCoefficient = std::exp (-1.0f / static_cast<float> (sampleRate * 0.01));
-            const auto duckReleaseCoefficient = std::exp (-1.0f / static_cast<float> (
-                sampleRate * juce::jmax (0.02f, get ("delayDuckRelease", 250.0f) / 1000.0f)));
-            auto* left = buffer.getWritePointer (0);
-            auto* right = numChannels > 1 ? buffer.getWritePointer (1) : left;
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const auto dryLeft = left[i];
-                const auto dryRight = numChannels > 1 ? right[i] : dryLeft;
-                const auto monoInput = numChannels > 1 ? 0.5f * (dryLeft + dryRight) : dryLeft;
-                const auto detector = juce::jmax (std::abs (dryLeft), std::abs (dryRight));
-                const auto detectorCoefficient = detector > delayDuckEnvelope
-                    ? duckAttackCoefficient : duckReleaseCoefficient;
-                delayDuckEnvelope = detectorCoefficient * delayDuckEnvelope
-                                  + (1.0f - detectorCoefficient) * detector;
-                const auto detectorDb = juce::Decibels::gainToDecibels (juce::jmax (delayDuckEnvelope, 1.0e-9f));
-                const auto duckDb = duckAmount * juce::jlimit (0.0f, 18.0f,
-                    (detectorDb - duckThreshold) * 0.75f);
-                const auto duckGain = juce::Decibels::decibelsToGain (-duckDb);
-
-                if (pingPong) // Mono input alternates between the left and right delay lines.
-                {
-                    const auto wetLeft = readRepeat (0);
-                    const auto wetRight = readRepeat (1);
-                    writeRepeat (0, monoInput + wetRight * feedback);
-                    writeRepeat (1, wetLeft * feedback);
-                    if (numChannels > 1)
-                    {
-                        left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
-                        right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
-                    }
-                    else
-                        left[i] = dryLeft * (1.0f - mix) + 0.5f * (wetLeft + wetRight) * duckGain * mix;
-                }
-                else // Stereo keeps independent repeats on each channel.
-                {
-                    const auto wetLeft = readRepeat (0);
-                    writeRepeat (0, dryLeft + wetLeft * feedback);
-                    left[i] = dryLeft * (1.0f - mix) + wetLeft * duckGain * mix;
-                    if (numChannels > 1)
-                    {
-                        const auto wetRight = readRepeat (1);
-                        writeRepeat (1, dryRight + wetRight * feedback);
-                        right[i] = dryRight * (1.0f - mix) + wetRight * duckGain * mix;
-                    }
-                }
-            }
-        }
-        else if (stage == 1 && enabled ("reverbOn"))
-        {
-            const auto mode = juce::jlimit (0, 3, juce::roundToInt (get ("reverbMode", 0.0f)));
-            const juce::SpinLock::ScopedTryLockType irLock (reverbConvolutionLock);
-            if (mode == 3 && (! irLock.isLocked() || ! reverbIRLoaded.load()))
-                return;
-            const auto size = juce::jlimit (0.0f, 1.0f, get ("reverbSize", 0.45f));
-            const auto damping = juce::jlimit (0.0f, 1.0f, get ("reverbDamping", 0.45f));
-            const auto width = juce::jlimit (0.0f, 1.0f, get ("reverbWidth", 0.8f));
-            const auto highPass = get ("reverbHighPass", 120.0f);
-            const auto lowPassSetting = get ("reverbLowPass", 4300.0f);
-            const auto plateDampingCutoff = 20000.0f * std::pow (0.1f, damping);
-            const auto lowPass = juce::jmax (mode == 1 ? juce::jmin (lowPassSetting, plateDampingCutoff) : lowPassSetting,
-                                            highPass * 1.1f);
-            for (int channel = 0; channel < numChannels; ++channel)
-            {
-                setCutFilterCoefficients (reverbHighPassFilters[static_cast<size_t> (channel)], true,
-                                          highPass, sampleRate);
-                setCutFilterCoefficients (reverbLowPassFilters[static_cast<size_t> (channel)], false,
-                                          lowPass, sampleRate);
-            }
-            const auto userPredelayMs = juce::jlimit (0.0f, 100.0f, get ("reverbPreDelay", 0.0f));
-            float modePredelayMs = userPredelayMs;
-            if (mode == 1)
-                modePredelayMs += 12.0f;
-            else if (mode == 2)
-                modePredelayMs += 35.0f;
-            const auto predelaySamples = static_cast<float> (juce::jlimit (1.0, sampleRate * 0.15,
-                static_cast<double> (modePredelayMs) * sampleRate / 1000.0));
-            for (int channel = 0; channel < numChannels; ++channel)
-            {
-                const auto* dry = buffer.getReadPointer (channel);
-                auto* wet = reverbWorkBuffer.getWritePointer (channel);
-                auto& line = reverbPreDelayLines[static_cast<size_t> (channel)];
-                for (int i = 0; i < numSamples; ++i)
-                {
-                    const auto delayedInput = line.popSample (0, predelaySamples);
-                    line.pushSample (0, dry[i]);
-                    wet[i] = delayedInput;
-                }
-            }
-            if (mode == 3)
-            {
-                auto wet = juce::dsp::AudioBlock<float> (reverbWorkBuffer)
-                    .getSubsetChannelBlock (0, static_cast<size_t> (numChannels))
-                    .getSubBlock (0, static_cast<size_t> (numSamples));
-                reverbConvolver.process (juce::dsp::ProcessContextReplacing<float> (wet));
-            }
-            else
-            {
-                if (numChannels == 1)
-                    reverbWorkBuffer.copyFrom (1, 0, reverbWorkBuffer, 0, 0, numSamples);
-                auto* left = reverbWorkBuffer.getWritePointer (0);
-                auto* right = reverbWorkBuffer.getWritePointer (1);
-                if (mode == 0)
-                    roomReverb.process (left, right, numSamples, size, damping, width,
-                                        get ("roomSize", 1.0f), get ("roomEarlyMix", 0.35f),
-                                        get ("roomSpin", 0.5f), get ("roomWander", 0.5f));
-                else if (mode == 1)
-                    plateReverb.process (left, right, numSamples, size);
-                else
-                    cloudReverb.process (left, right, numSamples, size, damping);
-                for (int i = 0; i < numSamples; ++i)
-                {
-                    const auto mid = (left[i] + right[i]) * 0.5f;
-                    const auto side = numChannels == 2 ? (left[i] - right[i]) * (0.5f * (mode == 0 ? 1.0f : width)) : 0.0f;
-                    left[i] = mid + side;
-                    right[i] = mid - side;
-                }
-            }
-            for (int channel = 0; channel < numChannels; ++channel)
-            {
-                auto* wet = reverbWorkBuffer.getWritePointer (channel);
-                auto& highPassFilter = reverbHighPassFilters[static_cast<size_t> (channel)];
-                auto& lowPassFilter = reverbLowPassFilters[static_cast<size_t> (channel)];
-                for (int sample = 0; sample < numSamples; ++sample)
-                    wet[sample] = lowPassFilter.process (highPassFilter.process (wet[sample]));
-            }
-            const auto mix = juce::jlimit (0.0f, 1.0f, get ("reverbMix", 0.2f));
-            for (int channel = 0; channel < numChannels; ++channel)
-            {
-                auto* dry = buffer.getWritePointer (channel);
-                const auto* wet = reverbWorkBuffer.getReadPointer (channel);
-                for (int i = 0; i < numSamples; ++i)
-                    dry[i] = dry[i] * (1.0f - mix) + wet[i] * mix;
-            }
-        }
-        else if (stage == 2 && enabled ("chorusOn"))
-        {
-            const auto rate = get ("chorusRate", 0.8f);
-            const auto depth = get ("chorusDepth", 0.35f);
-            const auto mix = get ("chorusMix", 0.25f);
-            if (enabled ("chorusMode"))
-            {
-                chorus.process (buffer, numChannels, numSamples, rate, depth, mix,
-                                { get ("chorusRandom", 0.5f), get ("chorusRegen", 0.5f),
-                                  get ("chorusDerez", 0.5f), get ("chorusBuffer", 0.5f),
-                                  get ("chorusOutput", 1.0f) });
-            }
-            else
-            {
-                classicChorus.process (buffer, numChannels, numSamples, rate, depth, mix);
-            }
-        }
-        else if (stage == 3 && enabled ("postOn"))
-            processEqualizer (buffer, numChannels, numSamples, "post", false);
-    };
-    for (const auto stage : getPostFxOrder())
-        processPostFx (stage);
+    if (numChannels > 0)
+        processEffectsAt (buffer, EffectPosition::afterMixer);
     constexpr int looperBeats[] { 2, 3, 4, 5, 6, 7 };
     const auto meterIndex = juce::jlimit (0, 5, juce::roundToInt (get ("looperMeter", 2.0f)));
     looper.process (buffer, numChannels, numSamples, enabled ("looperOn"), enabled ("looperClick"),
@@ -2180,7 +2213,8 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
         for (const auto* id : { "outputMode", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
-                                "chorusDerez", "chorusBuffer", "chorusOutput" })
+                                "chorusDerez", "chorusBuffer", "chorusOutput",
+                                "delayPosition", "reverbPosition", "chorusPosition" })
         {
             if (state.getChildWithProperty ("id", id).isValid())
                 continue;
