@@ -6514,6 +6514,11 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     setSize (1600, 900);
     setResizable (true, true);
     setResizeLimits (1200, 760, 1920, 1200);
+    brandIcon.setImage (juce::ImageCache::getFromMemory (
+        BinaryData::NAMplifiedAppIcon_png, BinaryData::NAMplifiedAppIcon_pngSize));
+    brandIcon.setImagePlacement (juce::RectanglePlacement::centred);
+    brandIcon.setTooltip ("NAMplified 2");
+    addAndMakeVisible (brandIcon);
     title.setText ("NAMPLIFIED 2", juce::dontSendNotification);
     title.setJustificationType (juce::Justification::centredLeft);
     title.setFont (namplifiedDisplayFontOptions (39.0f));
@@ -6895,7 +6900,10 @@ void NAMplifiedAudioProcessorEditor::resized()
     }
     auto area = getLocalBounds().reduced (20);
     auto top = area.removeFromTop (60);
-    title.setBounds (top.removeFromLeft (246));
+    auto brandArea = top.removeFromLeft (296);
+    brandIcon.setBounds (brandArea.removeFromLeft (44).withSizeKeepingCentre (44, 44));
+    brandArea.removeFromLeft (10);
+    title.setBounds (brandArea);
     top = top.withSizeKeepingCentre (top.getWidth(), 42);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
@@ -6972,6 +6980,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
 {
     eqFullscreen = shouldBeFullscreen;
     const auto showChrome = ! shouldBeFullscreen;
+    brandIcon.setVisible (showChrome);
     title.setVisible (showChrome);
     presetLabel.setVisible (showChrome);
     presetBox.setVisible (showChrome);
