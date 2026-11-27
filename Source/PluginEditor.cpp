@@ -168,6 +168,8 @@ public:
 
     juce::Font getComboBoxFont (juce::ComboBox& box) override
     {
+        if (box.getProperties().contains ("namPresetBox"))
+            return juce::Font (namplifiedFontOptions (21.0f, juce::Font::bold));
         return juce::Font (namplifiedFontOptions (juce::jlimit (14.0f, 18.0f, box.getHeight() * 0.48f)));
     }
 
@@ -1804,6 +1806,100 @@ private:
     std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> meterAttachment, lengthAttachment;
 };
 
+class EffectPreview final : public juce::Component, private juce::Timer
+{
+public:
+    EffectPreview (NAMplifiedAudioProcessor& processor, bool isDelay)
+        : delay (isDelay),
+          time (processor.parameters.getRawParameterValue (delay ? "delayTime" : "reverbPreDelay")),
+          shape (processor.parameters.getRawParameterValue (delay ? "delayFeedback" : "reverbSize")),
+          mode (processor.parameters.getRawParameterValue (delay ? "delayMode" : "reverbMode"))
+    {
+        setTitle (delay ? "Delay repeat preview" : "Reverb envelope preview");
+        setInterceptsMouseClicks (false, false);
+        startTimerHz (15);
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        auto area = getLocalBounds().toFloat();
+        g.setColour (background);
+        g.fillRoundedRectangle (area, 8.0f);
+        area = area.reduced (14.0f, 6.0f);
+        auto header = area.removeFromTop (18.0f);
+        const auto selectedMode = juce::roundToInt (mode->load (std::memory_order_relaxed));
+        const auto milliseconds = time->load (std::memory_order_relaxed);
+        const auto amount = shape->load (std::memory_order_relaxed);
+        const auto preDelay = milliseconds + (selectedMode == 1 ? 12.0f : selectedMode == 2 ? 35.0f : 0.0f);
+        const auto summary = delay ? juce::String (juce::roundToInt (milliseconds)) + " ms between repeats"
+            : juce::String (juce::roundToInt (preDelay)) + " ms pre-delay";
+        g.setFont (namplifiedFontOptions (13.0f));
+        g.setColour (secondaryText);
+        g.drawText (delay ? "REPEAT PATTERN" : "REVERB ENVELOPE", header, juce::Justification::centredLeft);
+        g.drawText (summary, header, juce::Justification::centredRight);
+        area.removeFromTop (4.0f);
+
+        if (delay)
+        {
+            const auto left = area.getY() + 10.0f;
+            const auto right = area.getBottom() - 6.0f;
+            g.drawText ("L", area.getX(), left - 7.0f, 12.0f, 14.0f, juce::Justification::centredLeft);
+            g.drawText ("R", area.getX(), right - 7.0f, 12.0f, 14.0f, juce::Justification::centredLeft);
+            area.removeFromLeft (16.0f);
+            g.setColour (secondaryText.withAlpha (0.24f));
+            g.drawHorizontalLine (juce::roundToInt (left), area.getX(), area.getRight());
+            g.drawHorizontalLine (juce::roundToInt (right), area.getX(), area.getRight());
+            const auto pingPong = selectedMode >= 2;
+            const auto spacing = juce::jmax (7.0f, milliseconds * area.getWidth() / 2400.0f);
+            for (int repeat = 0; repeat < 8; ++repeat)
+            {
+                const auto x = area.getX() + (repeat + 1) * spacing;
+                const auto strength = std::pow (amount, static_cast<float> (repeat));
+                if (x >= area.getRight() || strength < 0.025f)
+                    break;
+                const auto mark = [&] (float y)
+                {
+                    g.fillEllipse (x - 3.0f, y - 3.0f, 6.0f, 6.0f);
+                };
+                g.setColour (knobAccent.withAlpha (0.38f + 0.62f * strength));
+                if (! pingPong || repeat % 2 == 0) mark (left);
+                if (! pingPong || repeat % 2 == 1) mark (right);
+            }
+            return;
+        }
+
+        if (selectedMode == 3)
+        {
+            g.drawText ("The loaded impulse response determines the tail.", area, juce::Justification::centredLeft);
+            return;
+        }
+        auto plot = area.reduced (2.0f, 1.0f);
+        const auto baseline = plot.getBottom() - 2.0f;
+        const auto start = plot.getX() + plot.getWidth() * preDelay / 480.0f;
+        const auto extent = (plot.getRight() - start) * (0.32f + 0.67f * amount);
+        const auto attack = selectedMode == 2 ? 0.23f : 0.09f;
+        const auto peak = start + extent * attack;
+        g.setColour (secondaryText.withAlpha (0.24f));
+        g.drawHorizontalLine (juce::roundToInt (baseline), plot.getX(), plot.getRight());
+        juce::Path envelope;
+        envelope.startNewSubPath (start, baseline);
+        envelope.quadraticTo (start + extent * attack * 0.35f, plot.getCentreY(), peak, plot.getY() + 2.0f);
+        envelope.cubicTo (peak + extent * 0.07f, plot.getY() + 2.0f, peak + extent * 0.12f, baseline,
+                          start + extent, baseline);
+        envelope.closeSubPath();
+        g.setColour (knobAccent.withAlpha (0.65f));
+        g.fillPath (envelope);
+    }
+
+private:
+    void timerCallback() override { if (isShowing()) repaint(); }
+
+    const bool delay;
+    const std::atomic<float>* const time;
+    const std::atomic<float>* const shape;
+    const std::atomic<float>* const mode;
+};
+
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
 {
 public:
@@ -1824,6 +1920,21 @@ public:
         {
             looperControls = std::make_unique<LooperControls> (audioProcessor);
             addAndMakeVisible (*looperControls);
+        }
+        if (stageName == "Delay" || stageName == "Reverb")
+        {
+            effectPreview = std::make_unique<EffectPreview> (audioProcessor, stageName == "Delay");
+            addAndMakeVisible (*effectPreview);
+            effectAdvanced.setClickingTogglesState (true);
+            effectAdvanced.setTooltip ("Show additional effect controls.");
+            effectAdvanced.onClick = [this]
+            {
+                updateConditionalControlVisibility();
+                resized();
+                if (contentSizeChangedHandler)
+                    contentSizeChangedHandler();
+            };
+            addAndMakeVisible (effectAdvanced);
         }
         if (stageName == "Chorus")
         {
@@ -2235,7 +2346,7 @@ public:
         const auto controlHeight = juce::jmax (selectorCount * 72, rows * rowPitch + (stageName == "Chorus" ? 22 : 0));
         const auto fileControlsHeight = loadKind == FileKind::nam ? 38
             : (showsFileLoader() ? 46 : 0);
-        return 80 + fileControlsHeight + juce::jmax (rowPitch, controlHeight);
+        return 80 + fileControlsHeight + (effectPreview != nullptr ? 78 : 0) + juce::jmax (rowPitch, controlHeight);
     }
 
     void mouseDown (const juce::MouseEvent& event) override
@@ -2266,7 +2377,8 @@ public:
             if (controlIds[i].endsWith ("Source"))
                 sourceIndex = static_cast<int> (i);
         const auto rightWidth = (hasEnableControl ? 36 : 0) + (hasMoveControls ? 68 : 0)
-                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 34 : 0);
+                              + (toneCurveButton != nullptr ? 94 : 0) + (expandButton != nullptr ? 34 : 0)
+                              + (effectPreview != nullptr ? 108 : 0);
         auto right = header.removeFromRight (rightWidth);
         if (hasMoveControls)
         {
@@ -2287,6 +2399,9 @@ public:
             toneCurveButton->setBounds (right.removeFromLeft (88).withY (header.getY() + 4).withHeight (28));
         if (expandButton != nullptr)
             expandButton->setBounds (right.removeFromLeft (28).withY (header.getY() + 4).withHeight (28));
+
+        if (effectPreview != nullptr)
+            effectAdvanced.setBounds (right.removeFromLeft (102).reduced (0, 4));
 
         if (looperControls != nullptr)
         {
@@ -2356,6 +2471,12 @@ public:
         {
             graphicEq->setBounds (area.reduced (8, 4));
             return;
+        }
+
+        if (effectPreview != nullptr)
+        {
+            effectPreview->setBounds (area.removeFromTop (68).reduced (16, 0));
+            area.removeFromTop (10);
         }
 
         if (controlWidgets.empty())
@@ -2705,6 +2826,15 @@ private:
                 || id == prefix + "EqPosition" || id == prefix + "Polarity" || id == prefix + "EqBass"
                 || id == prefix + "EqMid" || id == prefix + "EqTreble";
         }
+        if (effectPreview != nullptr && ! effectAdvanced.getToggleState())
+        {
+            const auto& id = controlIds[index];
+            if (stageName == "Delay")
+                return id == "delayPosition" || id == "delayType" || id == "delayMode"
+                    || id == "delayTime" || id == "delayFeedback" || id == "delayMix";
+            return id == "reverbPosition" || id == "reverbMode" || id == "reverbPreDelay" || id == "reverbMix"
+                || (id == "reverbSize" && ! showsFileLoader());
+        }
         if (loadKind == FileKind::reverbIR && showsFileLoader())
             return controlIds[index] != "reverbSize" && controlIds[index] != "reverbDamping"
                 && controlIds[index] != "reverbWidth";
@@ -2921,6 +3051,8 @@ private:
     NAMplifiedLookAndFeel lookAndFeel;
     juce::String stageName;
     std::unique_ptr<LooperControls> looperControls;
+    std::unique_ptr<EffectPreview> effectPreview;
+    juce::TextButton effectAdvanced { "Advanced" };
     juce::String enableParameterId;
     FileKind loadKind;
     int slot;
@@ -2973,22 +3105,23 @@ private:
     juce::String displayedNAMPath;
 };
 
-class StageTile final : public juce::Component, private juce::Timer
+class StageTile final : public juce::Component, public juce::SettableTooltipClient, private juce::Timer
 {
 public:
-    StageTile (juce::AudioProcessorValueTreeState& state, juce::String name, juce::String enableId,
+    StageTile (NAMplifiedAudioProcessor& processor, juce::String name, juce::String enableId,
                std::function<void (int)> reorder, std::function<void()> select)
-        : parameterState (state), stageName (std::move (name)), enableParameterId (std::move (enableId)),
+        : audioProcessor (processor), parameterState (processor.parameters), stageName (std::move (name)), enableParameterId (std::move (enableId)),
           canReorder (static_cast<bool> (reorder)), reorderHandler (std::move (reorder)),
           selectHandler (std::move (select))
     {
         setName (stageName);
         if (stageName == "Delay" || stageName == "Reverb" || stageName == "Chorus")
         {
-            effectPosition = state.getRawParameterValue (stageName.toLowerCase() + "Position");
-            firstAmpEnabled = state.getRawParameterValue ("amp1On");
-            secondAmpEnabled = state.getRawParameterValue ("amp2On");
+            effectPosition = parameterState.getRawParameterValue (stageName.toLowerCase() + "Position");
+            firstAmpEnabled = parameterState.getRawParameterValue ("amp1On");
+            secondAmpEnabled = parameterState.getRawParameterValue ("amp2On");
         }
+        updateAssetCaption();
         startTimerHz (4);
     }
 
@@ -3013,6 +3146,7 @@ public:
     {
         parallelRouting = parallel;
         parallelSharedIR = sharedIR;
+        updateAssetCaption();
         repaint();
     }
 
@@ -3065,13 +3199,24 @@ public:
         const auto progress = juce::jlimit (0.0, 1.0,
             (juce::Time::getMillisecondCounterHiRes() - iconAnimationStart) / iconAnimationDuration);
         const auto lift = static_cast<float> (std::sin (progress * juce::MathConstants<double>::pi)) * 5.0f;
+        const auto iconOffset = assetRole.isNotEmpty() ? 9.0f : 0.0f;
         const auto iconBounds = juce::Rectangle<float> (0.0f, 0.0f, iconSize, iconSize)
-                                    .withCentre (r.getCentre()).translated (0.0f, -lift);
+                                    .withCentre (r.getCentre()).translated (0.0f, -lift - iconOffset);
         {
             const juce::Graphics::ScopedSaveState iconState (g);
             g.addTransform (juce::AffineTransform::scale (1.28f, 1.28f,
                                                            iconBounds.getCentreX(), iconBounds.getCentreY()));
             drawModuleIcon (g, iconBounds, getModuleKind());
+        }
+        if (assetRole.isNotEmpty())
+        {
+            auto labelArea = getLocalBounds().withTop (getHeight() - 27).withTrimmedBottom (5).reduced (6, 0);
+            g.setColour (text);
+            g.setFont (namplifiedFontOptions (10.0f, juce::Font::bold));
+            g.drawText (assetRole, labelArea.removeFromTop (11), juce::Justification::centred);
+            g.setColour (secondaryText);
+            g.setFont (namplifiedFontOptions (10.0f));
+            g.drawText (assetName.startsWith ("No ") ? "Empty" : assetName, labelArea, juce::Justification::centred, true);
         }
         if (effectPosition != nullptr)
         {
@@ -3400,8 +3545,25 @@ private:
         return knobAccent;
     }
 
+    void updateAssetCaption()
+    {
+        const auto isAmp = stageName.startsWith ("NAM Profile");
+        if (! isAmp && ! stageName.startsWith ("Cab IR"))
+            return;
+        const auto slot = stageName.getLastCharacters (1).getIntValue() - 1;
+        const auto role = isAmp ? "AMP " + juce::String (slot + 1)
+            : parallelRouting && parallelSharedIR && slot == 0 ? "SHARED IR" : "IR " + juce::String (slot + 1);
+        const auto name = isAmp ? audioProcessor.getNAMCaptureName (slot) : audioProcessor.getImpulseResponseName (slot);
+        if (role == assetRole && name == assetName)
+            return;
+        assetRole = role;
+        assetName = name;
+        setTooltip (assetName.isNotEmpty() ? assetRole + " · " + assetName : assetRole);
+    }
+
     void timerCallback() override
     {
+        if (isShowing()) updateAssetCaption();
         if (iconAnimationStart != 0.0
             && juce::Time::getMillisecondCounterHiRes() - iconAnimationStart >= iconAnimationDuration)
         {
@@ -3416,7 +3578,9 @@ private:
     const std::atomic<float>* effectPosition = nullptr;
     const std::atomic<float>* firstAmpEnabled = nullptr;
     const std::atomic<float>* secondAmpEnabled = nullptr;
+    NAMplifiedAudioProcessor& audioProcessor;
     juce::AudioProcessorValueTreeState& parameterState;
+    juce::String assetRole, assetName;
     juce::String stageName;
     juce::String enableParameterId;
     bool canReorder = false, isSelected = false, isDragging = false;
@@ -3501,36 +3665,31 @@ public:
         layoutTiles (animate);
     }
 
-    int getRequiredWidth() const { return 48 + (parallelRouting ? 13 : 14) * 86; }
-    int getRequiredHeight() const
+    int getRequiredHeight (int width) const
     {
-        // The tallest route is the two-row NAM/IR branch. Keep only enough
-        // height for both rows, the branch gap and a little breathing room;
-        // the old fixed 394 px reservation left a large dead band above details.
-        constexpr int tileSize = 96;
-        constexpr int branchTop = 46;
-        constexpr int branchGap = 12;
-        constexpr int bottomPadding = 24;
-        return branchTop + tileSize + branchGap + tileSize + bottomPadding;
+        return branchTop + 2 * tileSizeForWidth (width) + branchGap + 8;
     }
 
     void resized() override { layoutTiles (false); }
 
 private:
+    static constexpr int sideInset = 12, branchTop = 25, branchGap = 10;
+    int getColumnCount() const { return parallelRouting ? 13 : 14; }
+    int tileSizeForWidth (int width) const
+    {
+        return juce::jlimit (42, 104, (width - 2 * sideInset) / getColumnCount() - 8);
+    }
+
     void layoutTiles (bool animate)
     {
-        constexpr int sideInset = 24;
         const auto contentWidth = getWidth() - 2 * sideInset;
-        const auto columns = parallelRouting ? 13.0f : 14.0f;
-        const auto pitch = static_cast<float> (contentWidth) / columns;
-        const auto maxTileSize = 96;
-        const auto width = juce::jlimit (70, maxTileSize, juce::roundToInt (pitch) - 20);
-        const auto tileWidth = width;
+        const auto pitch = static_cast<float> (contentWidth) / getColumnCount();
+        const auto tileWidth = tileSizeForWidth (getWidth());
         const auto tileHeight = tileWidth;
-        const auto branchPitch = tileHeight + 12;
-        const auto branchY = 46;
+        const auto branchPitch = tileHeight + branchGap;
+        const auto branchY = branchTop;
         const auto postRowY = branchY;
-        const auto columnX = [sideInset, pitch, tileWidth] (int column)
+        const auto columnX = [pitch, tileWidth] (int column)
         {
             return sideInset + juce::roundToInt ((static_cast<float> (column) + 0.5f) * pitch
                                                    - static_cast<float> (tileWidth) * 0.5f);
@@ -3717,13 +3876,13 @@ private:
         for (size_t i = 0; i + 1 < ampChain.size(); ++i)
             drawArrow (g, rightCentre (ampChain[i]), leftCentre (ampChain[i + 1]));
 
-        const auto irInX = static_cast<float> (irs.front()->getX() - 14);
-        const auto irOutX = static_cast<float> (irs.front()->getRight() + 14);
+        const auto ampOutput = rightCentre (ampChain.back());
+        const auto postInput = leftCentre (post.front());
+        const auto splitX = (ampOutput.x + leftCentre (irs.front()).x) * 0.5f;
+        const auto mergeX = (rightCentre (irs.front()).x + postInput.x) * 0.5f;
         std::vector<float> branchY;
         for (auto* ir : irs)
             branchY.push_back (static_cast<float> (ir->getY() + ir->getHeight() / 2));
-        const auto splitX = irInX;
-        const auto ampOutput = rightCentre (ampChain.back());
         const auto branchTop = *std::min_element (branchY.begin(), branchY.end());
         const auto branchBottom = *std::max_element (branchY.begin(), branchY.end());
         drawBus (g, ampOutput, { splitX, ampOutput.y });
@@ -3732,14 +3891,10 @@ private:
         for (auto* ir : irs)
             drawArrow (g, { splitX, static_cast<float> (ir->getY() + ir->getHeight() / 2) }, leftCentre (ir));
 
-        const auto mergeX = irOutX;
-        drawBus (g, rightCentre (irs.front()), { mergeX, branchTop });
-        drawBus (g, rightCentre (irs.back()), { mergeX, branchBottom });
         drawBus (g, { mergeX, branchTop }, { mergeX, branchBottom });
         for (auto* ir : irs)
             drawArrow (g, rightCentre (ir), { mergeX, static_cast<float> (ir->getY() + ir->getHeight() / 2) });
-        const auto postInput = leftCentre (post.front());
-        const auto routeY = static_cast<float> (post.front()->getY() + post.front()->getHeight() / 2);
+        const auto routeY = postInput.y;
         drawBus (g, { mergeX, (branchTop + branchBottom) * 0.5f }, { mergeX, routeY });
         drawBus (g, { mergeX, routeY }, postInput);
         for (size_t i = 0; i + 1 < post.size(); ++i)
@@ -3763,7 +3918,7 @@ private:
 
         const auto nams = namedTiles ("NAM Profile");
         if (nams.empty()) return;
-        const auto splitX = static_cast<float> (nams.front()->getX() - 14);
+        const auto splitX = (rightCentre (pre.back()).x + leftCentre (nams.front()).x) * 0.5f;
         const auto topY = static_cast<float> (nams.front()->getY() + nams.front()->getHeight() / 2);
         const auto bottomY = static_cast<float> (nams.back()->getY() + nams.back()->getHeight() / 2);
         const auto inputY = static_cast<float> (pre.back()->getY() + pre.back()->getHeight() / 2);
@@ -3803,18 +3958,19 @@ private:
             rightmostBranch = juce::jmax (rightmostBranch, from.x);
         }
 
-        const auto junctionX = rightmostBranch + 10.0f;
+        const auto postInput = leftCentre (post.front());
+        const auto junctionTarget = parallelSharedIR ? leftCentre (irs.front()).x : postInput.x;
+        const auto junctionX = (rightmostBranch + junctionTarget) * 0.5f;
         for (size_t i = 0; i < nams.size(); ++i)
             drawBus (g, branchEnds[i], { junctionX, branchEnds[i].y });
         drawBus (g, { junctionX, topY }, { junctionX, bottomY });
-        const auto postInput = leftCentre (post.front());
         if (parallelSharedIR)
         {
             auto* shared = irs.front();
             const auto irInput = leftCentre (shared);
             drawArrow (g, { junctionX, irInput.y }, irInput);
             const auto irOutput = rightCentre (shared);
-            const auto elbowX = irOutput.x + 10.0f;
+            const auto elbowX = (irOutput.x + postInput.x) * 0.5f;
             drawBus (g, irOutput, { elbowX, irOutput.y });
             drawBus (g, { elbowX, irOutput.y }, { elbowX, postInput.y });
             drawArrow (g, { elbowX, postInput.y }, postInput);
@@ -3903,23 +4059,23 @@ public:
 
         const auto effectPositions = NAMplifiedAudioProcessor::effectPositionChoices();
         addStage ("Delay", "delayOn",
-                  {{ "delayTime", "Time (ms)" }, { "delayFeedback", "Feedback", true }, { "delayMix", "Mix", true }},
-                  FileKind::none, 0, mover (false, 0),
-                  {{ "delayPosition", "Position", false, effectPositions },
+                  {{ "delayTime", "Time (ms)" }, { "delayFeedback", "Feedback", true }, { "delayMix", "Mix", true },
+                   { "delayPosition", "Position", false, effectPositions },
                    { "delayType", "Character", false, juce::StringArray { "Digital", "Analog" } },
                    { "delayMode", "Repeats", false, juce::StringArray { "Standard", "Ping Pong" } },
                    { "delayTone", "Tone (Hz)" },
                    { "delayHighPass", "High-Pass (Hz)" }, { "delayLowPass", "Low-Pass (Hz)" },
                    { "delayDuck", "Ducking", true }, { "delayDuckThreshold", "Duck Threshold (dB)" },
-                   { "delayDuckRelease", "Duck Release (ms)" }});
+                   { "delayDuckRelease", "Duck Release (ms)" }},
+                  FileKind::none, 0, mover (false, 0));
         addStage ("Reverb", "reverbOn", {{ "reverbSize", "Size", true }, { "reverbMix", "Mix", true }},
                   FileKind::reverbIR, 0, mover (false, 1),
                   {{ "reverbPosition", "Position", false, effectPositions },
                    { "reverbMode", "Mode", false, juce::StringArray { "Room", "Plate", "Cloud", "IR" } },
-                   { "reverbSize", "Size / Decay", true }, { "reverbDamping", "Damping", true },
-                   { "reverbPreDelay", "Pre-Delay (ms)" }, { "reverbWidth", "Width", true },
+                   { "reverbSize", "Size / Decay", true }, { "reverbPreDelay", "Pre-Delay (ms)" },
+                   { "reverbMix", "Mix", true }, { "reverbDamping", "Damping", true }, { "reverbWidth", "Width", true },
                    { "reverbHighPass", "High-Pass (Hz)" }, { "reverbLowPass", "Low-Pass (Hz)" },
-                   { "reverbMix", "Mix", true }, { "roomSize", "Room Size", true },
+                   { "roomSize", "Room Size", true },
                    { "roomEarlyMix", "Early / Late Balance", true }, { "roomSpin", "Spin (Hz)" },
                    { "roomWander", "Wander", true }});
         addStage ("Chorus", "chorusOn",
@@ -3964,8 +4120,8 @@ public:
         const auto parallel = routing != nullptr && routing->load() >= 0.5f;
         const auto sharedIR = irMode != nullptr && irMode->load() >= 0.5f;
         const auto heading = parallel
-            ? (sharedIR ? "AMP PARALLEL  |  BOTH AMPS -> IR 1"
-                        : "AMP PARALLEL  |  AMP 1 -> IR 1  /  AMP 2 -> IR 2")
+            ? (sharedIR ? juce::String::fromUTF8 ("AMP 1 + AMP 2  →  SHARED IR 1")
+                        : juce::String::fromUTF8 ("AMP 1 → IR 1     /     AMP 2 → IR 2"))
             : "AMP SERIES  |  CAB 1 / CAB 2 BLEND";
         const auto chainBounds = chainViewport.getBounds();
         g.setFont (namplifiedFontOptions (15.0f, juce::Font::bold));
@@ -3989,10 +4145,11 @@ public:
         }
         chainViewport.setVisible (true);
         auto area = getLocalBounds().reduced (22, 18);
-        auto chainArea = area.removeFromTop (tileList->getRequiredHeight());
-        chainViewport.setBounds (chainArea.withTrimmedLeft (58).withTrimmedRight (58));
-        tileList->setSize (juce::jmax (chainViewport.getWidth(), tileList->getRequiredWidth()),
-                           tileList->getRequiredHeight());
+        const auto chainWidth = juce::jmax (1, area.getWidth() - 116);
+        const auto chainHeight = tileList->getRequiredHeight (chainWidth);
+        auto chainArea = area.removeFromTop (chainHeight);
+        chainViewport.setBounds (chainArea.withSizeKeepingCentre (chainWidth, chainHeight));
+        tileList->setSize (chainWidth, chainHeight);
         area.removeFromTop (12);
         const auto detailBounds = area.reduced (58, 0);
         // Keep the scrollbar in the gutter so it does not shift the detail panel.
@@ -4202,7 +4359,7 @@ private:
         if (tileName == "PreEQ" || tileName == "Post EQ")
             stagePtr->setFullscreenHandler ([this, stagePtr] (bool fullscreen) { setFullscreenStage (stagePtr, fullscreen); });
         cards.push_back (std::move (stage));
-        auto tile = std::make_unique<StageTile> (audioProcessor.parameters, tileName, tileEnableId,
+        auto tile = std::make_unique<StageTile> (audioProcessor, tileName, tileEnableId,
                                                  tileMoveHandler, [this, stagePtr] { selectStage (stagePtr); });
         tileList->addAndMakeVisible (*tile);
         tiles.push_back (std::move (tile));
@@ -6629,7 +6786,9 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     presetLabel.setColour (juce::Label::textColourId, secondaryText);
     presetLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (presetLabel);
-    presetBox.setTextWhenNothingSelected ("SELECT");
+    presetBox.setTextWhenNothingSelected ("Load preset");
+    presetBox.setJustificationType (juce::Justification::centredLeft);
+    presetBox.getProperties().set ("namPresetBox", true);
     resetChainButton.setTooltip ("Start a new chain with the default settings");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
@@ -7012,49 +7171,46 @@ void NAMplifiedAudioProcessorEditor::resized()
     brandIcon.setBounds (brandArea.removeFromLeft (44).withSizeKeepingCentre (44, 44));
     brandArea.removeFromLeft (10);
     title.setBounds (brandArea);
-    top = top.withSizeKeepingCentre (top.getWidth(), 42);
+    top = top.withSizeKeepingCentre (top.getWidth(), 44);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     captureCompareButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
-    auto presetArea = top;
-    const auto compactHeader = presetArea.getWidth() < 1100;
-    const auto presetWidth = compactHeader ? 102 : 165;
-    const auto pitchLabelWidth = compactHeader ? 42 : 46;
-    const auto pitchValueWidth = compactHeader ? 42 : 44;
-    const auto masterLabelWidth = compactHeader ? 52 : 60;
-    const auto masterValueWidth = compactHeader ? 42 : 48;
-    outputModeBox.setBounds (presetArea.removeFromRight (88).reduced (0, 4));
-    presetArea.removeFromRight (8);
-    presetLabel.setBounds (presetArea.removeFromLeft (compactHeader ? 46 : 58));
-    presetArea.removeFromLeft (compactHeader ? 5 : 8);
-    presetBox.setBounds (presetArea.removeFromLeft (presetWidth).reduced (0, 4));
-    auto presetArrows = presetArea.removeFromLeft (24).reduced (2, 3);
+    outputModeBox.setBounds (top.removeFromRight (88).reduced (0, 4));
+
+    const auto presetWidth = juce::jlimit (230, 360, getWidth() / 4);
+    const auto presetLeft = (getWidth() - presetWidth) / 2;
+    presetBox.setBounds (presetLeft, top.getY(), presetWidth, top.getHeight());
+    presetLabel.setBounds (presetLeft - 65, top.getY(), 55, top.getHeight());
+    auto presetControls = top.withTrimmedLeft (presetBox.getRight() - top.getX() + 4);
+    auto presetArrows = presetControls.removeFromLeft (24).reduced (2, 3);
     previousPresetButton.setBounds (presetArrows.removeFromTop (presetArrows.getHeight() / 2));
     nextPresetButton.setBounds (presetArrows);
-    presetArea.removeFromLeft (compactHeader ? 6 : 8);
-    savePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    deletePresetButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 4 : 6);
-    resetChainButton.setBounds (presetArea.removeFromLeft (36).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 6 : 10);
-    const auto pitchLabelsWidth = pitchLabelWidth + pitchValueWidth + (compactHeader ? 6 : 10);
-    const auto masterLabelsWidth = masterLabelWidth + masterValueWidth + (compactHeader ? 11 : 16);
+    for (auto* button : std::initializer_list<juce::Button*> { &savePresetButton, &deletePresetButton, &resetChainButton })
+    {
+        presetControls.removeFromLeft (4);
+        button->setBounds (presetControls.removeFromLeft (36).reduced (0, 4));
+    }
+
+    auto globalRow = area.removeFromTop (34);
+    auto presetArea = globalRow.withSizeKeepingCentre (juce::jmin (660, globalRow.getWidth()), globalRow.getHeight());
+    constexpr int pitchLabelWidth = 46, pitchValueWidth = 44, masterLabelWidth = 60, masterValueWidth = 48;
+    const auto pitchLabelsWidth = pitchLabelWidth + pitchValueWidth + 10;
+    const auto masterLabelsWidth = masterLabelWidth + masterValueWidth + 16;
     const auto sliderSpace = juce::jmax (0, presetArea.getWidth() - pitchLabelsWidth - masterLabelsWidth);
     const auto pitchSliderWidth = sliderSpace / 2;
     const auto masterSliderWidth = sliderSpace - pitchSliderWidth;
     auto pitchArea = presetArea.removeFromLeft (pitchLabelsWidth + pitchSliderWidth);
     pitchLabel.setBounds (pitchArea.removeFromLeft (pitchLabelWidth).reduced (0, 4));
-    pitchArea.removeFromLeft (compactHeader ? 4 : 6);
+    pitchArea.removeFromLeft (6);
     pitchSlider.setBounds (pitchArea.removeFromLeft (pitchSliderWidth).reduced (0, 10));
-    pitchArea.removeFromLeft (compactHeader ? 2 : 4);
+    pitchArea.removeFromLeft (4);
     pitchValueLabel.setBounds (pitchArea.removeFromLeft (pitchValueWidth).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 5 : 8);
+    presetArea.removeFromLeft (8);
     masterVolumeLabel.setBounds (presetArea.removeFromLeft (masterLabelWidth).reduced (0, 4));
-    presetArea.removeFromLeft (compactHeader ? 3 : 4);
+    presetArea.removeFromLeft (4);
     masterVolumeSlider.setBounds (presetArea.removeFromLeft (masterSliderWidth).reduced (0, 10));
-    presetArea.removeFromLeft (compactHeader ? 3 : 4);
+    presetArea.removeFromLeft (4);
     masterVolumeValueLabel.setBounds (presetArea.removeFromLeft (masterValueWidth).reduced (0, 4));
 
     auto controlRow = area.removeFromTop (38);
