@@ -632,6 +632,11 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "parallelOutput", 1 }, "Parallel Amp Output",
         juce::StringArray { "Stereo Blend", "Amp 1 L / Amp 2 R" }, 0));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "looperLength", 1 }, "Looper Length",
+        juce::StringArray { "Free", "1 Bar", "2 Bars", "4 Bars" }, 0));
+    addToggle ("looperCountIn", "Looper Count-In", true);
+    addToggle ("looperHostSync", "Looper DAW Sync");
     return layout;
 }
 
@@ -2188,8 +2193,37 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         processEffectsAt (buffer, EffectPosition::afterMixer);
     constexpr int looperBeats[] { 2, 3, 4, 5, 6, 7 };
     const auto meterIndex = juce::jlimit (0, 5, juce::roundToInt (get ("looperMeter", 2.0f)));
-    looper.process (buffer, numChannels, numSamples, enabled ("looperOn"), enabled ("looperClick"),
-                    get ("looperTempo", 120.0f), looperBeats[meterIndex]);
+    const auto looperEnabled = enabled ("looperOn");
+    std::optional<TrackLooper::HostTiming> hostTiming;
+    if (looperEnabled && enabled ("looperHostSync"))
+        if (auto* playHead = getPlayHead())
+            if (const auto current = playHead->getPosition())
+                if (const auto bpm = current->getBpm(); bpm && std::isfinite (*bpm) && *bpm >= 1.0 && *bpm <= 999.0)
+                {
+                    hostTiming.emplace();
+                    hostTiming->bpm = *bpm;
+                    hostTiming->beatsPerBar = looperBeats[meterIndex];
+                    hostTiming->playing = current->getIsPlaying();
+                    if (const auto meter = current->getTimeSignature(); meter && meter->numerator >= 1
+                        && meter->numerator <= 32 && meter->denominator >= 1 && meter->denominator <= 32)
+                    {
+                        hostTiming->beatsPerBar = meter->numerator;
+                        hostTiming->beatUnit = meter->denominator;
+                    }
+                    const auto ppq = current->getPpqPosition();
+                    const auto barStart = current->getPpqPositionOfLastBarStart();
+                    if (ppq && barStart && std::isfinite (*ppq) && std::isfinite (*barStart))
+                    {
+                        hostTiming->hasBarPosition = true;
+                        hostTiming->ppq = *ppq;
+                        hostTiming->barStartPpq = *barStart;
+                    }
+                }
+    constexpr int looperLengths[] { 0, 1, 2, 4 };
+    const auto lengthIndex = juce::jlimit (0, 3, juce::roundToInt (get ("looperLength")));
+    looper.process (buffer, numChannels, numSamples, looperEnabled, enabled ("looperClick"),
+                    get ("looperTempo", 120.0f), looperBeats[meterIndex], looperLengths[lengthIndex],
+                    enabled ("looperCountIn"), hostTiming ? &*hostTiming : nullptr);
     const auto outputGainDb = get ("outputGain");
     buffer.applyGain (juce::Decibels::decibelsToGain (outputGainDb));
     buffer.applyGain (juce::Decibels::decibelsToGain (get ("masterVolume")));
@@ -2250,7 +2284,7 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
-        for (const auto* id : { "outputMode", "parallelOutput", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
+        for (const auto* id : { "outputMode", "parallelOutput", "looperOn", "looperClick", "looperTempo", "looperMeter", "looperLength", "looperCountIn", "looperHostSync", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput",
                                 "delayPosition", "reverbPosition", "chorusPosition" })
         {

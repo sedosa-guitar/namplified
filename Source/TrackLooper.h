@@ -14,6 +14,17 @@ public:
     enum class Action { none, record, mute, clear };
     enum class TrackState { empty, queued, recording, playing, muted };
 
+    struct HostTiming
+    {
+        double bpm = 120.0;
+        int beatsPerBar = 4;
+        int beatUnit = 4;
+        double ppq = 0.0;
+        double barStartPpq = 0.0;
+        bool hasBarPosition = false;
+        bool playing = false;
+    };
+
     void prepare (double sampleRate)
     {
         rate = sampleRate;
@@ -37,6 +48,9 @@ public:
     }
     TrackState getState (int track) const { return states[static_cast<size_t> (track)].load(); }
     bool isPlaying() const { return playing.load(); }
+    bool hasFinishedFixedTake() const { return finishedFixedTake.load(); }
+    bool isFirstTakeFixed() const { return fixedFirstTake.load(); }
+    bool isWaitingForHost() const { return waitingForHost.load(); }
     bool isSettingLength() const { return settingLength.load(); }
     bool isFinishingAtBarEnd() const { return finishingAtBarEnd.load(); }
     int getCountInTrack() const { return countInTrack.load(); }
@@ -47,13 +61,17 @@ public:
     void requestReset() { resetRequested.store (true); }
 
     void process (juce::AudioBuffer<float>& audio, int channels, int samples, bool enabled,
-                  bool clickEnabled, float bpm, int meterBeats)
+                  bool clickEnabled, float bpm, int meterBeats, int fixedBars = 0,
+                  bool useCountIn = true, const HostTiming* host = nullptr)
     {
         if (resetRequested.exchange (false))
             reset();
 
         if (toggleRequested.exchange (false) && length > 0)
+        {
+            finishedFixedTake.store (false);
             playing.store (! playing.load());
+        }
 
         for (size_t index = 0; index < tracks.size(); ++index)
         {
@@ -61,7 +79,7 @@ public:
             const auto action = commands[index].exchange (Action::none);
             if (action == Action::record && enabled)
             {
-                if (static_cast<int> (index) == firstRecording && position > 0 && ! finishPending)
+                if (static_cast<int> (index) == firstRecording && position > 0 && ! finishPending && ! fixedLength)
                 {
                     const auto samplesPerBar = samplesPerBeat * beatsPerBar;
                     const auto barsElapsed = position / samplesPerBar;
@@ -84,23 +102,31 @@ public:
                 {
                     if (length == 0)
                     {
-                        samplesPerBeat = rate * 60.0 / juce::jlimit (60.0f, 180.0f, bpm);
-                        beatsPerBar = meterBeats;
+                        const auto tempo = host != nullptr ? host->bpm : juce::jlimit (60.0f, 180.0f, bpm);
+                        const auto beatUnit = host != nullptr ? host->beatUnit : 4;
+                        samplesPerBeat = rate * 60.0 / tempo * (4.0 / beatUnit);
+                        beatsPerBar = host != nullptr ? host->beatsPerBar : meterBeats;
                         const auto samplesPerBar = samplesPerBeat * beatsPerBar;
                         const auto maxBars = static_cast<int> (track.audio.getNumSamples() / samplesPerBar);
-                        length = juce::roundToInt (maxBars * samplesPerBar);
+                        if (maxBars == 0)
+                            continue;
+                        fixedLength = fixedBars > 0;
+                        length = juce::roundToInt ((fixedLength ? juce::jmin (fixedBars, maxBars) : maxBars)
+                                                   * samplesPerBar);
                         position = 0;
                         firstRecording = static_cast<int> (index);
                     }
-                    countInSamples = juce::roundToInt (samplesPerBeat * beatsPerBar);
+                    countInSamples = useCountIn ? juce::roundToInt (samplesPerBeat * beatsPerBar) : 0;
                     samplesUntilRecord = countInSamples;
+                    alignFirstTake = firstRecording >= 0 && host != nullptr;
                     if (firstRecording < 0)
                     {
-                        const auto toBoundary = length - position;
+                        const auto toBoundary = position == 0 && ! useCountIn ? 0 : length - position;
                         const auto missing = juce::jmax (0, countInSamples - toBoundary);
                         samplesUntilRecord = toBoundary + ((missing + length - 1) / length) * length;
                     }
                     armedTrack = static_cast<int> (index);
+                    finishedFixedTake.store (false);
                     track.state = TrackState::queued;
                     playing.store (true);
                 }
@@ -129,11 +155,33 @@ public:
         {
             length = position = 0;
             firstRecording = armedTrack = -1;
+            finishedFixedTake.store (false);
             playing.store (false);
         }
 
-        int flashBeat = 0;
-        if (enabled && playing.load() && length > 0)
+        const auto hostPaused = host != nullptr && ! host->playing;
+        waitingForHost.store (hostPaused && (armedTrack >= 0 || length > 0));
+        if (hostPaused && firstRecording >= 0 && armedTrack >= 0)
+            alignFirstTake = true;
+        if (alignFirstTake && ! hostPaused && firstRecording >= 0 && armedTrack >= 0)
+        {
+            samplesUntilRecord = countInSamples;
+            if (host != nullptr && host->hasBarPosition)
+            {
+                const auto quarterNotesPerBar = host->beatsPerBar * 4.0 / host->beatUnit;
+                auto phase = std::fmod (host->ppq - host->barStartPpq, quarterNotesPerBar);
+                if (phase < 0.0)
+                    phase += quarterNotesPerBar;
+                const auto quarterNoteSamples = rate * 60.0 / host->bpm;
+                const auto toBar = phase * quarterNoteSamples <= 0.5 ? 0
+                    : juce::roundToInt ((quarterNotesPerBar - phase) * quarterNoteSamples);
+                samplesUntilRecord += toBar;
+            }
+            alignFirstTake = false;
+        }
+
+        int currentCountInBeat = 0;
+        if (enabled && playing.load() && length > 0 && ! hostPaused)
         {
             for (auto& track : tracks)
                 track.gain.setTargetValue (track.level.load (std::memory_order_relaxed));
@@ -146,14 +194,14 @@ public:
                     armedTrack = -1;
                 }
 
-                const auto counting = armedTrack >= 0 && samplesUntilRecord <= countInSamples;
+                const auto counting = armedTrack >= 0 && countInSamples > 0 && samplesUntilRecord <= countInSamples;
                 const auto phaseSamples = counting ? countInSamples - samplesUntilRecord : position;
                 const auto beatPosition = phaseSamples / samplesPerBeat;
                 const auto beat = static_cast<int> (beatPosition);
                 const auto beatFraction = beatPosition - beat;
-                flashBeat = counting && beatFraction < 0.45 ? beat + 1 : 0;
+                currentCountInBeat = counting ? juce::jmin (beat + 1, beatsPerBar) : 0;
                 const auto seconds = beatFraction * samplesPerBeat / rate;
-                const auto click = clickEnabled && seconds < 0.025
+                const auto click = (counting || clickEnabled) && seconds < 0.025
                     ? static_cast<float> (0.12 * (1.0 - seconds / 0.025)
                          * std::sin (juce::MathConstants<double>::twoPi * (beat % beatsPerBar == 0 ? 1600.0 : 1000.0) * seconds))
                     : 0.0f;
@@ -186,13 +234,18 @@ public:
                 if (armedTrack >= 0)
                     --samplesUntilRecord;
                 if ((firstRecording < 0 || armedTrack < 0) && ++position == length)
+                {
                     finishRecording();
+                    if (! playing.load())
+                        break;
+                }
             }
         }
 
         countInTrack.store (armedTrack);
-        countInBeat.store (flashBeat);
+        countInBeat.store (currentCountInBeat);
         settingLength.store (firstRecording >= 0);
+        fixedFirstTake.store (firstRecording >= 0 && fixedLength);
         finishingAtBarEnd.store (finishPending);
         elapsedSeconds.store (static_cast<float> (position / rate));
         lengthSeconds.store (static_cast<float> (length / rate));
@@ -203,6 +256,11 @@ public:
 private:
     void finishRecording()
     {
+        if (firstRecording >= 0 && fixedLength)
+        {
+            playing.store (false);
+            finishedFixedTake.store (true);
+        }
         position = 0;
         firstRecording = -1;
         finishPending = false;
@@ -218,6 +276,10 @@ private:
         countInTrack.store (-1);
         countInBeat.store (0);
         settingLength.store (false);
+        fixedFirstTake.store (false);
+        finishedFixedTake.store (false);
+        waitingForHost.store (false);
+        fixedLength = alignFirstTake = false;
         finishPending = false;
         finishingAtBarEnd.store (false);
         elapsedSeconds.store (0.0f);
@@ -244,9 +306,10 @@ private:
     std::array<std::atomic<TrackState>, trackCount> states {};
     std::atomic<bool> playing { false }, toggleRequested { false }, resetRequested { false };
     double rate = 44100.0;
-    std::atomic<bool> settingLength { false };
+    std::atomic<bool> finishedFixedTake { false };
+    std::atomic<bool> settingLength { false }, fixedFirstTake { false }, waitingForHost { false };
     std::atomic<bool> finishingAtBarEnd { false };
-    bool finishPending = false;
+    bool finishPending = false, fixedLength = false, alignFirstTake = false;
     std::atomic<float> elapsedSeconds { 0.0f }, lengthSeconds { 0.0f };
     double samplesPerBeat = 22050.0;
     std::atomic<int> countInTrack { -1 }, countInBeat { 0 };

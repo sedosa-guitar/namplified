@@ -1565,7 +1565,21 @@ public:
         meter.setTitle ("Time signature");
         meter.setTooltip ("One count per beat. In 6/8 and 7/8 the count follows eighth notes.");
         addAndMakeVisible (meter);
+        length.addItemList ({ "Free", "1 Bar", "2 Bars", "4 Bars" }, 1);
+        length.setTitle ("Loop length");
+        length.setTooltip ("Choose a fixed length or finish the first loop manually on a bar line.");
+        addAndMakeVisible (length);
+        countIn.setClickingTogglesState (true);
+        countIn.setTooltip ("Play one bar of audible count-in before recording, even when Click is off.");
+        addAndMakeVisible (countIn);
+        if (! juce::JUCEApplicationBase::isStandaloneApp())
+        {
+            hostSync.setClickingTogglesState (true);
+            hostSync.setTooltip ("Use DAW tempo, time signature and transport. Start the first take on a DAW bar when available.");
+            addAndMakeVisible (hostSync);
+        }
         click.setClickingTogglesState (true);
+        click.setTooltip ("Play the metronome during recording and loop playback.");
         click.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff245348));
         transport.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff245348));
         addAndMakeVisible (tempo);
@@ -1578,6 +1592,13 @@ public:
             processor.parameters, "looperMeter", meter);
         clickAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
             processor.parameters, "looperClick", click);
+
+        lengthAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+            processor.parameters, "looperLength", length);
+        countInAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+            processor.parameters, "looperCountIn", countIn);
+        hostSyncAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ButtonAttachment> (
+            processor.parameters, "looperHostSync", hostSync);
 
         tempo.setNumDecimalPlacesToDisplay (0);
         click.getProperties().set ("namButtonFontHeight", 21.0);
@@ -1656,10 +1677,11 @@ public:
     {
         auto area = getLocalBounds();
         auto settings = area.removeFromTop (46);
-        const auto toolWidth = juce::jlimit (86, 160, settings.getWidth() / 5);
-        tempo.setBounds (settings.removeFromLeft (toolWidth + 16).reduced (2));
-        meter.setBounds (settings.removeFromLeft (toolWidth).reduced (2));
-        click.setBounds (settings.removeFromLeft (toolWidth).reduced (2));
+        const auto toolWidth = juce::jmin (126, settings.getWidth() / 8);
+        tempo.setBounds (settings.removeFromLeft (toolWidth * 2).reduced (2));
+        for (auto* control : std::initializer_list<juce::Component*> { &meter, &length, &countIn, &click, &hostSync })
+            if (control->isVisible())
+                control->setBounds (settings.removeFromLeft (toolWidth).reduced (2));
         transport.setBounds (settings.removeFromRight (toolWidth).reduced (2));
         area.removeFromTop (10);
         timelineBounds = area.removeFromTop (42);
@@ -1688,8 +1710,11 @@ private:
         bool hasTracks = false;
         const auto settingLength = looper.isSettingLength();
         const auto finishing = looper.isFinishingAtBarEnd();
-        const auto elapsed = looper.getElapsedSeconds();
+        const auto fixedTake = looper.isFirstTakeFixed();
+        const auto waitingForHost = looper.isWaitingForHost();
+        const auto finishedTake = looper.hasFinishedFixedTake();
         const auto duration = looper.getLengthSeconds();
+        const auto elapsed = finishedTake ? duration : looper.getElapsedSeconds();
         const auto displayedLength = duration > 0.0f ? duration : static_cast<float> (TrackLooper::maxSeconds);
         progress = juce::jlimit (0.0, 1.0, static_cast<double> (elapsed / displayedLength));
         timeLabel.setText (juce::String (elapsed, 1) + " s / " + juce::String (displayedLength, 1) + " s", juce::dontSendNotification);
@@ -1716,10 +1741,11 @@ private:
             row.status.setText (flashing ? "Beat " + juce::String (countBeat)
                                  : state == State::queued ? "Waiting"
                                  : state == State::recording ? "Recording"
-                                 : state == State::playing ? (looper.isPlaying() ? "Playing" : "Paused")
+                                 : state == State::playing ? (finishedTake ? "Finished"
+                                     : looper.isPlaying() && ! waitingForHost ? "Playing" : "Paused")
                                  : state == State::muted ? "Muted" : "Empty", juce::dontSendNotification);
             const auto recorded = state == State::playing || state == State::muted;
-            const auto canFinish = settingLength && state == State::recording && ! finishing;
+            const auto canFinish = settingLength && ! fixedTake && state == State::recording && ! finishing;
             row.record.setButtonText (finishing && state == State::recording ? "Finishing..."
                                      : canFinish ? "Finish loop"
                                      : state == State::queued ? "Queued" : state == State::recording ? "Recording"
@@ -1734,11 +1760,18 @@ private:
             repaint();
         tempo.setEnabled (! hasTracks);
         meter.setEnabled (! hasTracks);
+        length.setEnabled (! hasTracks);
+        hostSync.setEnabled (! hasTracks);
+        countIn.setEnabled (countTrack < 0 && ! recording);
         transport.setEnabled (active && hasTracks && ! settingLength && countTrack < 0);
         transport.setButtonText (looper.isPlaying() ? "Pause" : "Play");
         status.setText (! active ? "Enable the Looper block to record or play."
-                       : countTrack >= 0 ? "Count-in before recording."
+                       : finishedTake ? "Recording finished. Press Play to hear the loop."
+                       : waitingForHost ? "Start DAW playback to continue."
+                       : countBeat > 0 ? "Count-in before recording."
+                       : countTrack >= 0 ? "Waiting for the next recording boundary."
                        : finishing ? "Recording continues to the end of the bar."
+                       : fixedTake ? "Recording stops automatically at the selected length."
                        : settingLength ? "Finish loop snaps the recording to a bar line."
                        : hasTracks ? "Record another track to layer over the loop."
                                    : "Record a track for up to 60 seconds.",
@@ -1756,7 +1789,8 @@ private:
     TrackLooper& looper;
     const std::atomic<float>* enabled;
     juce::Slider tempo;
-    juce::ComboBox meter;
+    juce::ComboBox meter, length;
+    juce::TextButton countIn { "Count-In" }, hostSync { "DAW Sync" };
     int flashingTrack = -1, flashBeat = 0;
     double progress = 0.0;
     bool recording = false;
@@ -1766,8 +1800,8 @@ private:
     juce::Label status;
     std::array<Row, TrackLooper::trackCount> rows;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> tempoAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> clickAttachment;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> meterAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> clickAttachment, countInAttachment, hostSyncAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> meterAttachment, lengthAttachment;
 };
 
 class StageCard final : public juce::Component, private juce::Timer, private juce::ComboBox::Listener
