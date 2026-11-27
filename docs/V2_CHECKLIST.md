@@ -31,7 +31,7 @@ Die Nummern geben die Arbeitsreihenfolge an. Erst kommen Spielgefühl und Rig-Fu
 | Offen | 2 | **Effekte verbessern und erweitern** – zuerst Stereo-Chorus, Delay mit Tap-Tempo und Room/Plate-Reverb | Kern |
 | Umgesetzt und getestet auf `feat/effect-routing` | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer | Empfohlene Ergänzung |
 | Offen | 4 | **Expression-Pedal und Makros** – MIDI Learn, Min/Max, mehrere Parameter pro Pedal, Zuordnung im Rig speichern | Empfohlene Ergänzung |
-| Offen | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
+| Teilweise umgesetzt (Farben, Schriftzug und App-Icon) | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
 | Offen | 6 | **Rec DI ergänzen** – Ordner vorab wählen, trockene WAV parallel zum Spielen aufnehmen, optional Stereo-Rig als zweite WAV | Kern |
 | Offen | 7 | **Aufgenommene DI durchs Rig abspielen** – denselben Take zum Einstellen und Vergleichen verwenden | Empfohlene Ergänzung |
 | Offen | 8 | **Looper erweitern** – frei oder 1/2/4 Takte, BPM, DAW-Sync, optionaler Einzähler | Kern |
