@@ -4422,6 +4422,8 @@ public:
         addAndMakeVisible (volume);
         addButton (load, [this] { chooseFile (-1, -1); });
         addButton (record, [this] { toggleRecording(); });
+        addButton (exportDI, [this] { chooseDIExport(); });
+        exportDI.setTooltip ("Save the current dry comparison take as a WAV file.");
         addButton (stop, [this] { pending = heard = -1; processor.stopAudition(); message ("Playback stopped."); });
         addButton (close, [this] { dismiss(); });
         for (int i = 0; i < 2; ++i)
@@ -4528,6 +4530,8 @@ public:
         close.setBounds (footer.removeFromRight (88));
         footer.removeFromRight (8);
         stop.setBounds (footer.removeFromRight (104));
+        footer.removeFromRight (8);
+        exportDI.setBounds (footer.removeFromRight (110));
         status.setBounds (footer.reduced (0, 2));
     }
 
@@ -4649,6 +4653,41 @@ private:
             message ("Choose a capture from a folder with more than one NAM file.");
     }
 
+    void chooseDIExport()
+    {
+        auto folder = lastAssetDirectory ("DI");
+        if (! folder.isDirectory())
+            folder = juce::File::getSpecialLocation (juce::File::userDocumentsDirectory);
+        const auto target = folder.getNonexistentChildFile ("NAMplified DI", ".wav", true);
+        chooser = std::make_unique<juce::FileChooser> ("Export dry guitar WAV", target, "*.wav");
+        chooseActive = true;
+        updateControls();
+        juce::Component::SafePointer<CaptureCompareDialog> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
+                                  | juce::FileBrowserComponent::warnAboutOverwriting,
+            [safe] (const juce::FileChooser& dialog)
+            {
+                if (safe == nullptr)
+                    return;
+                safe->chooseActive = false;
+                const auto selected = dialog.getResult();
+                if (selected != juce::File())
+                {
+                    const auto file = selected.hasFileExtension ("wav") ? selected : selected.withFileExtension ("wav");
+                    if (file != selected && file.exists())
+                        safe->message ("That WAV already exists. Choose its full name or a different name.");
+                    else if (NAMplifiedAudioProcessor::exportDIWav (file, safe->di, safe->diRate))
+                    {
+                        rememberAssetDirectory ("DI", file);
+                        safe->message ("Exported dry DI to " + file.getFileName() + ".");
+                    }
+                    else
+                        safe->message ("Could not save the DI WAV. Choose a writable location.");
+                }
+                safe->updateControls();
+            });
+    }
+
     void loadDI (const juce::File& file)
     {
         juce::AudioFormatManager formats;
@@ -4722,7 +4761,7 @@ private:
         processor.stopAudition();
         heard = -1;
         dirty.fill (true);
-        message ("DI ready. Select Listen A or Listen B.");
+        message ("DI ready. Compare the rigs or export the dry take.");
     }
 
     void changed (int i)
@@ -4736,6 +4775,7 @@ private:
     {
         const auto editing = ! busy && ! recording && ! chooseActive;
         load.setEnabled (editing);
+        exportDI.setEnabled (editing && di.getNumSamples() > 0);
         record.setEnabled (! busy && ! chooseActive);
         for (auto& rig : rigs)
         {
@@ -4924,7 +4964,8 @@ private:
     std::array<Rig, 2> rigs;
     juce::Label source, status, volumeLabel;
     juce::Slider volume;
-    juce::TextButton load { "Load DI WAV" }, record { "Record DI" }, stop { "Stop audio" }, close { "Close" };
+    juce::TextButton load { "Load DI WAV" }, record { "Record DI" }, exportDI { "Export DI" };
+    juce::TextButton stop { "Stop audio" }, close { "Close" };
     std::unique_ptr<juce::FileChooser> chooser;
     juce::AudioBuffer<float> di;
     std::array<juce::AudioBuffer<float>, 2> rendered;

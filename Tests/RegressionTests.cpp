@@ -535,6 +535,35 @@ void chorusTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
+void diExportTests (const juce::File& testHome)
+{
+    juce::TemporaryFile destination (testHome.getNonexistentChildFile ("dry-take", ".wav"));
+    const auto file = destination.getFile();
+    juce::AudioBuffer<float> take (1, 4);
+    take.setSample (0, 0, -0.375f);
+    take.setSample (0, 1, 0.0f);
+    take.setSample (0, 2, 1.125f);
+    take.setSample (0, 3, 0.001f);
+    constexpr double takeRate = 44100.0;
+    require (NAMplifiedAudioProcessor::exportDIWav (file, take, takeRate), "The dry take must export");
+    const auto savedBytes = file.getSize();
+    require (! NAMplifiedAudioProcessor::exportDIWav (file, juce::AudioBuffer<float>(), takeRate)
+             && file.getSize() == savedBytes, "An empty take must leave an existing export intact");
+
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::AudioFormatReader> reader (format.createReaderFor (file.createInputStream().release(), true));
+    require (reader != nullptr && reader->sampleRate == takeRate && reader->numChannels == 1
+             && reader->bitsPerSample == 32 && reader->usesFloatingPointData
+             && reader->lengthInSamples == take.getNumSamples(), "The export must preserve the DI format and length");
+
+    juce::AudioBuffer<float> restored (1, take.getNumSamples());
+    require (reader->read (&restored, 0, restored.getNumSamples(), 0, true, false),
+             "The exported WAV must reopen");
+    for (int i = 0; i < take.getNumSamples(); ++i)
+        require (restored.getSample (0, i) == take.getSample (0, i),
+                 "Export must preserve the dry samples without clipping or gain changes");
+}
+
 void auditionLoopTests (NAMplifiedAudioProcessor& processor)
 {
     processor.prepareToPlay (sampleRate, blockSize);
@@ -716,6 +745,8 @@ int main (int argc, char** argv)
                 pitchTests (*processor);
             else if (suite == "comparison_apply")
                 comparisonApplyTests (*processor, testHome);
+            else if (suite == "di_export")
+                diExportTests (testHome);
             else if (suite == "audition_loop")
                 auditionLoopTests (*processor);
             else
