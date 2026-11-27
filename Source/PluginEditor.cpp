@@ -14,8 +14,8 @@ const auto chainSurface = juce::Colour::fromRGB (28, 27, 26);
 const auto tileSurface = juce::Colour::fromRGB (39, 37, 36);
 const auto detailSurface = juce::Colour::fromRGB (25, 24, 23);
 const auto accent = juce::Colour::fromRGB (238, 119, 57);
-const auto selectionAccent = juce::Colour (0xff5ca9ff);
-const auto knobAccent = juce::Colour (0xff70d9b6);
+const auto selectionAccent = juce::Colour (0xffb397ff);
+const auto knobAccent = juce::Colour (0xffc5a3ff);
 const auto text = juce::Colour::fromRGB (244, 238, 229);
 const auto secondaryText = juce::Colour::fromRGB (193, 184, 172);
 
@@ -120,6 +120,17 @@ juce::FontOptions namplifiedFontOptions (float height, int style)
         .withVariableSetting ({ juce::FontFeatureTag ("wght"), weight });
 }
 
+static juce::FontOptions namplifiedDisplayFontOptions (float height)
+{
+    static const auto typeface = juce::Typeface::createSystemTypefaceFor (
+        BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
+    if (typeface == nullptr)
+        return namplifiedFontOptions (height, juce::Font::bold);
+    return juce::FontOptions().withTypeface (typeface)
+        .withHeight (height)
+        .withVariableSetting ({ juce::FontFeatureTag ("wght"), 650.0f });
+}
+
 class NAMplifiedLookAndFeel final : public juce::LookAndFeel_V4
 {
 public:
@@ -128,6 +139,7 @@ public:
     {
         if (interTypeface != nullptr)
             setDefaultSansSerifTypeface (interTypeface);
+        setColour (juce::ScrollBar::thumbColourId, knobAccent);
         setColour (juce::Slider::textBoxTextColourId, text);
         setColour (juce::Slider::textBoxBackgroundColourId, juce::Colour::fromRGB (19, 24, 32));
         setColour (juce::Slider::textBoxOutlineColourId, juce::Colour::fromRGB (52, 59, 72));
@@ -279,7 +291,7 @@ public:
         if (! isActive)
             colour = colour.withAlpha (0.42f);
         else if (isTicked)
-            colour = juce::Colour (0xff7be0bd);
+            colour = knobAccent;
         g.setColour (colour);
         g.setFont (headerMenu ? juce::Font (namplifiedFontOptions (18.0f)) : getPopupMenuFont());
         auto textArea = itemArea.reduced (headerMenu || isTicked ? 20 : 12, 0);
@@ -898,7 +910,7 @@ public:
                 else
                     response.lineTo (responsePoint);
             }
-            g.setColour (juce::Colour (0xff66d6b2));
+            g.setColour (knobAccent);
             g.strokePath (response, juce::PathStrokeType (3.0f, juce::PathStrokeType::curved,
                                                            juce::PathStrokeType::rounded));
         }
@@ -909,7 +921,7 @@ public:
             const auto changed = audioProcessor.isParameterModified (parameterIds[band])
                               || audioProcessor.isParameterModified (frequencyIds[band])
                               || audioProcessor.isParameterModified (qParameterIds[band]);
-            const auto pointColour = changed ? accent : juce::Colour (0xff66d6b2);
+            const auto pointColour = changed ? accent : knobAccent;
             g.setColour (detailSurface);
             g.fillEllipse (point.x - 10.0f, point.y - 10.0f, 20.0f, 20.0f);
             g.setColour (pointColour);
@@ -1508,7 +1520,7 @@ public:
         auto bounds = getLocalBounds().toFloat();
         const auto diameter = juce::jmin (18.0f, bounds.getHeight() - 4.0f);
         const auto dot = juce::Rectangle<float> (diameter, diameter).withCentre (bounds.getCentre());
-        const auto colour = getToggleState() ? juce::Colour (0xff61d7b4) : juce::Colour (0xffe66b68);
+        const auto colour = getToggleState() ? knobAccent : juce::Colour (0xffe66b68);
         g.setColour (colour.withAlpha (isButtonDown ? 0.55f : (isMouseOver ? 0.28f : 0.16f)));
         g.fillEllipse (dot.expanded (4.0f));
         g.setColour (colour);
@@ -3003,7 +3015,7 @@ public:
             g.drawRoundedRectangle (r.reduced (1.0f), cornerRadius - 1.0f, 2.5f);
             const auto verticalBranch = parallelRouting
                                      && (stageName.startsWith ("NAM Profile") || stageName.startsWith ("Cab IR"));
-            g.setColour (juce::Colour (0xff70d9b6));
+            g.setColour (knobAccent);
             if (verticalBranch)
             {
                 const auto y = dragDirection > 0 ? r.getBottom() - 3.0f : r.getY() + 1.0f;
@@ -3241,7 +3253,7 @@ private:
         else if (kind == ModuleKind::nam)
         {
             const auto signet = r.reduced (1.0f);
-            g.setColour (juce::Colour (0xff68d9b4));
+            g.setColour (knobAccent);
             g.fillRoundedRectangle (signet, signet.getWidth() * 0.27f);
             juce::Path monogram;
             monogram.startNewSubPath (signet.getX() + signet.getWidth() * 0.27f,
@@ -3335,19 +3347,19 @@ private:
         {
             case ModuleKind::input:
             case ModuleKind::output: return juce::Colour (0xffaab6c9);
-            case ModuleKind::noiseGate: return juce::Colour (0xff69d9cf);
+            case ModuleKind::noiseGate: return juce::Colour (0xffb7a3fa);
             case ModuleKind::compressor: return juce::Colour (0xffff9b5b);
             case ModuleKind::boost: return juce::Colour (0xffffd06f);
             case ModuleKind::equalizer: return juce::Colour (0xffb69cff);
-            case ModuleKind::nam: return juce::Colour (0xff68d9b4);
+            case ModuleKind::nam: return knobAccent;
             case ModuleKind::ir: return juce::Colour (0xffec8ed2);
             case ModuleKind::delay: return juce::Colour (0xff5bc5ef);
             case ModuleKind::reverb: return juce::Colour (0xffa792f5);
-            case ModuleKind::looper: return juce::Colour (0xff79d2a3);
+            case ModuleKind::looper: return juce::Colour (0xffc8a0e1);
             case ModuleKind::chorus: return juce::Colour (0xffef8fb4);
             case ModuleKind::pedal: return juce::Colour (0xff80d790);
         }
-        return juce::Colour (0xff70d9b6);
+        return knobAccent;
     }
 
     void timerCallback() override
@@ -3608,7 +3620,7 @@ private:
     void drawArrow (juce::Graphics& g, juce::Point<float> start, juce::Point<float> end,
                     float thickness = 3.0f) const
     {
-        const auto base = juce::Colour (0xff489b88);
+        const auto base = juce::Colour (0xff9671d4);
         g.setColour (base);
         g.drawLine ({ start, end }, thickness);
 
@@ -3622,9 +3634,9 @@ private:
             if (light <= 0.01f)
                 continue;
 
-            g.setColour (juce::Colour (0xff91ffe0).withAlpha (light * 0.25f));
+            g.setColour (juce::Colour (0xffd9bdff).withAlpha (light * 0.25f));
             g.drawLine ({ from, to }, thickness + 4.0f);
-            g.setColour (base.interpolatedWith (juce::Colour (0xffe2fff7), light));
+            g.setColour (base.interpolatedWith (juce::Colour (0xfff2e6ff), light));
             g.drawLine ({ from, to }, thickness + light);
         }
     }
@@ -3899,7 +3911,7 @@ public:
     void paint (juce::Graphics& g) override
     {
         const auto area = getLocalBounds().toFloat().reduced (1.0f);
-        g.setGradientFill ({ juce::Colour (0xff282e2b), area.getCentreX(), area.getY(),
+        g.setGradientFill ({ juce::Colour (0xff30263e), area.getCentreX(), area.getY(),
                              chainSurface, area.getRight(), area.getBottom(), true });
         g.fillRoundedRectangle (area, 18.0f);
         g.setColour (juce::Colour (0xff48423a));
@@ -3990,7 +4002,6 @@ private:
             return;
         g.setColour (juce::Colour::fromRGB (35, 43, 53));
         g.fillRoundedRectangle (track, 5.0f);
-        const auto teal = knobAccent;
         const auto orange = juce::Colour (0xffffa24f);
         const auto red = juce::Colour (0xffff514e);
         const auto db = peak > 0.000001f ? juce::Decibels::gainToDecibels (peak) : -60.0f;
@@ -4012,7 +4023,7 @@ private:
                 g.fillRect (lit);
             }
         };
-        drawZone (-60.0f, -6.0f, teal);
+        drawZone (-60.0f, -6.0f, knobAccent);
         drawZone (-6.0f, 0.0f, orange);
         drawZone (0.0f, 6.0f, red);
         if (clipped)
@@ -4387,12 +4398,7 @@ public:
     CaptureCompareDialog (NAMplifiedAudioProcessor& p, juce::Component& parent)
         : NAMplifiedDialog (parent, "Amp & IR Comparison", 960, 540), juce::Thread ("Amp & IR Comparison"), processor (p)
     {
-        static const auto headingTypeface = juce::Typeface::createSystemTypefaceFor (
-            BinaryData::SpaceGrotesk_ttf, static_cast<size_t> (BinaryData::SpaceGrotesk_ttfSize));
-        if (headingTypeface != nullptr)
-            setHeadingFont (juce::FontOptions().withTypeface (headingTypeface)
-                .withHeight (29.0f)
-                .withVariableSetting ({ juce::FontFeatureTag ("wght"), 650.0f }));
+        setHeadingFont (namplifiedDisplayFontOptions (29.0f));
 
         juce::MemoryBlock original;
         processor.getStateInformation (original);
@@ -6508,32 +6514,18 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     setSize (1600, 900);
     setResizable (true, true);
     setResizeLimits (1200, 760, 1920, 1200);
-    brandIcon.setImage (juce::ImageCache::getFromMemory (
-        BinaryData::NAMplifiedAppIcon_png, BinaryData::NAMplifiedAppIcon_pngSize));
-    brandIcon.setImagePlacement (juce::RectanglePlacement::centred);
-    brandIcon.setTooltip ("NAMplified");
-    addAndMakeVisible (brandIcon);
-    title.setText ("NAMplified", juce::dontSendNotification);
+    title.setText ("NAMPLIFIED 2", juce::dontSendNotification);
     title.setJustificationType (juce::Justification::centredLeft);
-    title.setFont (juce::Font (namplifiedFontOptions (27.0f, juce::Font::bold)));
+    title.setFont (namplifiedDisplayFontOptions (39.0f));
     title.setColour (juce::Label::textColourId, text);
     addAndMakeVisible (title);
-    subtitle.setText ("NEURAL AMP MODELING WORKSTATION", juce::dontSendNotification);
-    subtitle.setJustificationType (juce::Justification::centredLeft);
-    subtitle.setFont (namplifiedFontOptions (9.0f, juce::Font::bold));
-    subtitle.setColour (juce::Label::textColourId, secondaryText);
-    addAndMakeVisible (subtitle);
-    const auto titleWidth = juce::GlyphArrangement::getStringWidth (title.getFont(), title.getText());
-    const auto subtitleWidth = juce::GlyphArrangement::getStringWidth (subtitle.getFont(), subtitle.getText());
-    if (titleWidth > 0.0f)
-        title.setFont (title.getFont().withHorizontalScale (subtitleWidth / titleWidth));
 
     presetLabel.setText ("PRESET", juce::dontSendNotification);
     presetLabel.setFont (namplifiedFontOptions (14.0f, juce::Font::bold));
     presetLabel.setColour (juce::Label::textColourId, secondaryText);
     presetLabel.setJustificationType (juce::Justification::centredRight);
     addAndMakeVisible (presetLabel);
-    presetBox.setTextWhenNothingSelected ("CHOOSE PRESET");
+    presetBox.setTextWhenNothingSelected ("SELECT");
     resetChainButton.setTooltip ("Start a new chain with the default settings");
     presetBox.setTooltip ("Load a saved NAMplified preset");
     pitchLabel.setText ("PITCH", juce::dontSendNotification);
@@ -6546,7 +6538,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     pitchSlider.setSliderStyle (juce::Slider::LinearHorizontal);
     pitchSlider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
     pitchSlider.setColour (juce::Slider::trackColourId, knobAccent);
-    pitchSlider.setColour (juce::Slider::thumbColourId, juce::Colour (0xff4ba9d2));
+    pitchSlider.setColour (juce::Slider::thumbColourId, knobAccent);
     pitchSlider.setTooltip ("Pitch shift in semitones. Centre is unchanged pitch.");
     addAndMakeVisible (pitchSlider);
     pitchAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -6878,10 +6870,10 @@ NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
-    g.setGradientFill ({ juce::Colour (0xff2b3531), bounds.getTopLeft(),
+    g.setGradientFill ({ juce::Colour (0xff392b4c), bounds.getTopLeft(),
                          background, bounds.getBottomRight(), false });
     g.fillRect (bounds);
-    g.setColour (juce::Colour (0xff66d6b2));
+    g.setColour (knobAccent);
     g.fillRect (getLocalBounds().removeFromTop (3));
 }
 
@@ -6902,12 +6894,9 @@ void NAMplifiedAudioProcessorEditor::resized()
         return;
     }
     auto area = getLocalBounds().reduced (20);
-    auto top = area.removeFromTop (42);
-    auto titleArea = top.removeFromLeft (240);
-    brandIcon.setBounds (titleArea.removeFromLeft (40).withSizeKeepingCentre (40, 40));
-    titleArea.removeFromLeft (8);
-    title.setBounds (titleArea.removeFromTop (28));
-    subtitle.setBounds (titleArea);
+    auto top = area.removeFromTop (60);
+    title.setBounds (top.removeFromLeft (246));
+    top = top.withSizeKeepingCentre (top.getWidth(), 42);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     captureCompareButton.setBounds (top.removeFromRight (40).reduced (0, 4));
@@ -6983,9 +6972,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
 {
     eqFullscreen = shouldBeFullscreen;
     const auto showChrome = ! shouldBeFullscreen;
-    brandIcon.setVisible (showChrome);
     title.setVisible (showChrome);
-    subtitle.setVisible (showChrome);
     presetLabel.setVisible (showChrome);
     presetBox.setVisible (showChrome);
     previousPresetButton.setVisible (showChrome);
