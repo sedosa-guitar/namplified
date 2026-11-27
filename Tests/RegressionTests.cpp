@@ -163,6 +163,43 @@ void looperLengthAndSyncTests()
              "Starting the host must resume the captured loop");
 }
 
+void looperCountInAudioTests()
+{
+    using State = TrackLooper::TrackState;
+    TrackLooper looper;
+    constexpr int rate = 8000;
+    constexpr int beatSamples = rate / 2;
+    looper.prepare (rate);
+    juce::AudioBuffer<float> audio (1, beatSamples);
+    const auto advanceBeat = [&]
+    {
+        audio.clear();
+        looper.process (audio, 1, beatSamples, true, false, 120.0f, 4, 1, true);
+    };
+
+    looper.request (0, TrackLooper::Action::record);
+    for (int beat = 1; beat <= 4; ++beat)
+    {
+        advanceBeat();
+        require (looper.getCountInBeat() == beat && looper.getState (0) == State::queued,
+                 "The count-in should display the current beat through the whole beat");
+        require (audio.getMagnitude (0, 0, beatSamples) > 0.05f,
+                 "Every count-in beat must be audible with the playback metronome disabled");
+    }
+
+    for (int beat = 1; beat <= 4; ++beat)
+    {
+        advanceBeat();
+        require (audio.getMagnitude (0, 0, beatSamples) == 0.0f,
+                 "Click off must keep the output quiet after the count-in");
+    }
+    require (looper.hasFinishedFixedTake(), "Count-in must not add samples to a fixed take");
+    looper.togglePlayback();
+    advanceBeat();
+    require (audio.getMagnitude (0, 0, beatSamples) == 0.0f,
+             "The count-in must not be audible in playback of the recorded take");
+}
+
 void looperTrackTests()
 {
     using Action = TrackLooper::Action;
@@ -894,6 +931,7 @@ int main (int argc, char** argv)
         {
             looperTests();
             looperLengthAndSyncTests();
+            looperCountInAudioTests();
         }
         else if (suite == "looper_tracks")
         {

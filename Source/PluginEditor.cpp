@@ -1570,7 +1570,7 @@ public:
         length.setTooltip ("Choose a fixed length or finish the first loop manually on a bar line.");
         addAndMakeVisible (length);
         countIn.setClickingTogglesState (true);
-        countIn.setTooltip ("Wait one bar before recording. Click controls whether the count-in is audible.");
+        countIn.setTooltip ("Play one bar of audible count-in before recording, even when Click is off.");
         addAndMakeVisible (countIn);
         if (! juce::JUCEApplicationBase::isStandaloneApp())
         {
@@ -1579,6 +1579,7 @@ public:
             addAndMakeVisible (hostSync);
         }
         click.setClickingTogglesState (true);
+        click.setTooltip ("Play the metronome during recording and loop playback.");
         click.setColour (juce::TextButton::buttonOnColourId, juce::Colour (0xff245348));
         transport.setColour (juce::TextButton::buttonColourId, juce::Colour (0xff245348));
         addAndMakeVisible (tempo);

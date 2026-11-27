@@ -180,7 +180,7 @@ public:
             alignFirstTake = false;
         }
 
-        int flashBeat = 0;
+        int currentCountInBeat = 0;
         if (enabled && playing.load() && length > 0 && ! hostPaused)
         {
             for (auto& track : tracks)
@@ -199,9 +199,9 @@ public:
                 const auto beatPosition = phaseSamples / samplesPerBeat;
                 const auto beat = static_cast<int> (beatPosition);
                 const auto beatFraction = beatPosition - beat;
-                flashBeat = counting && beatFraction < 0.45 ? beat + 1 : 0;
+                currentCountInBeat = counting ? juce::jmin (beat + 1, beatsPerBar) : 0;
                 const auto seconds = beatFraction * samplesPerBeat / rate;
-                const auto click = clickEnabled && seconds < 0.025
+                const auto click = (counting || clickEnabled) && seconds < 0.025
                     ? static_cast<float> (0.12 * (1.0 - seconds / 0.025)
                          * std::sin (juce::MathConstants<double>::twoPi * (beat % beatsPerBar == 0 ? 1600.0 : 1000.0) * seconds))
                     : 0.0f;
@@ -243,7 +243,7 @@ public:
         }
 
         countInTrack.store (armedTrack);
-        countInBeat.store (flashBeat);
+        countInBeat.store (currentCountInBeat);
         settingLength.store (firstRecording >= 0);
         fixedFirstTake.store (firstRecording >= 0 && fixedLength);
         finishingAtBarEnd.store (finishPending);
