@@ -6,6 +6,7 @@
 class ChainControls;
 class PresetBuilderDialog;
 class CaptureCompareDialog;
+class NAMCaptureDialog;
 
 juce::FontOptions namplifiedFontOptions (float height, int style = juce::Font::plain);
 
@@ -29,6 +30,7 @@ private:
     void showAboutDialog();
     void showPresetBuilder();
     void showCaptureCompare();
+    void showNAMCapture();
     void showHeaderMenu();
     void timerCallback() override;
     void comboBoxChanged (juce::ComboBox*) override;
@@ -50,9 +52,11 @@ private:
     juce::DrawableButton deletePresetButton { "Delete preset", juce::DrawableButton::ImageFitted };
     juce::DrawableButton resetChainButton { "New chain", juce::DrawableButton::ImageFitted };
     juce::DrawableButton captureCompareButton { "Amp & IR Comparison", juce::DrawableButton::ImageFitted };
+    juce::DrawableButton namCaptureButton { "Create NAM Capture", juce::DrawableButton::ImageFitted };
     juce::DrawableButton presetBuilderButton { "Build preset", juce::DrawableButton::ImageFitted };
     std::unique_ptr<PresetBuilderDialog> presetBuilder;
     std::unique_ptr<CaptureCompareDialog> captureCompare;
+    std::unique_ptr<NAMCaptureDialog> namCapture;
     std::unique_ptr<juce::Component> savePresetDialog, aboutDialog;
     juce::DrawableButton headerMenuButton { "Menu", juce::DrawableButton::ImageFitted };
     juce::Label pitchLabel, pitchValueLabel, masterVolumeLabel, masterVolumeValueLabel;

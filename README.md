@@ -81,6 +81,16 @@ Open **Amp & IR Comparison** from the two-panel icon next to Preset Builder. Rec
 
 Switch between **Listen A** and **Listen B** to hear the same loop at matched levels. **Compare volume** controls playback for both rigs. Choose **Apply A** or **Apply B** to bring that amp and cab setup into the current chain.
 
+### Create NAM Capture (V2, Apple Silicon standalone)
+
+Use the waveform-plus icon between **Amp & IR Comparison** and **Preset Builder** to create a playable `.nam` model of your amp or pedal.
+
+1. Set your interface to **48 kHz**. Connect an interface output through a reamp box to your amp or pedal input, then connect the gear's output or a microphone to an interface input. Never connect an amp's speaker output directly to the interface.
+2. Select the connected **Interface output** and **Interface input**, then click **Start capture**. NAMplified downloads the official test WAV on first use and plays it through your gear while recording the return. The signal chain stays muted while the dialog is open.
+3. Click **Train model** and choose a destination folder. When training finishes, **Use in Amp A** loads the resulting `Capture.nam`. Disconnect the capture cables before closing the dialog to resume live monitoring.
+
+Click **Set up trainer** once to download the trainer and PyTorch. The standalone app includes Python, and training runs locally after setup. [Official NAM Trainer Guide](https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/gui.html)
+
 ### Preset Builder (Beta, macOS)
 
 Open **Build Preset**, describe the sound, and select **Build**. The first build asks before downloading llama.cpp and the Qwen model (about 2.5 GB). NAMplified verifies each download with SHA-256 and reuses the local files for later builds. **Open Model Folder** reveals them in Finder. **Close** stops the local server.

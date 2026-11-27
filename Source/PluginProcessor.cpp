@@ -1312,6 +1312,7 @@ bool NAMplifiedAudioProcessor::hasUnsavedParameterChanges() const
 
 void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    hardwareCapture.interrupt();
     const auto channels = static_cast<juce::uint32> (juce::jmax (1, getTotalNumOutputChannels()));
     const juce::dsp::ProcessSpec spec { sampleRate, static_cast<juce::uint32> (samplesPerBlock), channels };
     modelSampleRate.store (sampleRate);
@@ -1379,7 +1380,7 @@ void NAMplifiedAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     cloudReverb.prepare (sampleRate);
 }
 
-void NAMplifiedAudioProcessor::releaseResources() {}
+void NAMplifiedAudioProcessor::releaseResources() { hardwareCapture.interrupt(); }
 
 #ifndef JucePlugin_PreferredChannelConfigurations
 bool NAMplifiedAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -1552,6 +1553,11 @@ bool NAMplifiedAudioProcessor::exportDIWav (const juce::File& file,
 void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;
+    if (hardwareCapture.process (buffer, modelSampleRate.load(), getTotalNumInputChannels(), getTotalNumOutputChannels()))
+    {
+        outputPeak.store (buffer.getNumChannels() > 0 ? buffer.getMagnitude (0, 0, buffer.getNumSamples()) : 0.0f);
+        return;
+    }
     if (recordingActive.load())
     {
         const juce::SpinLock::ScopedTryLockType lock (recordingLock);

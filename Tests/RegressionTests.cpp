@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "NAMCaptureFiles.h"
 
 #include <array>
 #include <cmath>
@@ -743,6 +744,106 @@ void chorusTests (NAMplifiedAudioProcessor& processor)
     }
 }
 
+void namCaptureTests (NAMplifiedAudioProcessor& processor, const juce::File& testHome)
+{
+    using Session = NAMCaptureSession;
+    juce::TemporaryFile stimulusFile (testHome.getNonexistentChildFile ("nam-capture-input", ".wav"));
+    const auto inputFile = stimulusFile.getFile();
+    juce::AudioBuffer<float> stimulusAudio (1, 5);
+    const float inputValues[] { 0.0f, 0.125f, -0.25f, 0.5f, -0.125f };
+    stimulusAudio.copyFrom (0, 0, inputValues, 5);
+    juce::WavAudioFormat format;
+    std::unique_ptr<juce::OutputStream> stream = inputFile.createOutputStream();
+    auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions()
+        .withSampleRate (Session::sampleRate).withNumChannels (1).withBitsPerSample (24));
+    require (writer != nullptr && writer->writeFromAudioSampleBuffer (stimulusAudio, 0, 5),
+             "Could not create the stimulus fixture");
+    writer.reset();
+
+    NAMCaptureFiles::Stimulus stimulus;
+    require (NAMCaptureFiles::readStimulus (inputFile, stimulus).wasOk(), "The capture must accept a valid trainer WAV");
+    processor.prepareToPlay (Session::sampleRate, blockSize);
+    auto& session = processor.getCaptureSession();
+    session.open();
+    juce::AudioBuffer<float> audio (2, 3);
+    juce::MidiBuffer midi;
+    std::array<float, 5> returned { -0.25f, 0.375f, 0.0625f, -0.5f, 0.25f };
+    const auto putReturnOnRight = [&] (size_t start)
+    {
+        for (int sample = 0; sample < audio.getNumSamples(); ++sample)
+        {
+            audio.setSample (0, sample, 0.8f);
+            const auto index = start + static_cast<size_t> (sample);
+            audio.setSample (1, sample, index < returned.size() ? returned[index] : 0.9f);
+        }
+    };
+
+    putReturnOnRight (0);
+    processor.processBlock (audio, midi);
+    require (audio.getMagnitude (0, 3) == 0.0f, "Opening capture must mute normal audio monitoring");
+    require (! session.start (stimulus.audio, 1, 0, 0.25f, 44100.0, 2, 2),
+             "A mismatched device sample rate must be rejected");
+    require (! session.start (stimulus.audio, 2, 0, 0.25f, Session::sampleRate, 2, 2),
+             "An unavailable return channel must be rejected");
+    require (session.start (stimulus.audio, 1, 0, 0.25f, Session::sampleRate, 2, 2),
+             "A valid 48 kHz capture must start");
+
+    for (size_t offset = 0; offset < returned.size(); offset += 3)
+    {
+        putReturnOnRight (offset);
+        processor.processBlock (audio, midi);
+        require (audio.getMagnitude (1, 0, 3) == 0.0f, "The send must stay on its selected output");
+        for (int sample = 0; sample < audio.getNumSamples(); ++sample)
+        {
+            const auto index = offset + static_cast<size_t> (sample);
+            const auto expected = index < returned.size() ? inputValues[index] * 0.25f : 0.0f;
+            require (near (audio.getSample (0, sample), expected, 0.00001),
+                     "The stimulus must bypass the rig and stop at the exact last sample");
+        }
+    }
+    require (session.getState() == Session::State::complete && session.getProgress() == 1.0f,
+             "Recording must finish when the full stimulus has been sent");
+    const auto take = session.takeRecording();
+    require (take.getNumSamples() == 5, "The capture and stimulus must have the same length");
+    for (size_t sample = 0; sample < returned.size(); ++sample)
+        require (take.getSample (0, static_cast<int> (sample)) == returned[sample],
+                 "The recorded take must contain only the unprocessed return channel");
+
+    struct ScopedFolder
+    {
+        juce::File file;
+        ~ScopedFolder() { file.deleteRecursively(); }
+    };
+    const ScopedFolder exportParent { testHome.getNonexistentChildFile ("capture-export", "") };
+    const auto& parent = exportParent.file;
+    require (parent.createDirectory().wasOk(), "Could not create the export fixture directory");
+    juce::File folder;
+    require (NAMCaptureFiles::exportPair (parent, stimulus, take, folder).wasOk(), "The WAV pair must export");
+    juce::MemoryBlock original, exported;
+    require (inputFile.loadFileAsData (original) && folder.getChildFile ("input.wav").loadFileAsData (exported)
+             && original == exported, "The trainer's input WAV must be preserved byte-for-byte");
+    std::unique_ptr<juce::AudioFormatReader> reader (
+        format.createReaderFor (folder.getChildFile ("output.wav").createInputStream().release(), true));
+    require (reader != nullptr && reader->sampleRate == Session::sampleRate && reader->bitsPerSample == 24
+             && reader->numChannels == 1 && reader->lengthInSamples == 5,
+             "The return WAV must match the sample rate, bit depth and length of the original");
+    juce::AudioBuffer<float> restored (1, 5);
+    require (reader->read (&restored, 0, 5, 0, true, false), "The exported return must reopen");
+    for (size_t sample = 0; sample < returned.size(); ++sample)
+        require (near (restored.getSample (0, static_cast<int> (sample)), returned[sample], 0.000001),
+                 "The return WAV must preserve the capture samples");
+
+    require (session.start (stimulus.audio, 1, 0, 0.25f, Session::sampleRate, 2, 2),
+             "A second capture should be possible");
+    session.cancel();
+    putReturnOnRight (0);
+    processor.processBlock (audio, midi);
+    require (session.getState() == Session::State::ready && audio.getMagnitude (0, 3) == 0.0f,
+             "Cancelling must stop the send and leave the rig muted");
+    session.close();
+    require (session.getState() == Session::State::closed, "Closing must release the capture routing");
+}
+
 void diExportTests (const juce::File& testHome)
 {
     juce::TemporaryFile destination (testHome.getNonexistentChildFile ("dry-take", ".wav"));
@@ -970,6 +1071,8 @@ int main (int argc, char** argv)
                 pitchTests (*processor);
             else if (suite == "comparison_apply")
                 comparisonApplyTests (*processor, testHome);
+            else if (suite == "nam_capture")
+                namCaptureTests (*processor, testHome);
             else if (suite == "di_export")
                 diExportTests (testHome);
             else if (suite == "audition_loop")

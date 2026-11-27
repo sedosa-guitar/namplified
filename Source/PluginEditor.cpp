@@ -1,6 +1,8 @@
 #include <map>
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "NAMCaptureFiles.h"
+#include "NAMLocalTrainer.h"
 #include "Tone3000Client.h"
 #include <BinaryData.h>
 #include <unordered_set>
@@ -4587,6 +4589,486 @@ private:
     juce::TextButton close { "Close" };
 };
 
+class NAMCaptureDialog final : public NAMplifiedDialog, private juce::Timer
+{
+public:
+    NAMCaptureDialog (NAMplifiedAudioProcessor& p, juce::Component& parent)
+        : NAMplifiedDialog (parent, "Create NAM Capture", 694, 548),
+          processor (p), session (p.getCaptureSession())
+    {
+        setHeadingFont (namplifiedDisplayFontOptions (29.0f));
+        processor.stopAudition();
+        session.open();
+        styleLabel (muteStatus, "Signal chain muted", 14.0f, knobAccent, true);
+        muteStatus.setJustificationType (juce::Justification::centred);
+        styleLabel (routingHint, "1. Connect interface out to gear in. Return the gear's line out or a mic to interface in.", 15.0f);
+        styleLabel (safety, "Never connect an amp's speaker output directly to your interface.", 14.0f);
+        styleLabel (instructions, "2. Select those channels below. Click Start capture and wait for the test WAV to finish.", 15.0f);
+        styleLabel (trainingHint, "3. Click Train model, choose a folder, then click Use in Amp A when training finishes.", 15.0f);
+        styleLabel (source, "Official NAM input.wav", 16.0f);
+        styleLabel (sendLabel, "Interface output (send)", 15.0f);
+        styleLabel (returnLabel, "Interface input (return)", 15.0f);
+        styleLabel (levelLabel, "Send level", 15.0f);
+        styleLabel (status, {}, 15.0f, knobAccent);
+        styleLabel (exitHint, "Disconnect the capture loop before closing to resume live monitoring.", 14.0f);
+        help.setFont (juce::Font (namplifiedFontOptions (14.0f)), false, juce::Justification::right);
+        help.setColour (juce::HyperlinkButton::textColourId, knobAccent);
+        addAndMakeVisible (help);
+        send.addItem ("Output 1", 1);
+        send.addItem ("Output 2", 2);
+        returnInput.addItem ("Input 1", 1);
+        returnInput.addItem ("Input 2", 2);
+        for (auto* box : { &send, &returnInput })
+        {
+            box->setSelectedId (1, juce::dontSendNotification);
+            addAndMakeVisible (*box);
+        }
+        send.setTitle ("Interface output (send)");
+        returnInput.setTitle ("Interface input (return)");
+        level.setTitle ("Send level");
+        level.setSliderStyle (juce::Slider::LinearHorizontal);
+        level.setTextBoxStyle (juce::Slider::TextBoxRight, false, 68, 30);
+        level.setRange (-48.0, 0.0, 1.0);
+        level.setTextValueSuffix (" dB");
+        level.setValue (-18.0, juce::dontSendNotification);
+        addAndMakeVisible (level);
+        addAndMakeVisible (progressBar);
+        addButton (load, [this] { chooseStimulus(); });
+        addButton (record, [this] { startCapture(); });
+        addButton (cancel, [this]
+        {
+            if (trainerTask == TrainerTask::training)
+            {
+                if (trainer.kill())
+                    trainerCancelled = true;
+                return;
+            }
+            session.cancel();
+            lastState = session.getState();
+            progressValue = 0.0;
+            message ("Capture cancelled.");
+            updateControls();
+        });
+        addButton (save, [this] { chooseExportFolder (false); });
+        addButton (train, [this] { chooseExportFolder (true); });
+        addButton (setup, [this] { prepareTrainer(); });
+        addButton (log, [this] { trainerLog.startAsProcess(); });
+        addButton (useModel, [this]
+        {
+            processor.loadNAMCapture (0, trainedModel);
+            message ("Loading the trained model into Amp A. Disconnect the capture loop before closing.");
+        });
+        addButton (close, [this] { dismiss(); });
+        updateControls();
+        startTimerHz (20);
+        loadOfficialStimulus();
+    }
+
+    ~NAMCaptureDialog() override
+    {
+        if (trainerTask == TrainerTask::training)
+            trainer.kill();
+        session.close();
+    }
+
+    void paint (juce::Graphics& g) override
+    {
+        NAMplifiedDialog::paint (g);
+        const auto bounds = muteStatus.getBounds().toFloat();
+        g.setColour (knobAccent.withAlpha (0.12f));
+        g.fillRoundedRectangle (bounds, 6.0f);
+        g.setColour (knobAccent.withAlpha (0.4f));
+        g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.0f);
+    }
+
+    void resized() override
+    {
+        NAMplifiedDialog::resized();
+        const auto frame = panel();
+        muteStatus.setBounds (frame.getRight() - 184, frame.getY() + 41, 160, 28);
+        auto area = panel().reduced (24);
+        area.removeFromTop (76);
+        routingHint.setBounds (area.removeFromTop (23));
+        safety.setBounds (area.removeFromTop (22).withTrimmedLeft (16));
+        area.removeFromTop (5);
+        instructions.setBounds (area.removeFromTop (23));
+        trainingHint.setBounds (area.removeFromTop (23));
+        area.removeFromTop (8);
+        auto sourceRow = area.removeFromTop (36);
+        load.setBounds (sourceRow.removeFromLeft (168));
+        sourceRow.removeFromLeft (10);
+        help.setBounds (sourceRow.removeFromRight (150));
+        source.setBounds (sourceRow.withTrimmedRight (10));
+        area.removeFromTop (12);
+        auto labels = area.removeFromTop (22);
+        auto channels = area.removeFromTop (38);
+        const auto column = labels.getWidth() / 3;
+        for (auto pair : { std::pair<juce::Component*, juce::Component*> { &sendLabel, &send },
+                           std::pair<juce::Component*, juce::Component*> { &returnLabel, &returnInput },
+                           std::pair<juce::Component*, juce::Component*> { &levelLabel, &level } })
+        {
+            pair.first->setBounds (labels.removeFromLeft (column).withTrimmedRight (10));
+            pair.second->setBounds (channels.removeFromLeft (column).withTrimmedRight (10));
+        }
+        area.removeFromTop (12);
+        progressBar.setBounds (area.removeFromTop (18));
+        area.removeFromTop (8);
+        status.setBounds (area.removeFromTop (52));
+        auto footer = area.removeFromBottom (38);
+        exitHint.setBounds (area.removeFromBottom (28));
+        auto trainerRow = area.removeFromBottom (38);
+        train.setBounds (trainerRow.removeFromLeft (144));
+        trainerRow.removeFromLeft (8);
+        setup.setBounds (trainerRow.removeFromLeft (150));
+        trainerRow.removeFromLeft (8);
+        log.setBounds (trainerRow.removeFromLeft (112));
+        trainerRow.removeFromLeft (8);
+        useModel.setBounds (trainerRow.removeFromLeft (150));
+        close.setBounds (footer.removeFromRight (82));
+        footer.removeFromRight (8);
+        save.setBounds (footer.removeFromRight (144));
+        record.setBounds (footer.removeFromLeft (148));
+        footer.removeFromLeft (8);
+        cancel.setBounds (footer.removeFromLeft (92));
+    }
+
+private:
+    using State = NAMCaptureSession::State;
+    enum class TrainerTask { idle, extractRuntime, setup, training };
+
+    bool trainerReady() const
+    {
+        return NAMLocalTrainer::interpreter().existsAsFile()
+            && NAMLocalTrainer::environment().getChildFile ("ready").existsAsFile();
+    }
+
+    void dismiss() override
+    {
+        if (choosing || trainerTask != TrainerTask::idle)
+            return;
+        session.cancel();
+        NAMplifiedDialog::dismiss();
+    }
+
+    void addButton (juce::TextButton& button, std::function<void()> action)
+    {
+        button.getProperties().set ("namButtonFontHeight", 16.0);
+        button.onClick = std::move (action);
+        addAndMakeVisible (button);
+    }
+
+    void message (const juce::String& value) { status.setText (value, juce::dontSendNotification); }
+
+    void useStimulus (NAMCaptureFiles::Stimulus acquired, const juce::String& name)
+    {
+        stimulus = std::move (acquired);
+        take.setSize (0, 0);
+        progressValue = 0.0;
+        const auto seconds = static_cast<double> (stimulus.audio.getNumSamples()) / NAMCaptureSession::sampleRate;
+        source.setText (name + "  (" + juce::String (seconds, 1) + " s)", juce::dontSendNotification);
+        message ("Choose the interface output and input connected to your gear, then start capture.");
+    }
+
+    void loadOfficialStimulus()
+    {
+        loadingOfficial = true;
+        progressValue = -1.0;
+        message ("Preparing the official NAM test signal.");
+        updateControls();
+        const juce::Component::SafePointer<NAMCaptureDialog> safe (this);
+        const auto cache = NAMLocalTrainer::runtimeDirectory().getParentDirectory().getChildFile ("Capture Signals");
+        if (! juce::Thread::launch ([safe, cache]
+        {
+            auto acquired = std::make_shared<NAMCaptureFiles::Stimulus>();
+            const auto result = NAMCaptureFiles::loadOfficialStimulus (cache, *acquired);
+            juce::MessageManager::callAsync ([safe, acquired, result]
+            {
+                if (safe == nullptr) return;
+                safe->loadingOfficial = false;
+                safe->progressValue = 0.0;
+                if (result.wasOk())
+                    safe->useStimulus (std::move (*acquired), "Official NAM input.wav");
+                else
+                {
+                    safe->source.setText ("No test WAV loaded", juce::dontSendNotification);
+                    safe->message (result.getErrorMessage() + " Reopen to retry or choose a WAV.");
+                }
+                safe->updateControls();
+            });
+        }))
+        {
+            loadingOfficial = false;
+            progressValue = 0.0;
+            source.setText ("No test WAV loaded", juce::dontSendNotification);
+            message ("Could not prepare the official NAM test signal. Choose a local WAV.");
+            updateControls();
+        }
+    }
+
+    void chooseStimulus()
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose the NAM trainer input WAV",
+                                                       lastAssetDirectory ("NAMCapture"), "*.wav");
+        choosing = true;
+        updateControls();
+        const juce::Component::SafePointer<NAMCaptureDialog> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
+            [safe] (const juce::FileChooser& dialog)
+            {
+                if (safe == nullptr) return;
+                safe->choosing = false;
+                const auto file = dialog.getResult();
+                if (file != juce::File())
+                {
+                    NAMCaptureFiles::Stimulus acquired;
+                    const auto result = NAMCaptureFiles::readStimulus (file, acquired);
+                    if (result.wasOk())
+                    {
+                        rememberAssetDirectory ("NAMCapture", file);
+                        safe->useStimulus (std::move (acquired), file.getFileName());
+                    }
+                    else
+                        safe->message (result.getErrorMessage());
+                }
+                safe->updateControls();
+            });
+    }
+
+    void startCapture()
+    {
+        if (const auto audioStatus = processor.getAudioStatus(); audioStatus.isNotEmpty())
+        {
+            message (audioStatus);
+            return;
+        }
+        if (processor.getSampleRate() != NAMCaptureSession::sampleRate)
+        {
+            message ("Set the interface sample rate to 48 kHz in Audio / MIDI Settings.");
+            return;
+        }
+        if (! session.start (stimulus.audio, returnInput.getSelectedId() - 1, send.getSelectedId() - 1,
+                             juce::Decibels::decibelsToGain (static_cast<float> (level.getValue())),
+                             processor.getSampleRate(), processor.getTotalNumInputChannels(), processor.getTotalNumOutputChannels()))
+        {
+            message ("Choose valid send and return channels for the active audio device.");
+            return;
+        }
+        take.setSize (0, 0);
+        lastState = State::recording;
+        progressValue = 0.0;
+        message ("Step 1 of 2. Playing the test signal and recording your gear.");
+        updateControls();
+    }
+
+    void prepareTrainer()
+    {
+        const auto archive = NAMLocalTrainer::bundledArchive();
+        if (! archive.existsAsFile())
+        {
+            message ("This build does not include the local trainer runtime.");
+            return;
+        }
+        const auto directory = NAMLocalTrainer::runtimeDirectory();
+        if (const auto result = directory.createDirectory(); result.failed())
+        {
+            message (result.getErrorMessage());
+            return;
+        }
+        if (! trainer.start ({ "/usr/bin/tar", "-xzf", archive.getFullPathName(),
+                               "-C", directory.getFullPathName() }, 0))
+        {
+            message ("Could not unpack the bundled trainer runtime.");
+            return;
+        }
+        trainerTask = TrainerTask::extractRuntime;
+        progressValue = -1.0;
+        message ("Preparing the bundled trainer runtime.");
+        updateControls();
+    }
+
+    void installTrainer()
+    {
+        const auto folder = NAMLocalTrainer::environment();
+        if (const auto result = folder.createDirectory(); result.failed())
+        {
+            message (result.getErrorMessage());
+            return;
+        }
+        trainerLog = folder.getChildFile ("setup.log");
+        trainerLog.deleteFile();
+        if (! trainer.start ({ NAMLocalTrainer::baseInterpreter().getFullPathName(), "-I", "-u", "-c", NAMLocalTrainer::setupCode,
+                               folder.getFullPathName(), trainerLog.getFullPathName() }, 0))
+        {
+            message ("Could not start the bundled trainer runtime.");
+            return;
+        }
+        trainerTask = TrainerTask::setup;
+        progressValue = -1.0;
+        message ("Installing the local NAM trainer and PyTorch. This can take several minutes.");
+    }
+
+    void startTraining (const juce::File& folder)
+    {
+        trainerLog = folder.getChildFile ("training.log");
+        trainedModel = juce::File();
+        trainerCancelled = false;
+        if (! trainer.start ({ NAMLocalTrainer::interpreter().getFullPathName(), "-I", "-u", "-c",
+                               NAMLocalTrainer::trainingCode, folder.getFullPathName() }, 0))
+        {
+            message ("Could not start the local NAM trainer.");
+            return;
+        }
+        trainerTask = TrainerTask::training;
+        progressValue = -1.0;
+        message ("Step 2 of 2. Training the .nam model locally. Open the log for progress.");
+    }
+
+    void pollTrainer()
+    {
+        if (trainerTask == TrainerTask::idle)
+            return;
+        if (trainer.isRunning())
+        {
+            log.setEnabled (trainerLog.existsAsFile());
+            return;
+        }
+        const auto task = std::exchange (trainerTask, TrainerTask::idle);
+        const auto exitCode = trainer.getExitCode();
+        progressValue = take.getNumSamples() > 0 ? 1.0 : 0.0;
+        if (task == TrainerTask::extractRuntime)
+        {
+            if (exitCode == 0 && NAMLocalTrainer::baseInterpreter().existsAsFile())
+                installTrainer();
+            else
+                message ("Could not unpack the bundled trainer runtime.");
+        }
+        else if (task == TrainerTask::setup)
+        {
+            const auto ready = exitCode == 0 && trainerReady();
+            message (ready ? "Local NAM trainer ready." : "Trainer setup failed. Open the log for details.");
+        }
+        else
+        {
+            const auto model = trainerLog.getSiblingFile ("Capture.nam");
+            if (trainerCancelled)
+                message ("Training cancelled. The recorded WAV files are still saved.");
+            else if (exitCode != 0 || ! model.existsAsFile())
+                message ("Training failed. Open the log for the NAM trainer's checks and details.");
+            else
+            {
+                trainedModel = model;
+                message ("Saved Capture.nam in " + model.getParentDirectory().getFileName()
+                         + ". Select Use in Amp A to load it.");
+            }
+        }
+        updateControls();
+    }
+
+    void chooseExportFolder (bool runTraining)
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose a folder for the NAM training files",
+            juce::File::getSpecialLocation (juce::File::userDocumentsDirectory));
+        choosing = true;
+        updateControls();
+        const juce::Component::SafePointer<NAMCaptureDialog> safe (this);
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+            [safe, runTraining] (const juce::FileChooser& dialog)
+            {
+                if (safe == nullptr) return;
+                safe->choosing = false;
+                const auto parent = dialog.getResult();
+                if (parent != juce::File())
+                {
+                    juce::File destination;
+                    const auto result = NAMCaptureFiles::exportPair (parent, safe->stimulus, safe->take, destination);
+                    if (result.failed())
+                        safe->message (result.getErrorMessage());
+                    else if (runTraining)
+                        safe->startTraining (destination);
+                    else
+                        safe->message ("Saved input.wav and output.wav in " + destination.getFileName() + ".");
+                }
+                safe->updateControls();
+            });
+    }
+
+    void timerCallback() override
+    {
+        pollTrainer();
+        if (trainerTask != TrainerTask::idle)
+            return;
+        const auto current = session.getState();
+        if (current == State::recording)
+            progressValue = session.getProgress();
+        if (current == lastState)
+            return;
+        lastState = current;
+        if (current == State::complete)
+        {
+            progressValue = 1.0;
+            take = session.takeRecording();
+            const auto peak = take.getMagnitude (0, take.getNumSamples());
+            const auto levelText = "Return peak: " + juce::String (juce::Decibels::gainToDecibels (peak), 1) + " dBFS.";
+            if (peak >= 0.999f)
+                message (levelText + " The return may be clipped. Lower the interface input gain and capture again.");
+            else if (peak < 0.001f)
+                message ("Almost no return signal. Check the connections and the selected return channel.");
+            else
+                message (levelText + (trainerReady() ? " Recording complete. Select Train model to create your .nam file."
+                                                      : " Recording complete. Select Set up trainer to enable training."));
+        }
+        else if (current == State::interrupted)
+        {
+            progressValue = 0.0;
+            message ("The audio device changed or stopped. Check the audio settings and try again.");
+        }
+        updateControls();
+    }
+
+    void updateControls()
+    {
+        const auto capturing = session.getState() == State::recording;
+        const auto editable = ! capturing && ! choosing && trainerTask == TrainerTask::idle;
+        for (auto* control : std::initializer_list<juce::Component*> { &load, &send, &returnInput, &level })
+            control->setEnabled (editable);
+        send.setItemEnabled (2, processor.getTotalNumOutputChannels() > 1);
+        returnInput.setItemEnabled (2, processor.getTotalNumInputChannels() > 1);
+        load.setEnabled (editable && ! loadingOfficial);
+        record.setEnabled (editable && ! loadingOfficial && stimulus.audio.getNumSamples() > 0);
+        cancel.setEnabled (capturing || trainerTask == TrainerTask::training);
+        save.setEnabled (editable && take.getNumSamples() > 0);
+        const auto ready = trainerReady();
+        train.setEnabled (editable && ready && take.getNumSamples() > 0);
+        setup.setVisible (! ready);
+        setup.setEnabled (editable && ! loadingOfficial);
+        log.setEnabled (trainerLog.existsAsFile());
+        useModel.setEnabled (editable && trainedModel.existsAsFile());
+        close.setEnabled (! choosing && trainerTask == TrainerTask::idle);
+    }
+
+    NAMplifiedAudioProcessor& processor;
+    NAMCaptureSession& session;
+    State lastState = State::ready;
+    NAMCaptureFiles::Stimulus stimulus;
+    juce::AudioBuffer<float> take;
+    double progressValue = 0.0;
+    juce::ProgressBar progressBar { progressValue };
+    bool choosing = false, trainerCancelled = false, loadingOfficial = false;
+    TrainerTask trainerTask = TrainerTask::idle;
+    juce::ChildProcess trainer;
+    juce::File trainerLog, trainedModel;
+    juce::Slider level;
+    juce::ComboBox send, returnInput;
+    juce::Label muteStatus, instructions, trainingHint, routingHint, safety, status, source, sendLabel, returnLabel, levelLabel, exitHint;
+    juce::HyperlinkButton help { "NAM Trainer Guide",
+        juce::URL ("https://neural-amp-modeler.readthedocs.io/en/latest/tutorials/gui.html") };
+    juce::TextButton load { "Choose other WAV" }, record { "Start capture" }, cancel { "Cancel" };
+    juce::TextButton save { "Export WAV pair" }, close { "Close" };
+    juce::TextButton train { "Train model" }, setup { "Set up trainer" };
+    juce::TextButton log { "Open log" }, useModel { "Use in Amp A" };
+    std::unique_ptr<juce::FileChooser> chooser;
+};
+
 class CaptureCompareDialog final : public NAMplifiedDialog, private juce::Thread, private juce::Timer
 {
 public:
@@ -6894,7 +7376,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
         };
         addAndMakeVisible (*button);
     }
-    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon, compareIcon;
+    juce::Path saveIcon, deleteIcon, newChainIcon, builderIcon, compareIcon, captureIcon;
     saveIcon.addRoundedRectangle (2.0f, 2.0f, 16.0f, 16.0f, 2.0f);
     saveIcon.addRectangle (6.0f, 2.0f, 8.0f, 5.0f);
     saveIcon.addRoundedRectangle (6.0f, 11.0f, 8.0f, 7.0f, 1.0f);
@@ -6928,6 +7410,18 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     captureCompareButton.setTooltip ("Amp & IR Comparison: audition two amp and cab rigs");
     captureCompareButton.onClick = [this] { showCaptureCompare(); };
     addAndMakeVisible (captureCompareButton);
+    line (captureIcon, 1.0f, 9.0f, 1.0f, 11.0f);
+    line (captureIcon, 4.0f, 6.0f, 4.0f, 14.0f);
+    line (captureIcon, 7.0f, 3.0f, 7.0f, 17.0f);
+    line (captureIcon, 10.0f, 6.0f, 10.0f, 14.0f);
+    line (captureIcon, 13.0f, 9.0f, 13.0f, 11.0f);
+    line (captureIcon, 16.0f, 5.0f, 22.0f, 5.0f);
+    line (captureIcon, 19.0f, 2.0f, 19.0f, 8.0f);
+    setHeaderIcon (namCaptureButton, captureIcon);
+    namCaptureButton.setTooltip ("Create NAM Capture");
+    namCaptureButton.onClick = [this] { showNAMCapture(); };
+    addChildComponent (namCaptureButton);
+    namCaptureButton.setVisible (audioProcessor.hasAudioSettingsCallback());
     setHeaderIcon (savePresetButton, saveIcon);
     setHeaderIcon (deletePresetButton, deleteIcon);
     setHeaderIcon (resetChainButton, newChainIcon);
@@ -7132,6 +7626,7 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
 
 NAMplifiedAudioProcessorEditor::~NAMplifiedAudioProcessorEditor()
 {
+    namCapture.reset();
     captureCompare.reset();
     presetBuilder.reset();
     savePresetDialog.reset();
@@ -7151,6 +7646,8 @@ void NAMplifiedAudioProcessorEditor::paint (juce::Graphics& g)
 
 void NAMplifiedAudioProcessorEditor::resized()
 {
+    if (namCapture != nullptr)
+        namCapture->setBounds (getLocalBounds());
     if (captureCompare != nullptr)
         captureCompare->setBounds (getLocalBounds());
     if (presetBuilder != nullptr)
@@ -7174,6 +7671,8 @@ void NAMplifiedAudioProcessorEditor::resized()
     top = top.withSizeKeepingCentre (top.getWidth(), 44);
     headerMenuButton.setBounds (top.removeFromRight (44).reduced (0, 4));
     presetBuilderButton.setBounds (top.removeFromRight (40).reduced (0, 4));
+    if (namCaptureButton.isVisible())
+        namCaptureButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     captureCompareButton.setBounds (top.removeFromRight (40).reduced (0, 4));
     top.removeFromRight (8);
     outputModeBox.setBounds (top.removeFromRight (88).reduced (0, 4));
@@ -7260,6 +7759,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     resetChainButton.setVisible (showChrome);
     presetBuilderButton.setVisible (showChrome);
     captureCompareButton.setVisible (showChrome);
+    namCaptureButton.setVisible (showChrome && audioProcessor.hasAudioSettingsCallback());
     headerMenuButton.setVisible (showChrome);
     masterVolumeLabel.setVisible (showChrome);
     masterVolumeSlider.setVisible (showChrome);
@@ -7587,6 +8087,24 @@ void NAMplifiedAudioProcessorEditor::showCaptureCompare()
     }), false);
 }
 
+void NAMplifiedAudioProcessorEditor::showNAMCapture()
+{
+    if (namCapture != nullptr || captureCompare != nullptr || presetBuilder != nullptr
+        || ! audioProcessor.hasAudioSettingsCallback())
+        return;
+    namCapture = std::make_unique<NAMCaptureDialog> (audioProcessor, *this);
+    namCapture->setBounds (getLocalBounds());
+    addAndMakeVisible (*namCapture);
+    namCapture->setWantsKeyboardFocus (true);
+    namCapture->grabKeyboardFocus();
+    const juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safe (this);
+    namCapture->enterModalState (true, juce::ModalCallbackFunction::create ([safe] (int)
+    {
+        if (safe != nullptr)
+            safe->namCapture.reset();
+    }), false);
+}
+
 void NAMplifiedAudioProcessorEditor::showPresetBuilder()
 {
     if (presetBuilder != nullptr)
@@ -7610,7 +8128,10 @@ void NAMplifiedAudioProcessorEditor::showHeaderMenu()
     menu.setLookAndFeel (editorLookAndFeel.get());
     menu.addItem (1, midiLearnArmed ? "Cancel MIDI Learn" : "MIDI Learn");
     if (audioProcessor.hasAudioSettingsCallback())
+    {
         menu.addItem (2, "Audio / MIDI Settings");
+        menu.addItem (4, "Create NAM Capture...");
+    }
     menu.addItem (3, "About");
 
     juce::Component::SafePointer<NAMplifiedAudioProcessorEditor> safeThis (this);
@@ -7636,6 +8157,8 @@ void NAMplifiedAudioProcessorEditor::showHeaderMenu()
                 editor->audioProcessor.showAudioSettings();
             else if (result == 3)
                 editor->showAboutDialog();
+            else if (result == 4)
+                editor->showNAMCapture();
         }
     });
 }

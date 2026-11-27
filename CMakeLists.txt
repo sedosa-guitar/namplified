@@ -97,6 +97,21 @@ if (APPLE)
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
     )
+    set(trainer_runtime_copy)
+    if ("arm64" IN_LIST CMAKE_OSX_ARCHITECTURES OR
+        (NOT CMAKE_OSX_ARCHITECTURES AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64"))
+        set(trainer_python_archive "${CMAKE_CURRENT_BINARY_DIR}/NAMTrainerPython-20261110.tar.gz")
+        set(trainer_download_script "${CMAKE_CURRENT_SOURCE_DIR}/cmake/DownloadNAMTrainerPython.cmake")
+        add_custom_command(OUTPUT "${trainer_python_archive}"
+            COMMAND ${CMAKE_COMMAND} "-DARCHIVE=${trainer_python_archive}" -P "${trainer_download_script}"
+            DEPENDS "${trainer_download_script}"
+            VERBATIM)
+        add_custom_target(NAMTrainerPython DEPENDS "${trainer_python_archive}")
+        add_dependencies(NAMplified_Standalone NAMTrainerPython)
+        set_property(TARGET NAMplified_Standalone APPEND PROPERTY LINK_DEPENDS "${trainer_python_archive}")
+        set(trainer_runtime_copy COMMAND ${CMAKE_COMMAND} -E copy_if_different "${trainer_python_archive}"
+            "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/NAMTrainerPython-20261110.tar.gz")
+    endif()
     add_custom_command(TARGET NAMplified_Standalone POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E rm -rf
             "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources/Factory"
@@ -105,6 +120,7 @@ if (APPLE)
             "-DICON_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
             "-DRESOURCES_DIR=$<TARGET_BUNDLE_DIR:NAMplified_Standalone>/Contents/Resources"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"
+        ${trainer_runtime_copy}
         COMMAND /usr/bin/codesign --force --sign - "$<TARGET_BUNDLE_DIR:NAMplified_Standalone>"
         VERBATIM
     )
@@ -205,7 +221,7 @@ if (NAMPLIFIED_BUILD_TESTS)
     if (APPLE)
         set(test_home "${CMAKE_CURRENT_BINARY_DIR}/test-home")
         file(MAKE_DIRECTORY "${test_home}")
-        foreach(suite preset_names preset_roundtrip looper_host routing effect_routing cab delay chorus pitch di_export audition_loop comparison_apply centered_cab)
+        foreach(suite preset_names preset_roundtrip looper_host routing effect_routing cab delay chorus pitch di_export nam_capture audition_loop comparison_apply centered_cab)
             add_test(NAME ${suite} COMMAND NAMplifiedTests ${suite} "${test_home}")
             set_tests_properties(${suite} PROPERTIES
                 ENVIRONMENT "CFFIXED_USER_HOME=${test_home}"
