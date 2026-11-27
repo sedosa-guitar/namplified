@@ -86,6 +86,73 @@ void looperTests()
              "The time limit should stop at the last full 7/8 bar under 60 seconds");
 }
 
+void looperLengthAndSyncTests()
+{
+    using Action = TrackLooper::Action;
+    using State = TrackLooper::TrackState;
+    constexpr int rate = 1000;
+    constexpr int bar = 2000;
+    TrackLooper looper;
+    juce::AudioBuffer<float> buffer (1, 211);
+    const auto advance = [&] (int samples, int bars, bool countIn, const TrackLooper::HostTiming* host = nullptr)
+    {
+        while (samples > 0)
+        {
+            const auto count = juce::jmin (samples, buffer.getNumSamples());
+            buffer.clear();
+            juce::FloatVectorOperations::fill (buffer.getWritePointer (0), 0.1f, count);
+            looper.process (buffer, 1, count, true, false, 120.0f, 4, bars, countIn, host);
+            samples -= count;
+        }
+    };
+    for (const auto bars : { 1, 2, 4 })
+    {
+        looper.prepare (rate);
+        looper.request (0, Action::record);
+        advance (1, bars, false);
+        require (looper.getState (0) == State::recording, "Count-in off must record from the first sample");
+        looper.request (0, Action::record);
+        advance (bar * bars - 2, bars, false);
+        require (looper.getState (0) == State::recording, "A fixed length must ignore the manual finish command");
+        advance (1, bars, false);
+        require (looper.getState (0) == State::playing && near (looper.getLengthSeconds(), bars * 2.0, 0.001),
+                 "A fixed take must end exactly at the requested bar");
+    }
+
+    looper.prepare (rate);
+    looper.request (0, Action::record);
+    advance (bar, 1, true);
+    require (looper.getState (0) == State::queued, "An optional count-in must wait a full bar");
+    advance (1, 1, true);
+    require (looper.getState (0) == State::recording && near (looper.getElapsedSeconds(), 0.001, 0.0001),
+             "The count-in must not enter the recorded take");
+
+    looper.prepare (rate);
+    looper.request (0, Action::record);
+    TrackLooper::HostTiming host { 150.0, 6, 8, 1.5, 0.0, true, false };
+    advance (bar, 1, false, &host);
+    require (looper.getState (0) == State::queued && looper.isWaitingForHost(),
+             "A stopped DAW must keep the take armed");
+    host.playing = true;
+    advance (600, 1, false, &host); // Half of the host's 6/8 bar at 150 quarter notes per minute.
+    require (looper.getState (0) == State::queued, "The take must wait for the host's next downbeat");
+    advance (1, 1, false, &host);
+    require (looper.getState (0) == State::recording, "Recording must start on the host's downbeat");
+    advance (1199, 1, false, &host);
+    require (looper.getState (0) == State::playing && near (looper.getLengthSeconds(), 1.2, 0.001),
+             "Host BPM and denominator must determine the sample length");
+    advance (117, 1, false, &host);
+    const auto position = looper.getElapsedSeconds();
+    host.playing = false;
+    advance (800, 1, false, &host);
+    require (near (looper.getElapsedSeconds(), position, 0.0001),
+             "Stopping the host must pause the loop position");
+    host.playing = true;
+    advance (83, 1, false, &host);
+    require (near (looper.getElapsedSeconds(), 0.2, 0.0001),
+             "Starting the host must resume the captured loop");
+}
+
 void looperTrackTests()
 {
     using Action = TrackLooper::Action;
@@ -129,6 +196,44 @@ void looperTrackTests()
     render (rate);
     require (looper.getState (0) == State::empty && looper.getState (1) == State::muted,
              "Clearing one track should preserve the other");
+}
+
+void looperHostTests (NAMplifiedAudioProcessor& processor)
+{
+    struct PlayHead final : juce::AudioPlayHead
+    {
+        juce::Optional<PositionInfo> getPosition() const override { return position; }
+        PositionInfo position;
+    };
+    PlayHead playHead;
+    playHead.position.setBpm (150.0);
+    playHead.position.setTimeSignature (juce::AudioPlayHead::TimeSignature { 6, 8 });
+    playHead.position.setPpqPosition (0.0);
+    playHead.position.setPpqPositionOfLastBarStart (0.0);
+    processor.setPlayHead (&playHead);
+    processor.prepareToPlay (sampleRate, blockSize);
+    set (processor, "looperOn", 1);
+    set (processor, "looperLength", 1);
+    set (processor, "looperCountIn", 0);
+    set (processor, "looperHostSync", 1);
+    auto& looper = processor.getLooper();
+    juce::AudioBuffer<float> audio (2, blockSize);
+    juce::MidiBuffer midi;
+    const auto advance = [&]
+    {
+        audio.clear();
+        processor.processBlock (audio, midi);
+    };
+    looper.request (0, TrackLooper::Action::record);
+    advance();
+    require (looper.getState (0) == TrackLooper::TrackState::queued && looper.isWaitingForHost(),
+             "The processor must pass the host's stopped transport to the enabled looper");
+    playHead.position.setIsPlaying (true);
+    advance();
+    require (looper.getState (0) == TrackLooper::TrackState::recording
+             && near (looper.getLengthSeconds(), 1.2, 0.001),
+             "The looper parameters must use the host's tempo and meter at the downbeat");
+    processor.setPlayHead (nullptr);
 }
 
 void presetRoundtripTests (std::unique_ptr<NAMplifiedAudioProcessor>& processor)
@@ -778,6 +883,7 @@ int main (int argc, char** argv)
         if (suite == "looper")
         {
             looperTests();
+            looperLengthAndSyncTests();
         }
         else if (suite == "looper_tracks")
         {
@@ -798,6 +904,8 @@ int main (int argc, char** argv)
                 presetNameTests (*processor);
             else if (suite == "preset_roundtrip")
                 presetRoundtripTests (processor);
+            else if (suite == "looper_host")
+                looperHostTests (*processor);
             else if (suite == "routing")
                 routingTests (*processor);
             else if (suite == "effect_routing")
