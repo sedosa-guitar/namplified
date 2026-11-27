@@ -629,6 +629,9 @@ NAMplifiedAudioProcessor::IRParameters::ParameterLayout NAMplifiedAudioProcessor
     layout.add (std::make_unique<juce::AudioParameterChoice> (
         juce::ParameterID { "looperMeter", 1 }, "Looper Time Signature",
         juce::StringArray { "2/4", "3/4", "4/4", "5/4", "6/8", "7/8" }, 2));
+    layout.add (std::make_unique<juce::AudioParameterChoice> (
+        juce::ParameterID { "parallelOutput", 1 }, "Parallel Amp Output",
+        juce::StringArray { "Stereo Blend", "Amp 1 L / Amp 2 R" }, 0));
     return layout;
 }
 
@@ -1444,7 +1447,7 @@ bool NAMplifiedAudioProcessor::renderAudition (const juce::MemoryBlock& state,
     return true;
 }
 
-void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop)
+void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop, float rigGain)
 {
     const juce::SpinLock::ScopedLockType lock (auditionLock);
     const auto keepPosition = auditionLoop && loop && auditionRate == sampleRate
@@ -1452,10 +1455,11 @@ void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, dou
     auditionAudio = std::move (audio);
     auditionRate = sampleRate;
     auditionLoop = loop;
+    setCompareRigGain (rigGain);
     if (! keepPosition)
     {
         auditionPosition = 0;
-        currentCompareVolume = compareVolume.load (std::memory_order_relaxed);
+        currentCompareVolume = compareVolume.load (std::memory_order_relaxed) * rigGain;
     }
 }
 
@@ -1565,8 +1569,9 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     {
         const juce::SpinLock::ScopedTryLockType lock (auditionLock);
-        const auto compareGain = compareVolume.load (std::memory_order_relaxed);
-        if (lock.isLocked() && (! auditionLoop || compareGain > 0.0f || currentCompareVolume > 0.0f)
+        const auto masterGain = compareVolume.load (std::memory_order_relaxed);
+        const auto compareGain = masterGain * compareRigGain.load (std::memory_order_relaxed);
+        if (lock.isLocked() && (! auditionLoop || masterGain > 0.0f || currentCompareVolume > 0.0f)
             && auditionRate == modelSampleRate.load()
             && auditionPosition < auditionAudio.getNumSamples())
         {
@@ -2091,6 +2096,8 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         if (activeCount > 0)
         {
             const auto firstAmpShare = get ("ampParallelBlend", 0.5f);
+            const auto splitOutput = activeCount == 2 && numChannels == 2
+                && enabled ("parallelOutput") && ! enabled ("outputMode");
             const auto crossoverEnabled = activeCount == 2 && enabled ("ampCrossoverOn");
             const auto crossoverFrequency = get ("ampCrossoverFreq", 250.0f);
             for (int channel = 0; channel < numChannels; ++channel)
@@ -2126,8 +2133,17 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
                 if (! sharedParallelIR)
                     processCabIR (branch, slot);
                 processEffectsAt (branch, slot == 0 ? EffectPosition::pathA : EffectPosition::pathB);
-                for (int channel = 0; channel < numChannels; ++channel)
-                    ampMixBuffer.addFrom (channel, 0, branch, channel, 0, numSamples, weight);
+                if (splitOutput)
+                {
+                    // Fold each stereo branch to its assigned side, retaining its blend level.
+                    for (int channel = 0; channel < 2; ++channel)
+                        ampMixBuffer.addFrom (slot, 0, branch, channel, 0, numSamples, 0.5f * weight);
+                }
+                else
+                {
+                    for (int channel = 0; channel < numChannels; ++channel)
+                        ampMixBuffer.addFrom (channel, 0, branch, channel, 0, numSamples, weight);
+                }
             }
             for (int channel = 0; channel < numChannels; ++channel)
                 buffer.copyFrom (channel, 0, ampMixBuffer, channel, 0, numSamples);
@@ -2234,7 +2250,7 @@ void NAMplifiedAudioProcessor::setStateInformation (const void* data, int sizeIn
             return;
         auto state = juce::ValueTree::fromXml (*xml);
         const auto usedAdvancedChorus = state.getChildWithProperty ("id", "chorusRandom").isValid();
-        for (const auto* id : { "outputMode", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
+        for (const auto* id : { "outputMode", "parallelOutput", "looperOn", "looperClick", "looperTempo", "looperMeter", "chorusMode", "chorusRandom", "chorusRegen",
                                 "chorusDerez", "chorusBuffer", "chorusOutput",
                                 "delayPosition", "reverbPosition", "chorusPosition" })
         {

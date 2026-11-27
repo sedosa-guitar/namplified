@@ -177,7 +177,7 @@ void routingTests (NAMplifiedAudioProcessor& processor)
     processor.prepareToPlay (sampleRate, blockSize);
     juce::AudioBuffer<float> buffer (2, blockSize);
     juce::MidiBuffer midi;
-    const auto renderLevel = [&]
+    const auto renderStereo = [&]
     {
         for (int block = 0; block < 12; ++block)
         {
@@ -186,9 +186,14 @@ void routingTests (NAMplifiedAudioProcessor& processor)
                 buffer.setSample (0, i, 0.025f);
             processor.processBlock (buffer, midi);
         }
-        require (near (buffer.getSample (0, 64), buffer.getSample (1, 64), 0.00001),
+        return std::array { buffer.getSample (0, 64), buffer.getSample (1, 64) };
+    };
+    const auto renderLevel = [&]
+    {
+        const auto stereo = renderStereo();
+        require (near (stereo[0], stereo[1], 0.00001),
                  "A mono input must reach both stereo outputs equally");
-        return buffer.getSample (0, 64);
+        return stereo[0];
     };
 
     set (processor, "ampRouting", 1);
@@ -215,6 +220,23 @@ void routingTests (NAMplifiedAudioProcessor& processor)
     require (near (renderLevel(), ampTwo, 0.0005), "0/100 should isolate Amp 2");
     set (processor, "amp2On", 0);
     require (near (renderLevel(), ampOne, 0.0005), "The remaining amp should receive 100% regardless of blend");
+    set (processor, "amp2On", 1);
+    set (processor, "ampParallelBlend", 0.5f);
+    set (processor, "parallelOutput", 1);
+    const auto split = renderStereo();
+    require (near (split[0], ampOne * 0.5f, 0.0005) && near (split[1], ampTwo * 0.5f, 0.0005),
+             "Split output must put Amp 1 on the left and Amp 2 on the right");
+    set (processor, "ampParallelBlend", 0.0f);
+    const auto rightOnly = renderStereo();
+    require (std::abs (rightOnly[0]) < 0.0001f && near (rightOnly[1], ampTwo, 0.0005),
+             "A muted route must not leak into the opposite channel");
+    set (processor, "ampParallelBlend", 0.5f);
+    set (processor, "outputMode", 1);
+    require (near (renderLevel(), blended, 0.0005), "Mono output must retain the full original blend level");
+    set (processor, "outputMode", 0);
+    set (processor, "amp2On", 0);
+    require (near (renderLevel(), ampOne, 0.0005), "One amp must remain centred in split mode");
+    set (processor, "parallelOutput", 0);
     set (processor, "ampParallelBlend", 0.5f);
     set (processor, "amp1On", 0);
     set (processor, "amp2On", 0);
@@ -459,6 +481,40 @@ void effectRoutingTests (NAMplifiedAudioProcessor& processor)
     require (seriesDry < 0.0001f && near (seriesEcho, postEcho, 0.0001),
              "Series must render a saved branch assignment after the mixer");
 
+    set (processor, "ampRouting", 1);
+    set (processor, "parallelIRMode", 0);
+    set (processor, "amp1On", 1);
+    set (processor, "ampParallelBlend", 0.5f);
+    set (processor, "parallelOutput", 1);
+    set (processor, "delayPosition", static_cast<float> (Position::pathA));
+    processor.prepareToPlay (sampleRate, blockSize);
+    juce::AudioBuffer<float> splitBuffer (2, blockSize);
+    juce::MidiBuffer splitMidi;
+    float leftEcho = 0.0f;
+    float rightDry = 0.0f;
+    for (int block = 0; block < 16; ++block)
+    {
+        splitBuffer.clear();
+        if (block == 0)
+            splitBuffer.setSample (1, 0, 0.08f);
+        processor.processBlock (splitBuffer, splitMidi);
+        const auto left = splitBuffer.getMagnitude (0, 0, blockSize);
+        const auto right = splitBuffer.getMagnitude (1, 0, blockSize);
+        if (block < 7)
+        {
+            require (left < 0.0001f, "The fully wet Amp 1 path must have no dry transient");
+            rightDry = juce::jmax (rightDry, right);
+        }
+        else
+        {
+            require (right < 0.0001f, "Amp 1's delay must not leak into the dry Amp 2 output");
+            leftEcho = juce::jmax (leftEcho, left);
+        }
+    }
+    require (leftEcho > 0.005f && rightDry > 0.005f,
+             "Routing must fold Amp 1's stereo delay to the left and preserve the right dry path");
+    set (processor, "delayPosition", static_cast<float> (Position::pathB));
+
     set (processor, "reverbPosition", static_cast<float> (Position::beforeAmps));
     set (processor, "chorusPosition", static_cast<float> (Position::pathA));
     juce::MemoryBlock saved;
@@ -599,6 +655,19 @@ void auditionLoopTests (NAMplifiedAudioProcessor& processor)
             processLiveInput();
         return output.getMagnitude (0, 4);
     };
+    processor.setCompareRigGain (0.0f);
+    processLiveInput();
+    processLiveInput();
+    require (output.getMagnitude (0, 4) < 0.00001f,
+             "Muting one rig must silence its audition without switching to live input");
+
+    processor.setCompareRigGain (0.25f);
+    processor.setCompareVolume (0.5f);
+    processLiveInput();
+    processLiveInput();
+    require (near (output.getMagnitude (0, 4), 0.6f * 0.25f * 0.5f, 0.00001),
+             "Rig level and comparison volume must multiply after the gain ramp");
+
     processor.setCompareVolume (0.0f);
     const auto liveLevel = measureLiveOutput();
     require (liveLevel > 0.001f && liveLevel < 0.1f,

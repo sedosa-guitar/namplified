@@ -29,9 +29,9 @@ Die Nummern geben die Arbeitsreihenfolge an. Erst kommen Spielgefühl und Rig-Fu
 |---|---|---|---|
 | Offen | 1 | **Pitch Shifter überarbeiten** – virtuelles Downtuning, schnelle Riffs und Akkorde als Hörtests | Kern |
 | Offen | 2 | **Effekte verbessern und erweitern** – zuerst Stereo-Chorus, Delay mit Tap-Tempo und Room/Plate-Reverb | Kern |
-| Umgesetzt und getestet auf `feat/effect-routing` | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer | Empfohlene Ergänzung |
+| Umgesetzt und getestet | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer. Dual-Ausgang als Stereo-Blend oder Amp 1 links / Amp 2 rechts | Empfohlene Ergänzung |
 | Offen | 4 | **Expression-Pedal und Makros** – MIDI Learn, Min/Max, mehrere Parameter pro Pedal, Zuordnung im Rig speichern | Empfohlene Ergänzung |
-| Teilweise umgesetzt (Farben, Schriftzug und App-Icon) | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
+| Teilweise umgesetzt (Farben, Schriftzug, App-Icon, Blockauswahl und separate A/B-Pegel) | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
 | Umgesetzt und getestet auf `feat/di-export` | 6 | **Rec DI ergänzen** – den trockenen Take aus dem Amp-/Cab-A/B-Vergleich als WAV speichern und bei Bedarf in die DAW importieren | Kern |
 | Offen | 7 | **Aufgenommene DI durchs Rig abspielen** – denselben Take zum Einstellen und Vergleichen verwenden | Empfohlene Ergänzung |
 | Offen | 8 | **Looper erweitern** – frei oder 1/2/4 Takte, BPM, DAW-Sync, optionaler Einzähler | Kern |

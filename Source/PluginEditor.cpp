@@ -3059,10 +3059,14 @@ public:
 
         if (isSelected)
         {
-            g.setColour (selectionAccent);
-            g.drawRoundedRectangle (r.reduced (3.0f), cornerRadius - 3.0f, 6.0f);
-            g.setColour (selectionAccent.withAlpha (0.4f));
-            g.drawRoundedRectangle (r.reduced (8.0f), cornerRadius - 8.0f, 1.5f);
+            constexpr auto borderWidth = 4.0f;
+            juce::Path outline;
+            outline.setUsingNonZeroWinding (false);
+            outline.addRoundedRectangle (r, cornerRadius);
+            outline.addRoundedRectangle (r.reduced (borderWidth), cornerRadius - borderWidth);
+            g.setGradientFill ({ selectionAccent.interpolatedWith (juce::Colours::white, 0.48f), r.getTopLeft(),
+                                 selectionAccent, r.getBottomRight(), false });
+            g.fillPath (outline);
         }
     }
 
@@ -4436,6 +4440,21 @@ public:
                                        juce::dontSendNotification);
             rig.routing.onChange = [this, i] { changed (i); };
             addAndMakeVisible (rig.routing);
+            styleLabel (rig.volumeLabel, "Level", 15.0f);
+            rig.volume.setName ("Rig " + juce::String (letter) + " level");
+            rig.volume.setSliderStyle (juce::Slider::LinearHorizontal);
+            rig.volume.setTextBoxStyle (juce::Slider::TextBoxRight, false, 54, 28);
+            rig.volume.setRange (0.0, 100.0, 1.0);
+            rig.volume.setTextValueSuffix (" %");
+            rig.volume.setValue (100.0, juce::dontSendNotification);
+            rig.volume.setDoubleClickReturnValue (true, 100.0);
+            rig.volume.setTooltip ("Adjust this rig after level matching.");
+            rig.volume.onValueChange = [this, i]
+            {
+                if (heard == i)
+                    processor.setCompareRigGain (static_cast<float> (rigs[i].volume.getValue() / 100.0));
+            };
+            addAndMakeVisible (rig.volume);
             rig.listen.setButtonText ("Listen " + juce::String (letter));
             rig.apply.setButtonText ("Apply " + juce::String (letter));
             addButton (rig.listen, [this, i] { listen (i); });
@@ -4525,6 +4544,9 @@ public:
             auto actions = box.removeFromBottom (36);
             rig.apply.setBounds (actions.removeFromRight (100));
             rig.listen.setBounds (actions.removeFromLeft (100));
+            actions = actions.reduced (10, 0);
+            rig.volumeLabel.setBounds (actions.removeFromLeft (42));
+            rig.volume.setBounds (actions);
         }
         auto footer = area.removeFromBottom (36);
         close.setBounds (footer.removeFromRight (88));
@@ -4556,7 +4578,8 @@ private:
     struct Rig
     {
         std::array<Asset, 4> assets;
-        juce::Label title;
+        juce::Label title, volumeLabel;
+        juce::Slider volume;
         juce::ComboBox routing;
         juce::TextButton listen, apply;
     };
@@ -4908,7 +4931,8 @@ private:
         juce::AudioBuffer<float> audio;
         audio.makeCopyOf (rendered[i]);
         audio.applyGain (target / rms[i]);
-        processor.playAudition (std::move (audio), renderRate, true);
+        const auto rigGain = static_cast<float> (rigs[i].volume.getValue() / 100.0);
+        processor.playAudition (std::move (audio), renderRate, true, rigGain);
         heard = i;
         message (i == 0 ? "Listening to Rig A" : "Listening to Rig B");
     }
@@ -6623,8 +6647,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (masterVolumeSlider);
     masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "masterVolume", masterVolumeSlider);
-    outputModeBox.addItem ("Stereo", 1);
-    outputModeBox.addItem ("Mono", 2);
+    outputModeBox.addItem ("STEREO", 1);
+    outputModeBox.addItem ("MONO", 2);
     outputModeBox.setName ("outputMode");
     outputModeBox.setTitle ("Output mode");
     outputModeBox.setTooltip ("Mono averages the left and right signals and sends the result to both outputs.");
@@ -6834,6 +6858,15 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     parallelIRBox.addListener (this);
     parallelIRBox.setVisible (false);
 
+    parallelOutputBox.addItem ("STEREO BLEND", 1);
+    parallelOutputBox.addItem ("AMP 1 L / AMP 2 R", 2);
+    parallelOutputBox.setName ("parallelOutput");
+    parallelOutputBox.setTooltip ("With two amps active, send Amp 1 left and Amp 2 right at the mixer. "
+                                  "Stereo effects after the mixer can still spread the signal.");
+    addChildComponent (parallelOutputBox);
+    parallelOutputAttachment = std::make_unique<juce::AudioProcessorValueTreeState::ComboBoxAttachment> (
+        processor.parameters, "parallelOutput", parallelOutputBox);
+
     ampCrossoverButton.setTooltip ("Enable a 4th-order crossover in parallel mode: AMP 1 carries lows, AMP 2 carries highs. It is bypassed when only one amp is active.");
     ampCrossoverButton.setClickingTogglesState (true);
     ampCrossoverButton.setColour (juce::TextButton::buttonColourId, panel);
@@ -6999,6 +7032,11 @@ void NAMplifiedAudioProcessorEditor::resized()
         controlRow.removeFromRight (8);
         parallelIRBox.setBounds (controlRow.removeFromRight (190).reduced (0, 2));
     }
+    if (parallelOutputBox.isVisible())
+    {
+        controlRow.removeFromRight (8);
+        parallelOutputBox.setBounds (controlRow.removeFromRight (168).reduced (0, 2));
+    }
     if (ampCrossoverButton.isVisible())
     {
         controlRow.removeFromRight (8);
@@ -7043,6 +7081,7 @@ void NAMplifiedAudioProcessorEditor::setEqFullscreen (bool shouldBeFullscreen)
     seriesRoutingButton.setVisible (showChrome);
     parallelRoutingButton.setVisible (showChrome);
     parallelIRBox.setVisible (showChrome && parallelIRBox.getSelectedId() == 2);
+    parallelOutputBox.setVisible (showChrome && parallelIRBox.isVisible());
     if (showChrome)
         updateRoutingDisplay();
     resized();
@@ -7235,6 +7274,7 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
     seriesRoutingButton.setToggleState (! parallel, juce::dontSendNotification);
     parallelRoutingButton.setToggleState (parallel, juce::dontSendNotification);
     parallelIRBox.setVisible (parallel);
+    parallelOutputBox.setVisible (parallel && ! eqFullscreen);
     ampCrossoverButton.setVisible (parallel);
     ampCrossoverSlider.setVisible (parallel);
     ampCrossoverValueLabel.setVisible (parallel);
@@ -7242,7 +7282,7 @@ void NAMplifiedAudioProcessorEditor::updateRoutingDisplay()
                                     juce::dontSendNotification);
     blendLabel.setText (parallel ? "AMP 1 / AMP 2" : "CAB 1 / CAB 2", juce::dontSendNotification);
     blendSlider.setTooltip (parallel
-        ? "Blend Amp 1 (right) and Amp 2 (left). One active amp receives 100%."
+        ? "Balance Amp 1 and Amp 2. One active amp receives 100%."
         : "Two active cabinets split the signal 50/50. One active cabinet receives 100%.");
     chainControls->setParallelRouting (parallel, sharedIR);
     resized();

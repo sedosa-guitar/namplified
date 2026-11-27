@@ -64,11 +64,11 @@ private:
     juce::Slider blendSlider;
     juce::DrawableButton seriesRoutingButton { "Series", juce::DrawableButton::ImageOnButtonBackground };
     juce::DrawableButton parallelRoutingButton { "Parallel Blend", juce::DrawableButton::ImageOnButtonBackground };
-    juce::ComboBox parallelIRBox;
+    juce::ComboBox parallelIRBox, parallelOutputBox;
     juce::TextButton ampCrossoverButton { "FREQ SPLIT" };
     juce::Slider ampCrossoverSlider;
     juce::Label ampCrossoverValueLabel;
-    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment;
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> parallelIRAttachment, parallelOutputAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::ButtonAttachment> ampCrossoverAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> ampCrossoverSliderAttachment;
     std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> pitchAttachment;
