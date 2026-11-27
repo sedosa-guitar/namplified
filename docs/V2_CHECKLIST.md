@@ -32,7 +32,7 @@ Die Nummern geben die Arbeitsreihenfolge an. Erst kommen Spielgefühl und Rig-Fu
 | Umgesetzt und getestet auf `feat/effect-routing` | 3 | **Effektposition im Routing wählbar machen** – vor dem Split, in A, in B oder hinter dem Mixer | Empfohlene Ergänzung |
 | Offen | 4 | **Expression-Pedal und Makros** – MIDI Learn, Min/Max, mehrere Parameter pro Pedal, Zuordnung im Rig speichern | Empfohlene Ergänzung |
 | Offen | 5 | **Handling und Design überarbeiten** – sichtbare Signalkette, direkter Blockzugriff, große Regler | Kern |
-| Offen | 6 | **Rec DI ergänzen** – Ordner vorab wählen, trockene WAV parallel zum Spielen aufnehmen, optional Stereo-Rig als zweite WAV | Kern |
+| Umgesetzt und getestet auf `feat/di-export` | 6 | **Rec DI ergänzen** – den trockenen Take aus dem Amp-/Cab-A/B-Vergleich als WAV speichern und bei Bedarf in die DAW importieren | Kern |
 | Offen | 7 | **Aufgenommene DI durchs Rig abspielen** – denselben Take zum Einstellen und Vergleichen verwenden | Empfohlene Ergänzung |
 | Offen | 8 | **Looper erweitern** – frei oder 1/2/4 Takte, BPM, DAW-Sync, optionaler Einzähler | Kern |
 | Offen | 9 | **Creator-Abrechnung festlegen** – Erlösaufteilung, Gebühren, Erstattungen, Nutzungsrechte und Auszahlungsrhythmus vereinbaren | Vor dem ersten Verkauf |

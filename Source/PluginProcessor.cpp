@@ -1518,6 +1518,28 @@ int NAMplifiedAudioProcessor::stopDIRecording (juce::AudioBuffer<float>& destina
     return samples;
 }
 
+bool NAMplifiedAudioProcessor::exportDIWav (const juce::File& file,
+                                           const juce::AudioBuffer<float>& di, double sampleRate)
+{
+    if (di.getNumChannels() != 1 || di.getNumSamples() == 0 || ! std::isfinite (sampleRate) || sampleRate <= 0
+        || ! file.hasFileExtension ("wav") || file.isDirectory())
+        return false;
+
+    juce::TemporaryFile temporary (file);
+    std::unique_ptr<juce::OutputStream> stream = temporary.getFile().createOutputStream();
+    if (stream == nullptr)
+        return false;
+
+    juce::WavAudioFormat format;
+    auto writer = format.createWriterFor (stream, juce::AudioFormatWriterOptions()
+        .withSampleRate (sampleRate).withNumChannels (1).withBitsPerSample (32)
+        .withSampleFormat (juce::AudioFormatWriterOptions::SampleFormat::floatingPoint));
+    if (writer == nullptr || ! writer->writeFromAudioSampleBuffer (di, 0, di.getNumSamples()) || ! writer->flush())
+        return false;
+    writer.reset();
+    return temporary.overwriteTargetFileWithTemporary();
+}
+
 void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ScopedNoDenormals noDenormals;

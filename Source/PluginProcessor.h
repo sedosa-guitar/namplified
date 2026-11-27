@@ -94,6 +94,7 @@ public:
     bool startDIRecording (double sampleRate);
     bool isDIRecording() const noexcept { return recordingActive.load(); }
     int stopDIRecording (juce::AudioBuffer<float>& destination);
+    static bool exportDIWav (const juce::File& file, const juce::AudioBuffer<float>& di, double sampleRate);
 
     double getAuditionSampleRate() const noexcept { return modelSampleRate.load(); }
     bool renderAudition (const juce::MemoryBlock& state, const juce::AudioBuffer<float>& input,
