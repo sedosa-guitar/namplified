@@ -100,7 +100,7 @@ public:
     bool renderAudition (const juce::MemoryBlock& state, const juce::AudioBuffer<float>& input,
                          double sampleRate, juce::AudioBuffer<float>& output,
                          const std::function<bool()>& cancelled);
-    void playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop = false);
+    void playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop = false, float rigGain = 1.0f);
     void stopAudition();
 
     enum class ComparisonRouting { series, pairedIRs, sharedIR };
@@ -113,6 +113,7 @@ public:
         std::array<bool, numIRSlots> cabsEnabled {};
     };
     void applyComparisonRig (const ComparisonRig& rig);
+    void setCompareRigGain (float gain) noexcept { compareRigGain.store (gain, std::memory_order_relaxed); }
     void setCompareVolume (float gain) noexcept { compareVolume.store (gain, std::memory_order_relaxed); }
 
     static constexpr int maxPresetNameLength = 32;
@@ -207,6 +208,7 @@ private:
     double auditionRate = 0.0;
     bool auditionLoop = false;
     std::atomic<float> compareVolume { 1.0f };
+    std::atomic<float> compareRigGain { 1.0f };
     float currentCompareVolume = 1.0f;
     juce::ThreadPool modelLoader { 1 };
     juce::dsp::Convolution irConvolvers[numIRSlots];

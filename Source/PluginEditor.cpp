@@ -2996,7 +2996,7 @@ public:
         g.beginTransparencyLayer (isBlockEnabled() ? 1.0f : 0.32f);
         const auto r = getLocalBounds().toFloat();
         const auto cornerRadius = getWidth() < 104 ? 23.0f : 26.0f;
-        g.setColour (isSelected ? tileSurface.interpolatedWith (selectionAccent, 0.42f) : tileSurface);
+        g.setColour (isSelected ? tileSurface.interpolatedWith (selectionAccent, 0.25f) : tileSurface);
         g.fillRoundedRectangle (r, cornerRadius);
         const auto kind = getModuleKind();
         const auto ioBlock = kind == ModuleKind::input || kind == ModuleKind::output;
@@ -3059,14 +3059,14 @@ public:
 
         if (isSelected)
         {
-            const auto edge = r.reduced (3.5f);
-            const auto radius = cornerRadius - 3.5f;
-            g.setColour (selectionAccent.withAlpha (0.34f));
-            g.drawRoundedRectangle (edge, radius, 13.0f);
-            g.setColour (selectionAccent);
-            g.drawRoundedRectangle (edge, radius, 6.0f);
-            g.setColour (selectionAccent.interpolatedWith (juce::Colours::white, 0.66f));
-            g.drawRoundedRectangle (edge, radius, 2.0f);
+            constexpr auto borderWidth = 4.0f;
+            juce::Path outline;
+            outline.setUsingNonZeroWinding (false);
+            outline.addRoundedRectangle (r, cornerRadius);
+            outline.addRoundedRectangle (r.reduced (borderWidth), cornerRadius - borderWidth);
+            g.setGradientFill ({ selectionAccent.interpolatedWith (juce::Colours::white, 0.48f), r.getTopLeft(),
+                                 selectionAccent, r.getBottomRight(), false });
+            g.fillPath (outline);
         }
     }
 
@@ -4440,6 +4440,21 @@ public:
                                        juce::dontSendNotification);
             rig.routing.onChange = [this, i] { changed (i); };
             addAndMakeVisible (rig.routing);
+            styleLabel (rig.volumeLabel, "Level", 15.0f);
+            rig.volume.setName ("Rig " + juce::String (letter) + " level");
+            rig.volume.setSliderStyle (juce::Slider::LinearHorizontal);
+            rig.volume.setTextBoxStyle (juce::Slider::TextBoxRight, false, 54, 28);
+            rig.volume.setRange (0.0, 100.0, 1.0);
+            rig.volume.setTextValueSuffix (" %");
+            rig.volume.setValue (100.0, juce::dontSendNotification);
+            rig.volume.setDoubleClickReturnValue (true, 100.0);
+            rig.volume.setTooltip ("Adjust this rig after level matching.");
+            rig.volume.onValueChange = [this, i]
+            {
+                if (heard == i)
+                    processor.setCompareRigGain (static_cast<float> (rigs[i].volume.getValue() / 100.0));
+            };
+            addAndMakeVisible (rig.volume);
             rig.listen.setButtonText ("Listen " + juce::String (letter));
             rig.apply.setButtonText ("Apply " + juce::String (letter));
             addButton (rig.listen, [this, i] { listen (i); });
@@ -4529,6 +4544,9 @@ public:
             auto actions = box.removeFromBottom (36);
             rig.apply.setBounds (actions.removeFromRight (100));
             rig.listen.setBounds (actions.removeFromLeft (100));
+            actions = actions.reduced (10, 0);
+            rig.volumeLabel.setBounds (actions.removeFromLeft (42));
+            rig.volume.setBounds (actions);
         }
         auto footer = area.removeFromBottom (36);
         close.setBounds (footer.removeFromRight (88));
@@ -4560,7 +4578,8 @@ private:
     struct Rig
     {
         std::array<Asset, 4> assets;
-        juce::Label title;
+        juce::Label title, volumeLabel;
+        juce::Slider volume;
         juce::ComboBox routing;
         juce::TextButton listen, apply;
     };
@@ -4912,7 +4931,8 @@ private:
         juce::AudioBuffer<float> audio;
         audio.makeCopyOf (rendered[i]);
         audio.applyGain (target / rms[i]);
-        processor.playAudition (std::move (audio), renderRate, true);
+        const auto rigGain = static_cast<float> (rigs[i].volume.getValue() / 100.0);
+        processor.playAudition (std::move (audio), renderRate, true, rigGain);
         heard = i;
         message (i == 0 ? "Listening to Rig A" : "Listening to Rig B");
     }
@@ -6627,8 +6647,8 @@ NAMplifiedAudioProcessorEditor::NAMplifiedAudioProcessorEditor (NAMplifiedAudioP
     addAndMakeVisible (masterVolumeSlider);
     masterVolumeAttachment = std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.parameters, "masterVolume", masterVolumeSlider);
-    outputModeBox.addItem ("Stereo", 1);
-    outputModeBox.addItem ("Mono", 2);
+    outputModeBox.addItem ("STEREO", 1);
+    outputModeBox.addItem ("MONO", 2);
     outputModeBox.setName ("outputMode");
     outputModeBox.setTitle ("Output mode");
     outputModeBox.setTooltip ("Mono averages the left and right signals and sends the result to both outputs.");

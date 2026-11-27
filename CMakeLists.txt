@@ -92,7 +92,8 @@ juce_add_plugin(NAMplified
 # bundle. Add both to the finished bundle after linking.
 if (APPLE)
     target_compile_definitions(NAMplified_Standalone PRIVATE JUCE_USE_CUSTOM_PLUGIN_STANDALONE_APP=1)
-    target_sources(NAMplified_Standalone PRIVATE Source/NAMplifiedStandaloneApp.cpp)
+    enable_language(OBJCXX)
+    target_sources(NAMplified_Standalone PRIVATE Source/NAMplifiedStandaloneApp.cpp Source/NAMplifiedDockIcon.mm)
     set_property(TARGET NAMplified_Standalone APPEND PROPERTY LINK_DEPENDS
         "${CMAKE_CURRENT_SOURCE_DIR}/Assets/Branding/NAMplified.icns"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/EnsureMicrophoneUsageDescription.cmake"

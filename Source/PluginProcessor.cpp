@@ -1447,7 +1447,7 @@ bool NAMplifiedAudioProcessor::renderAudition (const juce::MemoryBlock& state,
     return true;
 }
 
-void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop)
+void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, double sampleRate, bool loop, float rigGain)
 {
     const juce::SpinLock::ScopedLockType lock (auditionLock);
     const auto keepPosition = auditionLoop && loop && auditionRate == sampleRate
@@ -1455,10 +1455,11 @@ void NAMplifiedAudioProcessor::playAudition (juce::AudioBuffer<float> audio, dou
     auditionAudio = std::move (audio);
     auditionRate = sampleRate;
     auditionLoop = loop;
+    setCompareRigGain (rigGain);
     if (! keepPosition)
     {
         auditionPosition = 0;
-        currentCompareVolume = compareVolume.load (std::memory_order_relaxed);
+        currentCompareVolume = compareVolume.load (std::memory_order_relaxed) * rigGain;
     }
 }
 
@@ -1568,8 +1569,9 @@ void NAMplifiedAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
 
     {
         const juce::SpinLock::ScopedTryLockType lock (auditionLock);
-        const auto compareGain = compareVolume.load (std::memory_order_relaxed);
-        if (lock.isLocked() && (! auditionLoop || compareGain > 0.0f || currentCompareVolume > 0.0f)
+        const auto masterGain = compareVolume.load (std::memory_order_relaxed);
+        const auto compareGain = masterGain * compareRigGain.load (std::memory_order_relaxed);
+        if (lock.isLocked() && (! auditionLoop || masterGain > 0.0f || currentCompareVolume > 0.0f)
             && auditionRate == modelSampleRate.load()
             && auditionPosition < auditionAudio.getNumSamples())
         {

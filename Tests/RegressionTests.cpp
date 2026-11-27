@@ -655,6 +655,19 @@ void auditionLoopTests (NAMplifiedAudioProcessor& processor)
             processLiveInput();
         return output.getMagnitude (0, 4);
     };
+    processor.setCompareRigGain (0.0f);
+    processLiveInput();
+    processLiveInput();
+    require (output.getMagnitude (0, 4) < 0.00001f,
+             "Muting one rig must silence its audition without switching to live input");
+
+    processor.setCompareRigGain (0.25f);
+    processor.setCompareVolume (0.5f);
+    processLiveInput();
+    processLiveInput();
+    require (near (output.getMagnitude (0, 4), 0.6f * 0.25f * 0.5f, 0.00001),
+             "Rig level and comparison volume must multiply after the gain ramp");
+
     processor.setCompareVolume (0.0f);
     const auto liveLevel = measureLiveOutput();
     require (liveLevel > 0.001f && liveLevel < 0.1f,
